@@ -453,18 +453,47 @@
         let currentMaxPlayers = 6;  // Default, will be updated from init
         let currentRoomStatus = null;  // Will be updated from init
         let currentRoomType = "private";  // Will be updated from init
+
+        // Global toast helper so copy handlers and other functions can show notifications
+        function showToast(message) {
+            try {
+                const container = document.getElementById('toast-container');
+                if (!container) {
+                    console.debug('[TOAST-DEBUG] toast-container not found, falling back to console');
+                    console.log(message);
+                    return;
+                }
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+                toast.innerText = message;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transition = '0.5s';
+                    setTimeout(() => toast.remove(), 500);
+                }, 3000);
+            } catch (e) {
+                console.debug('[TOAST-DEBUG] showToast error', e);
+            }
+        }
         
         function copyRoomCode() {
             const roomCode = getCookie("room_id");
+            console.debug('[COPY-DEBUG] copyRoomCode called, roomCode=', roomCode);
             if (roomCode) {
                 navigator.clipboard.writeText(roomCode).then(() => {
                     showToast("✅ Room code copied!");
+                }).catch((err) => {
+                    console.debug('[COPY-DEBUG] copyRoomCode failed', err);
                 });
+            } else {
+                console.debug('[COPY-DEBUG] No room code to copy');
             }
         }
         
         function copyInviteLink() {
             const roomCode = getCookie("room_id");
+            console.debug('[COPY-DEBUG] copyInviteLink called, roomCode=', roomCode);
             if (roomCode) {
                 // Encode the room code before placing it in the URL
                 const encodedCode = btoa(roomCode); 
@@ -472,7 +501,11 @@
                 
                 navigator.clipboard.writeText(inviteLink).then(() => {
                     showToast("✅ Invite link copied!");
+                }).catch((err) => {
+                    console.debug('[COPY-DEBUG] copyInviteLink failed', err);
                 });
+            } else {
+                console.debug('[COPY-DEBUG] No room code available for invite link');
             }
         }
         
@@ -560,19 +593,7 @@
                 showToast(`✅ Movie picked by drawer. Round is starting...`);
                 stopSelectionTimer();
             }
-            function showToast(message) {
-                const container = document.getElementById('toast-container');
-                const toast = document.createElement('div');
-                toast.className = 'toast';
-                toast.innerText = message;
-                container.appendChild(toast);
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    toast.style.transition = '0.5s';
-                    setTimeout(() => toast.remove(), 500);
-                }, 5000);
-            }
-            
+
             if (data.type === "host_transferred") {
 
                 console.log("[DEBUG-HOST] Host transferred to:", data.new_host);

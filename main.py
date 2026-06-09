@@ -7,8 +7,29 @@ import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict
+from typing import List, Dict, Optional
 from fastapi.responses import RedirectResponse
+
+from database import init_db
+from db_helpers import (
+    create_game_round,
+    create_room_record,
+    end_room_record,
+    finalize_player_game_stats,
+    finish_game_round,
+    get_db_session,
+    get_or_create_player,
+    join_room_record,
+    leave_room_record,
+    record_host_transfer,
+    record_score,
+    record_vote_kick_vote,
+    resolve_vote_kick_record,
+    set_player_online,
+    set_round_word,
+    start_game_record,
+    start_vote_kick_record,
+)
 
 app = FastAPI()
 r = fakeredis.FakeRedis(decode_responses=True)
@@ -24,11 +45,23 @@ app.add_middleware(
 
 # Updated Room Model in main.py
 class GameRoom:
-    def __init__(self, room_id: str, host: str, room_type: str, max_players: int, duration: int = 5, total_rounds: int = 3):
+    def __init__(
+        self,
+        room_id: str,
+        host: str,
+        room_type: str,
+        max_players: int,
+        duration: int = 5,
+        total_rounds: int = 3,
+        db_id: Optional[int] = None,
+    ):
         self.room_id = room_id
         self.host = host
         self.room_type = room_type
         self.max_players = max_players
+        self.duration = duration
+        self.db_id = db_id
+        self.player_db_ids: Dict[str, int] = {}
         self.players: List[str] = []
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
@@ -39,6 +72,12 @@ class GameRoom:
         self.current_round = 0
         # Pass the duration and rounds to the manager!
         self.manager = ConnectionManager(duration_mins=duration, room=self, room_id=room_id, total_rounds=self.total_rounds)
+
+    def register_player(self, name: str, player_db_id: int):
+        self.player_db_ids[name] = player_db_id
+
+    def get_player_db_id(self, name: str) -> Optional[int]:
+        return self.player_db_ids.get(name)
 
     def is_full(self):
         return len(self.players) >= self.max_players
@@ -75,6 +114,12 @@ public_rooms: Dict[str, GameRoom] = {}
 lobby_connections: List[WebSocket] = [] 
 public_room_timers: Dict[str, asyncio.Task] = {}
 
+
+@app.on_event("startup")
+def startup_event():
+    init_db()
+    print("[DB] Tables initialized")
+
 @app.post("/join")
 async def join(
     name: str = Form(...),
@@ -104,6 +149,19 @@ async def join(
         )
 
         room.add_player(name)
+
+        with get_db_session() as db:
+            db_room, host_player = create_room_record(
+                db,
+                room_code=room_code,
+                host_username=name,
+                room_type=room_type,
+                max_players=max_players,
+                total_rounds=rounds,
+            )
+            room.db_id = db_room.id
+            room.register_player(name, host_player.id)
+
         rooms[room_code] = room
         print(f"[DEBUG] Room Created: {room_code} by {name} | Type: {room_type} (Max: {max_players}, Rounds: {rounds})")
 
@@ -138,6 +196,14 @@ async def join(
 
         name = get_unique_name(name, room.players)
         room.add_player(name)
+
+        with get_db_session() as db:
+            db_room, player = join_room_record(db, room_code, name)
+            if db_room and player:
+                if room.db_id is None:
+                    room.db_id = db_room.id
+                room.register_player(name, player.id)
+
         print(f"[DEBUG] User {name} joined Room {room_code}. Total players: {len(room.players)}")
         # Cancel auto-discard timer if another player joined
         if (
@@ -163,8 +229,16 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
         room = rooms[room_id]
         manager = room.manager
         await manager.handle_voluntary_leave(username)
+
+        player_db_id = room.get_player_db_id(username)
+        if room.db_id and player_db_id:
+            with get_db_session() as db:
+                leave_room_record(db, room.db_id, player_db_id)
         
         if not manager.active_connections:
+            if room.db_id:
+                with get_db_session() as db:
+                    end_room_record(db, room.db_id)
             del rooms[room_id]
             if room_id in public_rooms:
                 del public_rooms[room_id]
@@ -222,6 +296,8 @@ class ConnectionManager:
         # Vote Kick State
         self.active_vote_kick = None  # Will store: {target_player, initiator, votes_yes, votes_no, voters, timeout_task}
         self.vote_kick_timeout = 15  # seconds
+        self.active_vote_kick_db_id: Optional[int] = None
+        self.current_db_round_id: Optional[int] = None
 
         self.game_state = {
             "movie": "",
@@ -275,6 +351,34 @@ class ConnectionManager:
         current_score = self.get_player_score(name)
         new_score = current_score + points
         r.set(f"score:{name}", new_score)
+
+        if not self.room or not self.room.db_id:
+            return
+
+        player_db_id = self.room.get_player_db_id(name)
+        if player_db_id and self.current_db_round_id:
+            with get_db_session() as db:
+                record_score(
+                    db,
+                    self.room.db_id,
+                    self.current_db_round_id,
+                    player_db_id,
+                    points,
+                )
+
+    def persist_round_word(self, movie: str):
+        if self.current_db_round_id and movie:
+            with get_db_session() as db:
+                set_round_word(db, self.current_db_round_id, movie)
+
+    def finish_current_round(self, winner_name: Optional[str] = None):
+        if not self.current_db_round_id or not self.room:
+            return
+
+        winner_id = self.room.get_player_db_id(winner_name) if winner_name else None
+        with get_db_session() as db:
+            finish_game_round(db, self.current_db_round_id, winner_id)
+        self.current_db_round_id = None
 
     def get_remaining_time(self):
         """Calculates remaining seconds based on the end_time stored in Redis"""
@@ -404,6 +508,16 @@ class ConnectionManager:
         
         if r.get(f"score:{name}") is None:
             r.set(f"score:{name}", 0)
+
+        if self.room and self.room.db_id:
+            with get_db_session() as db:
+                player_db_id = self.room.get_player_db_id(name)
+                if not player_db_id:
+                    player = get_or_create_player(db, name)
+                    player_db_id = player.id
+                    self.room.register_player(name, player_db_id)
+                    join_room_record(db, self.room.room_id, name)
+                set_player_online(db, self.room.db_id, player_db_id, True)
         
         # Only assign drawer if game has already started
         role = "guesser"
@@ -471,6 +585,16 @@ class ConnectionManager:
             "eligible_voters": set(eligible_voters),
             "timeout_task": None
         }
+
+        if self.room and self.room.db_id:
+            target_id = self.room.get_player_db_id(target)
+            initiator_id = self.room.get_player_db_id(initiator)
+            if target_id and initiator_id:
+                with get_db_session() as db:
+                    vote_kick = start_vote_kick_record(
+                        db, self.room.db_id, target_id, initiator_id
+                    )
+                    self.active_vote_kick_db_id = vote_kick.id
         
         print(f"[DEBUG-VOTE] Vote kick started for {target}. Eligible voters: {eligible_voters}")
         
@@ -536,6 +660,17 @@ class ConnectionManager:
         else:
             self.active_vote_kick["votes_no"] += 1
             print(f"[DEBUG-VOTE] {voter} voted NO. Current: YES={self.active_vote_kick['votes_yes']} NO={self.active_vote_kick['votes_no']}")
+
+        if self.active_vote_kick_db_id and self.room:
+            voter_db_id = self.room.get_player_db_id(voter)
+            if voter_db_id:
+                with get_db_session() as db:
+                    record_vote_kick_vote(
+                        db,
+                        self.active_vote_kick_db_id,
+                        voter_db_id,
+                        vote.lower() == "yes",
+                    )
         
         # Broadcast vote update to all players
         await self.broadcast({
@@ -596,9 +731,19 @@ class ConnectionManager:
         # Execute kick if result is KICK
         if result == "KICK":
             await self._execute_player_kick(target)
+
+        if self.active_vote_kick_db_id:
+            status_map = {"KICK": "PASSED", "TIE": "FAILED", "NO_KICK": "FAILED"}
+            with get_db_session() as db:
+                resolve_vote_kick_record(
+                    db,
+                    self.active_vote_kick_db_id,
+                    status_map.get(result, "CANCELLED"),
+                )
         
         # Clear vote session
         self.active_vote_kick = None
+        self.active_vote_kick_db_id = None
 
     async def _execute_player_kick(self, player_name: str):
         """Remove player from room and close their connection. Handles host transfer if needed."""
@@ -628,6 +773,12 @@ class ConnectionManager:
                 del self.ws_to_name[ws_id]
             
             print(f"[DEBUG-VOTE] {player_name} has been disconnected")
+
+            if self.room and self.room.db_id:
+                player_db_id = self.room.get_player_db_id(player_name)
+                if player_db_id:
+                    with get_db_session() as db:
+                        leave_room_record(db, self.room.db_id, player_db_id, was_kicked=True)
             
             # Handle host transfer if the kicked player was the host
             if self.room and player_name == self.room.host and not self.room.game_started:
@@ -641,6 +792,14 @@ class ConnectionManager:
                         new_host = self.room.players[0]
                         self.room.host = new_host
                         print(f"[DEBUG-VOTE] New host assigned: {new_host}")
+
+                        old_host_id = self.room.get_player_db_id(player_name)
+                        new_host_id = self.room.get_player_db_id(new_host)
+                        if self.room.db_id and old_host_id and new_host_id:
+                            with get_db_session() as db:
+                                record_host_transfer(
+                                    db, self.room.db_id, old_host_id, new_host_id
+                                )
                         
                         # Broadcast host transfer
                         await self.broadcast({
@@ -682,7 +841,12 @@ class ConnectionManager:
             "reason": reason
         })
         
+        if self.active_vote_kick_db_id:
+            with get_db_session() as db:
+                resolve_vote_kick_record(db, self.active_vote_kick_db_id, "CANCELLED")
+
         self.active_vote_kick = None
+        self.active_vote_kick_db_id = None
 
     async def start_round_timer(self, duration=None):
         if duration is None:
@@ -722,6 +886,7 @@ class ConnectionManager:
                     self.game_state["is_round_active"] = False
                     self.game_state["winner_announcement"] = "⏰ Time's up!"
                     self.game_state["revealed_movie"] = self.game_state["movie"]
+                    self.finish_current_round()
                     await self.broadcast({
                         "type": "announcement",
                         "message": self.game_state["winner_announcement"],
@@ -751,6 +916,9 @@ class ConnectionManager:
             "type": "history_update",
             "history": self.movie_history
         })
+
+        if self.current_db_round_id:
+            self.finish_current_round()
 
         self.increment_round() 
         new_round = self.get_round()
@@ -784,6 +952,20 @@ class ConnectionManager:
         
         print(f"[DEBUG-ROUNDS] Round {new_round}/{self.total_rounds} - Drawer: {new_drawer_name}")
         
+        if self.room and self.room.db_id:
+            drawer_db_id = self.room.get_player_db_id(new_drawer_name)
+            if drawer_db_id:
+                with get_db_session() as db:
+                    game_round = create_game_round(
+                        db,
+                        self.room.db_id,
+                        new_round,
+                        drawer_db_id,
+                        self.round_duration,
+                    )
+                    if game_round:
+                        self.current_db_round_id = game_round.id
+
         self.game_state["drawer_name"] = new_drawer_name
         self.game_state["drawer_assigned"] = True
         self.game_state["is_selecting"] = True
@@ -815,6 +997,16 @@ class ConnectionManager:
         """End the game and show final leaderboard."""
         print(f"[DEBUG-ROUNDS] Game ended after {self.total_rounds} rounds")
         final_scores = self.get_player_data()
+
+        if self.current_db_round_id:
+            self.finish_current_round()
+
+        if self.room and self.room.db_id:
+            winner_name = final_scores[0]["name"] if final_scores else None
+            winner_id = self.room.get_player_db_id(winner_name) if winner_name else None
+            with get_db_session() as db:
+                finalize_player_game_stats(db, self.room.db_id, winner_id)
+                end_room_record(db, self.room.db_id)
         
         await self.broadcast({
             "type": "game_ended",
@@ -853,6 +1045,11 @@ def process_movie(movie: str, show_vowels: bool = True):
         return "".join(["_" if char.isalnum() else char for char in movie])
 
 rooms: Dict[str, GameRoom] = {}
+
+def persist_game_start(room: GameRoom):
+    if room.db_id:
+        with get_db_session() as db:
+            start_game_record(db, room.db_id)
 
 def get_unique_name(name, existing_names):
     if name not in existing_names:
@@ -935,6 +1132,10 @@ async def cleanup_public_room(room_id: str):
 
     # Remove room references
     if room_id in rooms:
+        room = rooms[room_id]
+        if room.db_id:
+            with get_db_session() as db:
+                end_room_record(db, room.db_id)
         del rooms[room_id]
 
     if room_id in public_rooms:
@@ -1034,6 +1235,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
         print(f"[DEBUG-BACKEND] Room {room_id} is now full ({len(room.players)}/{room.max_players}). Auto-starting public game")
         room.game_started = True
         room.status = "PLAYING"
+        persist_game_start(room)
         await room.manager.restart_game()
         await broadcast_lobby_update()
 
@@ -1041,6 +1243,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
         print(f"[DEBUG-BACKEND] Room {room_id} conditions met for auto-start")
         room.game_started = True
         room.status = "PLAYING"
+        persist_game_start(room)
         await manager.restart_game()
     
     print(f"[DEBUG-BACKEND] Broadcasting lobby update")
@@ -1085,6 +1288,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
                         print(f"[DEBUG-BACKEND] Host {username} starting room {room_id} with {len(room.players)} players")
                         room.status = "PLAYING"
                         room.game_started = True
+                        persist_game_start(room)
 
                         # Cancel auto-discard timer once game starts
                         if room_id in public_room_timers:
@@ -1114,6 +1318,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
                     manager.game_state["movie"],
                     manager.game_state["show_vowels"]
                 )
+                manager.persist_round_word(manager.game_state["movie"])
 
                 await manager.start_round_timer(duration=manager.round_duration)
 
@@ -1140,6 +1345,8 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
                 manager.set_player_score(username, 50) 
                 if manager.game_state["drawer_name"]:
                     manager.set_player_score(manager.game_state["drawer_name"], 25)
+
+                manager.finish_current_round(username)
 
                 manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"
                 manager.game_state["revealed_movie"] = manager.game_state["movie"]
@@ -1180,6 +1387,7 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
                         movie,
                         manager.game_state["show_vowels"]
                     )
+                    manager.persist_round_word(movie)
 
                     await manager.start_round_timer(duration=manager.round_duration)
 
@@ -1223,6 +1431,13 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
             room.players.remove(username)
             print(f"[DEBUG-HOST] Removed {username} from room.players")
 
+            if room.db_id:
+                player_db_id = room.get_player_db_id(username)
+                if player_db_id:
+                    with get_db_session() as db:
+                        set_player_online(db, room.db_id, player_db_id, False)
+                        leave_room_record(db, room.db_id, player_db_id)
+
         print(f"[DEBUG-HOST] Remaining players: {room.players}")
         print(f"[DEBUG-HOST] Current host before check: {room.host}")
         print(f"[DEBUG-HOST] Game started: {room.game_started}")
@@ -1240,6 +1455,12 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
 
                 print(f"[DEBUG-HOST] New host assigned: {new_host}")
 
+                old_host_id = room.get_player_db_id(username)
+                new_host_id = room.get_player_db_id(new_host)
+                if room.db_id and old_host_id and new_host_id:
+                    with get_db_session() as db:
+                        record_host_transfer(db, room.db_id, old_host_id, new_host_id)
+
                 # Broadcast new host to everyone
                 await manager.broadcast({
                     "type": "host_transferred",
@@ -1248,6 +1469,10 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
 
             else:
                 print(f"[DEBUG-HOST] No players left. Deleting room {room_id}")
+
+                if room.db_id:
+                    with get_db_session() as db:
+                        end_room_record(db, room.db_id)
 
                 # Delete room completely
                 if room_id in rooms:

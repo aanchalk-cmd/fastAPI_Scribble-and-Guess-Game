@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -57,10 +57,22 @@ class RoomPlayer(Base):
     was_host = Column(Boolean, default=False)
     was_kicked = Column(Boolean, default=False)
     is_online = Column(Boolean, default=True)
+    guest_id = Column(String(36), nullable=True, index=True)
 
     # Relationships
     room = relationship("Room", back_populates="players")
     player = relationship("Player", back_populates="room_participations")
+
+class RoomBan(Base):
+    __tablename__ = "room_bans"
+    __table_args__ = (UniqueConstraint("room_id", "guest_id", name="uq_room_guest_ban"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    room_id = Column(Integer, ForeignKey("rooms.id"), nullable=False, index=True)
+    guest_id = Column(String(36), nullable=False, index=True)
+    banned_by_player_id = Column(Integer, ForeignKey("players.id"), nullable=True)
+    reason = Column(String(255), nullable=True)
+    banned_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Word(Base):
     __tablename__ = "words"

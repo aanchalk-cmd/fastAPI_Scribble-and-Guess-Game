@@ -10,6 +10,7 @@ from models import (
     HostTransfer,
     Player,
     Room,
+    RoomBan,
     RoomPlayer,
     Score,
     VoteKick,
@@ -50,6 +51,7 @@ def create_room_record(
     room_type: str,
     max_players: int,
     total_rounds: int,
+    guest_id: Optional[str] = None,
 ) -> tuple[Room, Player]:
     host = get_or_create_player(db, host_username)
     room = Room(
@@ -72,13 +74,19 @@ def create_room_record(
             player_id=host.id,
             was_host=True,
             is_online=False,
+            guest_id=guest_id,
         )
     )
     db.flush()
     return room, host
 
 
-def join_room_record(db: Session, room_code: str, username: str) -> tuple[Optional[Room], Optional[Player]]:
+def join_room_record(
+    db: Session,
+    room_code: str,
+    username: str,
+    guest_id: Optional[str] = None,
+) -> tuple[Optional[Room], Optional[Player]]:
     room = db.query(Room).filter(Room.room_code == room_code).first()
     if not room:
         return None, None
@@ -96,8 +104,12 @@ def join_room_record(db: Session, room_code: str, username: str) -> tuple[Option
                 player_id=player.id,
                 was_host=False,
                 is_online=False,
+                guest_id=guest_id,
             )
         )
+        db.flush()
+    elif guest_id and existing.guest_id != guest_id:
+        existing.guest_id = guest_id
         db.flush()
 
     room.current_players = (
@@ -302,6 +314,68 @@ def resolve_vote_kick_record(db: Session, vote_kick_db_id: int, status: str):
     vote_kick = db.query(VoteKick).filter(VoteKick.id == vote_kick_db_id).first()
     if vote_kick:
         vote_kick.status = status
+
+
+def is_guest_banned_from_room(db: Session, room_db_id: int, guest_id: str) -> bool:
+    return (
+        db.query(RoomBan)
+        .filter(RoomBan.room_id == room_db_id, RoomBan.guest_id == guest_id)
+        .first()
+        is not None
+    )
+
+
+def load_room_bans(db: Session, room_db_id: int) -> set[str]:
+    rows = db.query(RoomBan.guest_id).filter(RoomBan.room_id == room_db_id).all()
+    return {row[0] for row in rows}
+
+
+def ban_guest_from_room(
+    db: Session,
+    room_db_id: int,
+    guest_id: str,
+    banned_by_player_id: Optional[int] = None,
+    reason: Optional[str] = None,
+) -> RoomBan:
+    existing = (
+        db.query(RoomBan)
+        .filter(RoomBan.room_id == room_db_id, RoomBan.guest_id == guest_id)
+        .first()
+    )
+    if existing:
+        return existing
+
+    room_ban = RoomBan(
+        room_id=room_db_id,
+        guest_id=guest_id,
+        banned_by_player_id=banned_by_player_id,
+        reason=reason,
+    )
+    db.add(room_ban)
+    db.flush()
+    return room_ban
+
+
+def get_guest_id_for_player(db: Session, room_db_id: int, player_db_id: int) -> Optional[str]:
+    membership = (
+        db.query(RoomPlayer)
+        .filter(
+            RoomPlayer.room_id == room_db_id,
+            RoomPlayer.player_id == player_db_id,
+            RoomPlayer.left_at.is_(None),
+        )
+        .first()
+    )
+    if membership and membership.guest_id:
+        return membership.guest_id
+
+    membership = (
+        db.query(RoomPlayer)
+        .filter(RoomPlayer.room_id == room_db_id, RoomPlayer.player_id == player_db_id)
+        .order_by(RoomPlayer.joined_at.desc())
+        .first()
+    )
+    return membership.guest_id if membership else None
 
 
 def finalize_player_game_stats(db: Session, room_db_id: int, winner_player_id: Optional[int] = None):

@@ -1,26 +1,31 @@
 import random
 import asyncio
 import time
-import string 
+import string
+import uuid
 import pandas as pd
 import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
 
 from database import init_db
 from db_helpers import (
+    ban_guest_from_room,
     create_game_round,
     create_room_record,
     end_room_record,
     finalize_player_game_stats,
     finish_game_round,
     get_db_session,
+    get_guest_id_for_player,
     get_or_create_player,
+    is_guest_banned_from_room,
     join_room_record,
     leave_room_record,
+    load_room_bans,
     record_host_transfer,
     record_score,
     record_vote_kick_vote,
@@ -62,6 +67,8 @@ class GameRoom:
         self.duration = duration
         self.db_id = db_id
         self.player_db_ids: Dict[str, int] = {}
+        self.player_guest_ids: Dict[str, str] = {}
+        self.banned_guest_ids: Set[str] = set()
         self.players: List[str] = []
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
@@ -76,8 +83,26 @@ class GameRoom:
     def register_player(self, name: str, player_db_id: int):
         self.player_db_ids[name] = player_db_id
 
+    def register_player_guest(self, name: str, guest_id: str):
+        self.player_guest_ids[name] = guest_id
+
     def get_player_db_id(self, name: str) -> Optional[int]:
         return self.player_db_ids.get(name)
+
+    def get_player_guest_id(self, name: str) -> Optional[str]:
+        return self.player_guest_ids.get(name)
+
+    def ban_guest(self, guest_id: str):
+        self.banned_guest_ids.add(guest_id)
+
+    def is_guest_banned(self, guest_id: str) -> bool:
+        return guest_id in self.banned_guest_ids
+
+    def load_bans_from_db(self):
+        if not self.db_id:
+            return
+        with get_db_session() as db:
+            self.banned_guest_ids = load_room_bans(db, self.db_id)
 
     def is_full(self):
         return len(self.players) >= self.max_players
@@ -120,6 +145,32 @@ def startup_event():
     init_db()
     print("[DB] Tables initialized")
 
+
+def validate_guest_id(guest_id: Optional[str]) -> Optional[str]:
+    if not guest_id:
+        return None
+    try:
+        return str(uuid.UUID(guest_id.strip()))
+    except (ValueError, AttributeError):
+        return None
+
+
+def ensure_guest_id(guest_id: Optional[str]) -> str:
+    validated = validate_guest_id(guest_id)
+    return validated if validated else str(uuid.uuid4())
+
+
+def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
+    if room.is_guest_banned(guest_id):
+        return True
+    if room.db_id:
+        with get_db_session() as db:
+            if is_guest_banned_from_room(db, room.db_id, guest_id):
+                room.ban_guest(guest_id)
+                return True
+    return False
+
+
 @app.post("/join")
 async def join(
     name: str = Form(...),
@@ -128,9 +179,11 @@ async def join(
     room_type: str = Form("private"),  
     max_players: int = Form(6),
     duration: int = Form(5),
-    rounds: int = Form(3)  # New: rounds selection
+    rounds: int = Form(3),  # New: rounds selection
+    guest_id: str = Form(None),
 ):
-    print(f"[DEBUG] Action: {action} | User: {name} | Type: {room_type} | Rounds: {rounds}")
+    guest_id = ensure_guest_id(guest_id)
+    print(f"[DEBUG] Action: {action} | User: {name} | Type: {room_type} | Rounds: {rounds} | Guest: {guest_id}")
     if action == "create":
         max_players = max(2, min(12, max_players))
         # Validate: only 1, 3, or 5 rounds allowed
@@ -158,9 +211,11 @@ async def join(
                 room_type=room_type,
                 max_players=max_players,
                 total_rounds=rounds,
+                guest_id=guest_id,
             )
             room.db_id = db_room.id
             room.register_player(name, host_player.id)
+            room.register_player_guest(name, guest_id)
 
         rooms[room_code] = room
         print(f"[DEBUG] Room Created: {room_code} by {name} | Type: {room_type} (Max: {max_players}, Rounds: {rounds})")
@@ -189,6 +244,13 @@ async def join(
 
         room = rooms[room_code]
 
+        if is_guest_banned_in_room(room, guest_id):
+            print(f"[DEBUG] Join Failed: Guest {guest_id} is banned from room {room_code}")
+            return RedirectResponse(
+                url=f"/?error=banned&code={room_code}",
+                status_code=303,
+            )
+
         # For private rooms, check max player limit
         if room.room_type == "private" and room.is_full():
             print(f"[DEBUG] Join Failed: Room {room_code} is full")
@@ -198,11 +260,13 @@ async def join(
         room.add_player(name)
 
         with get_db_session() as db:
-            db_room, player = join_room_record(db, room_code, name)
+            db_room, player = join_room_record(db, room_code, name, guest_id)
             if db_room and player:
                 if room.db_id is None:
                     room.db_id = db_room.id
+                    room.load_bans_from_db()
                 room.register_player(name, player.id)
+                room.register_player_guest(name, guest_id)
 
         print(f"[DEBUG] User {name} joined Room {room_code}. Total players: {len(room.players)}")
         # Cancel auto-discard timer if another player joined
@@ -221,6 +285,7 @@ async def join(
     response = RedirectResponse(url="/game", status_code=303)
     response.set_cookie("username", name)
     response.set_cookie("room_id", room_code)
+    response.set_cookie("guest_id", guest_id, max_age=31536000)
     return response
 
 @app.get("/leave")
@@ -490,7 +555,7 @@ class ConnectionManager:
                    for name in self.active_connections.keys()]
         return sorted(players, key=lambda x: x['score'], reverse=True)
 
-    async def connect(self, websocket: WebSocket, name: str):
+    async def connect(self, websocket: WebSocket, name: str, guest_id: Optional[str] = None):
         original_name = name
         name = get_unique_name(name, self.active_connections.keys())
 
@@ -509,6 +574,9 @@ class ConnectionManager:
         if r.get(f"score:{name}") is None:
             r.set(f"score:{name}", 0)
 
+        if guest_id and self.room:
+            self.room.register_player_guest(name, guest_id)
+
         if self.room and self.room.db_id:
             with get_db_session() as db:
                 player_db_id = self.room.get_player_db_id(name)
@@ -516,7 +584,9 @@ class ConnectionManager:
                     player = get_or_create_player(db, name)
                     player_db_id = player.id
                     self.room.register_player(name, player_db_id)
-                    join_room_record(db, self.room.room_id, name)
+                    join_room_record(db, self.room.room_id, name, guest_id)
+                elif guest_id:
+                    join_room_record(db, self.room.room_id, name, guest_id)
                 set_player_online(db, self.room.db_id, player_db_id, True)
         
         # Only assign drawer if game has already started
@@ -748,21 +818,45 @@ class ConnectionManager:
     async def _execute_player_kick(self, player_name: str):
         """Remove player from room and close their connection. Handles host transfer if needed."""
         print(f"[DEBUG-VOTE] Executing kick for {player_name}")
-        
+
+        guest_id = None
+        if self.room:
+            guest_id = self.room.get_player_guest_id(player_name)
+            if not guest_id and self.room.db_id:
+                player_db_id = self.room.get_player_db_id(player_name)
+                if player_db_id:
+                    with get_db_session() as db:
+                        guest_id = get_guest_id_for_player(db, self.room.db_id, player_db_id)
+
+        if guest_id and self.room and self.room.db_id:
+            with get_db_session() as db:
+                ban_guest_from_room(
+                    db,
+                    self.room.db_id,
+                    guest_id,
+                    reason="vote_kick",
+                )
+            self.room.ban_guest(guest_id)
+            print(f"[DEBUG-VOTE] Banned guest {guest_id} from room {self.room.room_id}")
+
+        if self.room and self.room.db_id:
+            player_db_id = self.room.get_player_db_id(player_name)
+            if player_db_id:
+                with get_db_session() as db:
+                    leave_room_record(db, self.room.db_id, player_db_id, was_kicked=True)
+
         if player_name in self.active_connections:
             ws = self.active_connections[player_name]
-            
-            # Notify kicked player
+
             try:
                 await ws.send_json({
                     "type": "player_kicked",
                     "message": "You have been kicked from the room by vote."
                 })
                 await ws.close()
-            except:
+            except Exception:
                 pass
-            
-            # Remove from connections
+
             del self.active_connections[player_name]
             ws_id = None
             for wid, name in self.ws_to_name.items():
@@ -771,60 +865,44 @@ class ConnectionManager:
                     break
             if ws_id:
                 del self.ws_to_name[ws_id]
-            
+
             print(f"[DEBUG-VOTE] {player_name} has been disconnected")
 
-            if self.room and self.room.db_id:
-                player_db_id = self.room.get_player_db_id(player_name)
-                if player_db_id:
-                    with get_db_session() as db:
-                        leave_room_record(db, self.room.db_id, player_db_id, was_kicked=True)
-            
-            # Handle host transfer if the kicked player was the host
-            if self.room and player_name == self.room.host and not self.room.game_started:
-                print(f"[DEBUG-VOTE] Kicked player {player_name} was the host. Transferring host role.")
-                if self.room.players:
-                    # Remove from room players list
-                    if player_name in self.room.players:
-                        self.room.players.remove(player_name)
-                    
-                    if self.room.players:
-                        new_host = self.room.players[0]
-                        self.room.host = new_host
-                        print(f"[DEBUG-VOTE] New host assigned: {new_host}")
+        if self.room and player_name in self.room.players:
+            self.room.players.remove(player_name)
 
-                        old_host_id = self.room.get_player_db_id(player_name)
-                        new_host_id = self.room.get_player_db_id(new_host)
-                        if self.room.db_id and old_host_id and new_host_id:
-                            with get_db_session() as db:
-                                record_host_transfer(
-                                    db, self.room.db_id, old_host_id, new_host_id
-                                )
-                        
-                        # Broadcast host transfer
-                        await self.broadcast({
-                            "type": "host_transferred",
-                            "new_host": new_host
-                        })
-                    else:
-                        print(f"[DEBUG-VOTE] No players left after kick. Deleting room.")
+        if self.room and player_name == self.room.host and not self.room.game_started:
+            print(f"[DEBUG-VOTE] Kicked player {player_name} was the host. Transferring host role.")
+            if self.room.players:
+                new_host = self.room.players[0]
+                self.room.host = new_host
+                print(f"[DEBUG-VOTE] New host assigned: {new_host}")
+
+                old_host_id = self.room.get_player_db_id(player_name)
+                new_host_id = self.room.get_player_db_id(new_host)
+                if self.room.db_id and old_host_id and new_host_id:
+                    with get_db_session() as db:
+                        record_host_transfer(
+                            db, self.room.db_id, old_host_id, new_host_id
+                        )
+
+                await self.broadcast({
+                    "type": "host_transferred",
+                    "new_host": new_host
+                })
             else:
-                # Just remove from room players list
-                if self.room and player_name in self.room.players:
-                    self.room.players.remove(player_name)
-            
-            # Broadcast updated player list
-            await self.broadcast({
-                "type": "player_list",
-                "players": self.get_player_data()
-            })
-            
-            # Broadcast kick notification
-            await self.broadcast({
-                "type": "player_kicked_notification",
-                "kicked_player": player_name,
-                "message": f"💥 {player_name} has been kicked by vote!"
-            })
+                print(f"[DEBUG-VOTE] No players left after kick. Deleting room.")
+
+        await self.broadcast({
+            "type": "player_list",
+            "players": self.get_player_data()
+        })
+
+        await self.broadcast({
+            "type": "player_kicked_notification",
+            "kicked_player": player_name,
+            "message": f"💥 {player_name} has been kicked by vote!"
+        })
 
     async def cancel_vote_kick(self, reason: str = "unknown"):
         """Cancel the current vote kick session."""
@@ -1216,7 +1294,12 @@ async def broadcast_lobby():
             continue
 
 @app.websocket("/ws") 
-async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None), room_id: str = Cookie(None)):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    username: str = Cookie(None),
+    room_id: str = Cookie(None),
+    guest_id: str = Cookie(None),
+):
     room = rooms.get(room_id)
 
     if not username or not room_id or room_id not in rooms:
@@ -1224,11 +1307,29 @@ async def websocket_endpoint(websocket: WebSocket, username: str = Cookie(None),
         await websocket.close()
         return
 
-    room = rooms[room_id]
-    manager = room.manager
-    print(f"[DEBUG] WS Connecting: {username} to Room {room_id}")
+    validated_guest_id = validate_guest_id(guest_id)
+    if not validated_guest_id:
+        print(f"[DEBUG] WS Connection Denied: Missing or invalid guest_id for {username}")
+        await websocket.close()
+        return
 
-    role = await manager.connect(websocket, username)
+    room = rooms[room_id]
+
+    if is_guest_banned_in_room(room, validated_guest_id):
+        print(f"[DEBUG] WS Connection Denied: Guest {validated_guest_id} is banned from room {room_id}")
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "code": "banned",
+            "message": "You have been banned from this room and cannot rejoin.",
+        })
+        await websocket.close()
+        return
+
+    manager = room.manager
+    print(f"[DEBUG] WS Connecting: {username} to Room {room_id} (guest={validated_guest_id})")
+
+    role = await manager.connect(websocket, username, validated_guest_id)
     print(f"[DEBUG-BACKEND] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
     
     if room.room_type == "public" and room.is_full() and not room.game_started:

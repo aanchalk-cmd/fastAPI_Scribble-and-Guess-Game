@@ -98,6 +98,7 @@
             <input type="hidden" name="room_type" id="roomTypeInput" value="private">
             <input type="hidden" name="max_players" id="maxPlayersInput" value="4">
             <input type="hidden" name="rounds" id="roundsInput" value="3">
+            <input type="hidden" name="guest_id" id="guestIdInput" value="">
 
             <div id="room-mode-buttons" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">
                 <button type="button" class="start-btn" onclick="prepareCreate('private')" style="flex: 1;">Create Private Room</button>
@@ -152,6 +153,18 @@
     </div>
 
 <script>
+    function getOrCreateGuestId() {
+        let guestId = localStorage.getItem('scribble_guest_id');
+        if (!guestId) {
+            guestId = crypto.randomUUID();
+            localStorage.setItem('scribble_guest_id', guestId);
+        }
+        document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
+        return guestId;
+    }
+
+    document.getElementById('guestIdInput').value = getOrCreateGuestId();
+
     function prepareCreate(type) {
         document.getElementById('actionInput').value = 'create';
         document.getElementById('roomTypeInput').value = type;
@@ -245,7 +258,13 @@
         } 
         else if (error === "missing_code") {
             errorBox.innerText = "⚠️ Please enter a room code.";
-        } 
+        }
+        else if (error === "banned") {
+            errorBox.innerText = "🚫 You have been banned from this room and cannot rejoin.";
+        }
+        else if (error === "full") {
+            errorBox.innerText = "⚠️ This room is full. Try another room.";
+        }
         else {
             errorBox.innerText = "Something went wrong.";
         }

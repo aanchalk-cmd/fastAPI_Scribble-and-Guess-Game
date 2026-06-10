@@ -425,6 +425,15 @@
         </div>
     </div>
     <script>
+        (function ensureGuestId() {
+            let guestId = localStorage.getItem('scribble_guest_id');
+            if (!guestId) {
+                guestId = crypto.randomUUID();
+                localStorage.setItem('scribble_guest_id', guestId);
+            }
+            document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
+        })();
+
         let currentRound = 0;
         let totalRounds = 3;  // Default, will be updated from init
         
@@ -519,6 +528,14 @@
             }
             if (data.type === "error") {
                 console.log(`[DEBUG-FRONTEND] Error from server: ${data.message}`);
+                if (data.code === "banned") {
+                    document.cookie = "room_id=; path=/; max-age=0";
+                    showToast("🚫 " + data.message);
+                    setTimeout(() => {
+                        window.location.href = "/?error=banned";
+                    }, 1500);
+                    return;
+                }
                 const errorDiv = document.getElementById('start-error');
                 if (errorDiv && currentRoomStatus === "LOBBY") {
                     errorDiv.innerText = "❌ " + data.message;
@@ -654,9 +671,10 @@
             if (data.type === "player_kicked") {
                 console.log("[DEBUG-FRONTEND] I was kicked!");
                 closeVoteKickModal();
+                document.cookie = "room_id=; path=/; max-age=0";
                 showToast("💥 You have been kicked from the room!");
                 setTimeout(() => {
-                    alert("You have been kicked from the room by vote. Returning to lobby...");
+                    alert("You have been kicked from the room by vote. You cannot rejoin this room.");
                     window.location.href = "/";
                 }, 2000);
             }

@@ -72,6 +72,7 @@ class GameRoom:
         self.players: List[str] = []
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
+        self.lobby_auto_start_deadline: Optional[float] = None
         # Validate: only 1, 3, or 5 rounds allowed
         if total_rounds not in [1, 3, 5]:
             total_rounds = 3  # Default to 3 if invalid
@@ -138,6 +139,9 @@ class GameRoom:
 public_rooms: Dict[str, GameRoom] = {} 
 lobby_connections: List[WebSocket] = [] 
 public_room_timers: Dict[str, asyncio.Task] = {}
+private_room_timers: Dict[str, asyncio.Task] = {}
+
+LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
 
 
 @app.on_event("startup")
@@ -230,6 +234,11 @@ async def join(
             print(f"[AUTO-DISCARD] 5-minute timer initialized for room: {room_code}")
 
             await broadcast_lobby_update()
+        elif room_type == "private":
+            room.lobby_auto_start_deadline = time.time() + LOBBY_AUTO_START_SECONDS
+            timer_task = asyncio.create_task(start_private_room_auto_start_timer(room_code))
+            private_room_timers[room_code] = timer_task
+            print(f"[AUTO-START] 5-minute auto-start timer initialized for private room: {room_code}")
 
     elif action == "join":
         if not room_code:
@@ -301,6 +310,7 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
                 leave_room_record(db, room.db_id, player_db_id)
         
         if not manager.active_connections:
+            cancel_private_room_timer(room_id)
             if room.db_id:
                 with get_db_session() as db:
                     end_room_record(db, room.db_id)
@@ -1224,6 +1234,91 @@ async def cleanup_public_room(room_id: str):
     # Update lobby
     await broadcast_lobby_update()
 
+def get_lobby_time_left(room: GameRoom) -> Optional[int]:
+    if (
+        room.room_type != "private"
+        or room.game_started
+        or room.lobby_auto_start_deadline is None
+    ):
+        return None
+    return max(0, int(room.lobby_auto_start_deadline - time.time()))
+
+
+def cancel_private_room_timer(room_id: str):
+    if room_id in private_room_timers:
+        private_room_timers[room_id].cancel()
+        del private_room_timers[room_id]
+        print(f"[AUTO-START] Timer cancelled for private room: {room_id}")
+
+
+async def start_private_room_auto_start_timer(room_id: str):
+    """
+    Starts 5-minute auto-start timer for private rooms.
+    Broadcasts countdown updates and starts the game when time expires.
+    """
+    try:
+        print(f"[AUTO-START] Timer started for private room: {room_id}")
+
+        while True:
+            if room_id not in rooms:
+                print(f"[AUTO-START] Room already gone: {room_id}")
+                return
+
+            room = rooms[room_id]
+            if room.game_started or room.room_type != "private":
+                return
+
+            remaining = get_lobby_time_left(room)
+            if remaining is None:
+                return
+
+            await room.manager.broadcast({
+                "type": "timer_update",
+                "timer_type": "lobby",
+                "time_left": remaining,
+            })
+
+            if remaining <= 0:
+                break
+            await asyncio.sleep(1)
+
+        if room_id not in rooms:
+            return
+
+        room = rooms[room_id]
+        if room.game_started or room.room_type != "private":
+            return
+
+        if len(room.players) >= 2:
+            print(
+                f"[AUTO-START] Auto-starting private room {room_id} "
+                f"with {len(room.players)} players"
+            )
+            room.status = "PLAYING"
+            room.game_started = True
+            persist_game_start(room)
+            private_room_timers.pop(room_id, None)
+            await room.manager.restart_game()
+        else:
+            print(
+                f"[AUTO-START] Auto-start skipped for room {room_id}: "
+                f"only {len(room.players)} player(s)"
+            )
+            await room.manager.broadcast({
+                "type": "error",
+                "message": "Auto-start failed: At least 2 players are required to start the game.",
+            })
+
+    except asyncio.CancelledError:
+        print(f"[AUTO-START] Timer cancelled for private room: {room_id}")
+
+    except Exception as e:
+        print(f"[AUTO-START] Timer error for private room {room_id}: {e}")
+
+    finally:
+        private_room_timers.pop(room_id, None)
+
+
 async def start_public_room_timer(room_id: str):
     """
     Starts 5-minute auto discard timer for public rooms.
@@ -1376,6 +1471,7 @@ async def websocket_endpoint(
         "winner_msg": manager.game_state["winner_announcement"], 
         "revealed": manager.game_state["revealed_movie"],
         "time_left": current_time_left, 
+        "lobby_time_left": get_lobby_time_left(room),
         "history_movies": manager.movie_history
     })
     
@@ -1397,6 +1493,8 @@ async def websocket_endpoint(
 
                             public_room_timers[room_id].cancel()
                             del public_room_timers[room_id]
+
+                        cancel_private_room_timer(room_id)
 
                         await manager.restart_game() 
                         await broadcast_lobby_update()
@@ -1576,6 +1674,8 @@ async def websocket_endpoint(
                         end_room_record(db, room.db_id)
 
                 # Delete room completely
+                cancel_private_room_timer(room_id)
+
                 if room_id in rooms:
                     del rooms[room_id]
 

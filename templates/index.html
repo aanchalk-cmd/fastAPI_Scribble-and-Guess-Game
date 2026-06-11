@@ -124,7 +124,7 @@
             gap: 12px;
         }
         #status-bar { font-size: 1rem; margin-bottom: 8px; font-weight: 500; }
-        #timer-display, #selection-timer-display {
+        #timer-display, #selection-timer-display, #lobby-timer-display {
             font-size: 1rem;
             color: var(--accent);
             font-weight: 700;
@@ -134,6 +134,16 @@
             border-radius: 999px;
             border: 1px solid var(--accent);
             white-space: nowrap;
+        }
+        #lobby-timer-display {
+            color: var(--success);
+            border-color: var(--success);
+            background: rgba(34, 197, 94, 0.15);
+        }
+        #lobby-timer-display.timer-low {
+            color: #fbbf24;
+            border-color: #fbbf24;
+            background: rgba(251, 191, 36, 0.15);
         }
         #canvas {
             background: #ffffff;
@@ -358,6 +368,7 @@
                 <div id="lobby-waiting-area" class="hidden" style="text-align: center; padding: 40px; background: var(--sidebar-bg); border-radius: 20px;">
                 <h2 style="color: var(--success);">🎮 In Lobby</h2>
                 <p id="lobby-count-text">Waiting for players ...</p>
+                <div id="lobby-timer-display" class="hidden">⏳ Game starts in <span id="lobby-time-left">05:00</span></div>
                 
                 <div id="room-info" class="hidden" style="margin: 20px 0; padding: 16px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.3);">
                     <p style="margin: 0 0 12px 0; color: var(--text-dim); font-size: 0.9rem;">PRIVATE ROOM CODE</p>
@@ -457,7 +468,8 @@
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
         let countdownInterval = null;
-        let timeLeft = 0; 
+        let timeLeft = 0;
+        let lobbyTimeLeft = 0;
         let previousScores = {};
         let currentMaxPlayers = 6;  // Default, will be updated from init
         let currentRoomStatus = null;  // Will be updated from init
@@ -580,6 +592,9 @@
             if (data.type === "timer_update" && data.timer_type === "round") {
                 console.log('[DEBUG] round timer update', data.time_left, 'drawer', data.drawer_name, 'role', myRole);
                 startTimer(data.time_left);
+            }
+            if (data.type === "timer_update" && data.timer_type === "lobby") {
+                startLobbyTimer(data.time_left);
             }
             if (data.type === "new_drawer") {
                 const newDrawer = data.drawer_name;
@@ -717,7 +732,11 @@
                         document.getElementById('room-info').classList.remove('hidden');
                         document.getElementById('room-code-display').innerText = roomCode || "LOADING...";
                         document.getElementById('public-room-info').classList.add('hidden');
+                        if (data.lobby_time_left !== undefined && data.lobby_time_left !== null) {
+                            startLobbyTimer(data.lobby_time_left);
+                        }
                     } else {
+                        stopLobbyTimer();
                         // Public room - show public room info
                         document.getElementById('room-info').classList.add('hidden');
                         document.getElementById('public-room-info').classList.remove('hidden');
@@ -737,6 +756,7 @@
                 } else {
                     console.log(`[DEBUG-FRONTEND] Room is PLAYING. Hiding lobby area.`);
                     document.getElementById('lobby-waiting-area').classList.add('hidden');
+                    stopLobbyTimer();
                 }
                 if (data.history_movies) {
                     movieHistory = data.history_movies;
@@ -872,6 +892,24 @@
         function stopTimer() {
             if (countdownInterval) clearInterval(countdownInterval);
             document.getElementById('timer-display').classList.add('hidden');
+        }
+        function startLobbyTimer(seconds) {
+            if (currentRoomType !== "private" || currentRoomStatus !== "LOBBY") return;
+            lobbyTimeLeft = seconds;
+            document.getElementById('lobby-timer-display').classList.remove('hidden');
+            updateLobbyTimerDisplay();
+        }
+        function stopLobbyTimer() {
+            document.getElementById('lobby-timer-display').classList.add('hidden');
+        }
+        function updateLobbyTimerDisplay() {
+            const mins = Math.floor(lobbyTimeLeft / 60);
+            const secs = lobbyTimeLeft % 60;
+            const timerSpan = document.getElementById('lobby-time-left');
+            const timerDiv = document.getElementById('lobby-timer-display');
+            timerSpan.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            if (lobbyTimeLeft <= 60) timerDiv.classList.add('timer-low');
+            else timerDiv.classList.remove('timer-low');
         }
         let selectionInterval = null;
         let selectionTimeLeft = 0;

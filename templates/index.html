@@ -669,13 +669,16 @@
             if (data.type === "vote_kick_result") {
                 console.log("[DEBUG-FRONTEND] Vote result:", data.result);
                 closeVoteKickModal();
-                
+
+                const isVoteTarget = myName === data.target_player;
                 if (data.result === "KICK") {
                     showToast(`⚠️ ${data.target_player} has been kicked! (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                } else if (data.result === "TIE") {
-                    showToast(`🤝 Vote ended in a tie! ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                } else {
-                    showToast(`✅ Vote failed. ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
+                } else if (!isVoteTarget) {
+                    if (data.result === "TIE") {
+                        showToast(`🤝 Vote ended in a tie! ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
+                    } else {
+                        showToast(`✅ Vote failed. ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
+                    }
                 }
             }
             if (data.type === "vote_kick_cancelled") {

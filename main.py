@@ -408,19 +408,55 @@ class ConnectionManager:
         self.drawer_queue_index = 0
         print(f"[DEBUG-ROUNDS] Initialized drawer queue: {self.drawer_queue}")
 
+    def remove_from_drawer_queue(self, player_name: str):
+        """Remove a disconnected or kicked player from the rotation queue."""
+        if player_name not in self.drawer_queue:
+            return
+
+        removed_index = self.drawer_queue.index(player_name)
+        self.drawer_queue.remove(player_name)
+
+        if removed_index < self.drawer_queue_index:
+            self.drawer_queue_index = max(0, self.drawer_queue_index - 1)
+        if self.drawer_queue and self.drawer_queue_index >= len(self.drawer_queue):
+            self.drawer_queue_index = 0
+
+        print(
+            f"[DEBUG-ROUNDS] Removed {player_name} from drawer queue. "
+            f"Queue: {self.drawer_queue}"
+        )
+
     def get_next_drawer(self):
-        """Get the next drawer in fair rotation order."""
+        """Get the next drawer in fair rotation order, skipping inactive players."""
         if not self.drawer_queue:
             return None
-        
-        if self.drawer_queue_index >= len(self.drawer_queue):
-            # Queue exhausted, reset to beginning
-            self.drawer_queue_index = 0
-        
-        next_drawer = self.drawer_queue[self.drawer_queue_index]
-        self.drawer_queue_index += 1
-        print(f"[DEBUG-ROUNDS] Next drawer: {next_drawer} (index {self.drawer_queue_index - 1}/{len(self.drawer_queue)})")
-        return next_drawer
+
+        active_players = set(self.active_connections.keys())
+        attempts = len(self.drawer_queue)
+
+        while attempts > 0:
+            if self.drawer_queue_index >= len(self.drawer_queue):
+                self.drawer_queue_index = 0
+
+            next_drawer = self.drawer_queue[self.drawer_queue_index]
+            self.drawer_queue_index += 1
+            attempts -= 1
+
+            if next_drawer in active_players:
+                print(
+                    f"[DEBUG-ROUNDS] Next drawer: {next_drawer} "
+                    f"(index {self.drawer_queue_index - 1}/{len(self.drawer_queue)})"
+                )
+                return next_drawer
+
+            print(f"[DEBUG-ROUNDS] Skipping inactive drawer: {next_drawer}")
+
+        if active_players:
+            fallback = random.choice(list(active_players))
+            print(f"[DEBUG-ROUNDS] No valid drawer in queue, fallback: {fallback}")
+            return fallback
+
+        return None
 
     def set_player_score(self, name: str, points: int):
         current_score = self.get_player_score(name)
@@ -478,6 +514,60 @@ class ConnectionManager:
         self.game_state["selection_end_time"] = None
         r.delete(f"selection_end_time:{id(self)}")
         r.delete(f"selection_drawer:{id(self)}")
+
+    async def reassign_drawer_after_removal(self):
+        """Pick a new drawer from active players without advancing the round."""
+        player_names = list(self.active_connections.keys())
+        if not player_names:
+            self.game_state["drawer_assigned"] = False
+            self.game_state["drawer_name"] = None
+            return
+
+        self.cancel_selection_timer()
+        if self.round_timer_task:
+            self.round_timer_task.cancel()
+            self.round_timer_task = None
+
+        r.delete("round_end_time")
+        self.game_state.update({
+            "movie": "",
+            "display_name": "",
+            "is_round_active": False,
+            "winner_announcement": None,
+            "revealed_movie": None,
+        })
+        self.draw_history = []
+
+        new_drawer_name = self.get_next_drawer()
+        if not new_drawer_name or new_drawer_name not in player_names:
+            new_drawer_name = random.choice(player_names)
+
+        self.game_state["drawer_name"] = new_drawer_name
+        self.game_state["drawer_assigned"] = True
+        self.game_state["is_selecting"] = True
+
+        print(f"[DEBUG-ROUNDS] Reassigned drawer after removal: {new_drawer_name}")
+
+        await self.start_selection_timer()
+
+        for name, ws in self.active_connections.items():
+            role = "drawer" if name == new_drawer_name else "guesser"
+            await ws.send_json({
+                "type": "init",
+                "role": role,
+                "round_number": self.current_round,
+                "total_rounds": self.total_rounds,
+                "movie_set": False,
+                "drawer_name": new_drawer_name,
+                "selection_active": True,
+                "selection_time_left": self.get_selection_time_left(),
+            })
+
+        await self.broadcast({
+            "type": "new_drawer",
+            "drawer_name": new_drawer_name,
+            "message": f"Drawer changed. New drawer: {new_drawer_name}.",
+        })
 
     async def handle_selection_expiry(self):
         
@@ -617,10 +707,12 @@ class ConnectionManager:
             if name in self.active_connections:
                 del self.active_connections[name]
             del self.ws_to_name[ws_id]
+            self.remove_from_drawer_queue(name)
             is_drawer = (name == self.game_state["drawer_name"])
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
             if is_drawer:
-                
+                if self.room and self.room.game_started and self.active_connections:
+                    await self.reassign_drawer_after_removal()
                 return False
         
         # Cancel active vote kick if disconnected player was involved
@@ -881,6 +973,13 @@ class ConnectionManager:
         if self.room and player_name in self.room.players:
             self.room.players.remove(player_name)
 
+        self.remove_from_drawer_queue(player_name)
+
+        was_drawer = player_name == self.game_state.get("drawer_name")
+        if was_drawer:
+            self.game_state["drawer_name"] = None
+            self.game_state["drawer_assigned"] = False
+
         if self.room and player_name == self.room.host and not self.room.game_started:
             print(f"[DEBUG-VOTE] Kicked player {player_name} was the host. Transferring host role.")
             if self.room.players:
@@ -913,6 +1012,9 @@ class ConnectionManager:
             "kicked_player": player_name,
             "message": f"💥 {player_name} has been kicked by vote!"
         })
+
+        if was_drawer and self.room and self.room.game_started and self.active_connections:
+            await self.reassign_drawer_after_removal()
 
     async def cancel_vote_kick(self, reason: str = "unknown"):
         """Cancel the current vote kick session."""
@@ -1033,9 +1135,8 @@ class ConnectionManager:
         
         # Get next drawer using fair rotation
         new_drawer_name = self.get_next_drawer()
-        
-        if not new_drawer_name:
-            # Shouldn't happen, but fallback
+
+        if not new_drawer_name or new_drawer_name not in player_names:
             new_drawer_name = random.choice(player_names)
         
         print(f"[DEBUG-ROUNDS] Round {new_round}/{self.total_rounds} - Drawer: {new_drawer_name}")
@@ -1107,6 +1208,8 @@ class ConnectionManager:
             ws = self.active_connections.pop(name)
             if id(ws) in self.ws_to_name:
                 del self.ws_to_name[id(ws)]
+
+            self.remove_from_drawer_queue(name)
             
             if name == self.game_state["drawer_name"]:
                 self.cancel_selection_timer()

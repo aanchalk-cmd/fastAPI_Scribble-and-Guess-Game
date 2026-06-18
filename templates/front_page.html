@@ -289,7 +289,8 @@
             errorBox.innerText = "Invalid or corrupted invite link.";
         }
     }
-    const lobbyWs = new WebSocket(`ws://${window.location.host}/ws/lobby`);
+    const lobbyProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const lobbyWs = new WebSocket(`${lobbyProtocol}://${window.location.host}/ws/lobby`);
     
     lobbyWs.onmessage = (event) => {
         const data = JSON.parse(event.data);

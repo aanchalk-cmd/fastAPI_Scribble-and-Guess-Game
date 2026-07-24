@@ -108,9 +108,14 @@ class GameRoom:
     def is_full(self):
         return len(self.players) >= self.max_players
 
+    def available_slots(self) -> int:
+        return max(0, self.max_players - len(self.players))
+
     def add_player(self, name: str):
         if not self.is_full():
             self.players.append(name)
+            return True
+        return False
 
     def remove_player(self, name: str):
         if name in self.players:
@@ -142,6 +147,78 @@ public_room_timers: Dict[str, asyncio.Task] = {}
 private_room_timers: Dict[str, asyncio.Task] = {}
 
 LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
+
+
+def is_wait_lobby_eligible(room: GameRoom) -> bool:
+    """
+    Public wait lobby eligibility:
+    - Public LOBBY rooms (waiting to start) with at least 1 player
+    - Public PLAYING rooms that still have vacant slots (mid-game join)
+    Private rooms never appear.
+    """
+    if room.room_type != "public":
+        return False
+    if len(room.players) <= 0:
+        return False
+    if room.status == "LOBBY":
+        return True
+    if room.status == "PLAYING" and not room.is_full():
+        return True
+    return False
+
+
+def wait_lobby_skip_reason(room: GameRoom) -> Optional[str]:
+    """Return why a room is skipped from the public wait lobby, or None if eligible."""
+    if room.room_type != "public":
+        return "private room"
+    if len(room.players) <= 0:
+        return "Room destroyed"
+    if room.status == "PLAYING" and room.is_full():
+        return "already full"
+    if room.status not in ("LOBBY", "PLAYING"):
+        return "Game already finished"
+    if not is_wait_lobby_eligible(room):
+        return "not eligible"
+    return None
+
+
+def log_room_state(room: GameRoom, in_wait_lobby: Optional[bool] = None):
+    if in_wait_lobby is None:
+        in_wait_lobby = is_wait_lobby_eligible(room)
+    print("[STATE]")
+    print(f"Room: {room.room_id}")
+    print(f"Game Started: {room.game_started}")
+    print(f"Players: {room.players}")
+    print(f"Max Players: {room.max_players}")
+    print(f"Available Slots: {room.available_slots()}")
+    print(f"Public: {room.room_type == 'public'}")
+    print(f"In Wait Lobby: {in_wait_lobby}")
+    print(f"Status: {room.status}")
+
+
+def log_wait_lobby_eligibility(room: GameRoom):
+    if is_wait_lobby_eligible(room):
+        print(f"[WAIT_LOBBY] Room eligible for public join")
+        if room.game_started and room.status == "PLAYING":
+            print(f"[WAIT_LOBBY] Re-added running room {room.room_id}")
+            print(f"Available Slots={room.available_slots()}")
+            print(f"Current Players={len(room.players)}")
+            print(f"Max Players={room.max_players}")
+            print(f"Game State=RUNNING")
+    else:
+        reason = wait_lobby_skip_reason(room) or "unknown"
+        print(f"[WAIT_LOBBY] Room NOT eligible")
+        print(f"Reason: {reason}")
+        if reason == "private room":
+            print("[SKIP] Room is private")
+        elif reason == "already full":
+            print("[SKIP] Room already full")
+        elif reason == "Game already finished":
+            print("[SKIP] Game already finished")
+        elif reason == "Room destroyed":
+            print("[SKIP] Room destroyed")
+        else:
+            print(f"[SKIP] {reason}")
 
 
 @app.on_event("startup")
@@ -187,7 +264,7 @@ async def join(
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
-    print(f"[DEBUG] Action: {action} | User: {name} | Type: {room_type} | Rounds: {rounds} | Guest: {guest_id}")
+    print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(12, max_players))
         # Validate: only 1, 3, or 5 rounds allowed
@@ -222,10 +299,14 @@ async def join(
             room.register_player_guest(name, guest_id)
 
         rooms[room_code] = room
-        print(f"[DEBUG] Room Created: {room_code} by {name} | Type: {room_type} (Max: {max_players}, Rounds: {rounds})")
+        print(f"[ROOM] Created room={room_code}")
+        print(f"[ROOM] Public={room_type == 'public'}")
+        print(f"[ROOM] Max Players={max_players}")
+        print(f"[ROOM] Current players={room.players}")
+        log_room_state(room)
 
         if room_type == "public":
-            print(f"[DEBUG] Public Room added to lobby: {room_code}")
+            print(f"[WAIT_LOBBY] Added room {room_code}")
 
             # Start auto-discard timer
             timer_task = asyncio.create_task(start_public_room_timer(room_code))
@@ -235,6 +316,9 @@ async def join(
 
             await broadcast_lobby_update()
         elif room_type == "private":
+            print(f"[SKIP] Room is private")
+            print(f"[WAIT_LOBBY] Room NOT eligible")
+            print(f"Reason: private room")
             room.lobby_auto_start_deadline = time.time() + LOBBY_AUTO_START_SECONDS
             timer_task = asyncio.create_task(start_private_room_auto_start_timer(room_code))
             private_room_timers[room_code] = timer_task
@@ -245,28 +329,38 @@ async def join(
             return RedirectResponse(url="/?error=missing_code", status_code=303)
 
         room_code = room_code.upper().strip()
-        print(f"[DEBUG] Attempting to join Room: {room_code}")
+        print(f"[PLAYER_JOIN] Attempting join room={room_code} user={name}")
 
         if room_code not in rooms:
-            print(f"[DEBUG] Join Failed: Room {room_code} not found")
+            print(f"[SKIP] Room destroyed")
+            print(f"[PLAYER_JOIN] Failed: room {room_code} not found")
             return RedirectResponse(url=f"/?error=not_found&code={room_code}", status_code=303)
 
         room = rooms[room_code]
+        players_before = len(room.players)
+        print(f"[PLAYER_JOIN] Target room={room_code} type={room.room_type} status={room.status} game_started={room.game_started}")
+        print(f"[PLAYER_JOIN] Players before={players_before}/{room.max_players} slots={room.available_slots()}")
 
         if is_guest_banned_in_room(room, guest_id):
-            print(f"[DEBUG] Join Failed: Guest {guest_id} is banned from room {room_code}")
+            print(f"[PLAYER_JOIN] Failed: guest {guest_id} banned from room {room_code}")
             return RedirectResponse(
                 url=f"/?error=banned&code={room_code}",
                 status_code=303,
             )
 
-        # For private rooms, check max player limit
-        if room.room_type == "private" and room.is_full():
-            print(f"[DEBUG] Join Failed: Room {room_code} is full")
+        # Capacity check for both private and public (including mid-game public joins)
+        if room.is_full():
+            print(f"[SKIP] Room already full")
+            print(f"[PLAYER_JOIN] Failed: room {room_code} is full")
             return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
 
+        joining_running = room.game_started and room.status == "PLAYING"
         name = get_unique_name(name, room.players)
-        room.add_player(name)
+        added = room.add_player(name)
+        if not added:
+            print(f"[SKIP] Room already full")
+            print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
+            return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
 
         with get_db_session() as db:
             db_room, player = join_room_record(db, room_code, name, guest_id)
@@ -277,10 +371,18 @@ async def join(
                 room.register_player(name, player.id)
                 room.register_player_guest(name, guest_id)
 
-        print(f"[DEBUG] User {name} joined Room {room_code}. Total players: {len(room.players)}")
-        # Cancel auto-discard timer if another player joined
+        players_after = len(room.players)
+        if joining_running:
+            print(f"[PLAYER_JOIN] {name} joined running room {room_code}")
+        else:
+            print(f"[PLAYER_JOIN] {name} joined room {room_code}")
+        print(f"[PLAYER_JOIN] Players: {players_before} -> {players_after}")
+        print(f"[PLAYER_JOIN] Available slots={room.available_slots()}")
+
+        # Cancel auto-discard timer if another player joined (pre-start public only)
         if (
             room.room_type == "public"
+            and not room.game_started
             and len(room.players) >= 2
             and room_code in public_room_timers
         ):
@@ -289,6 +391,12 @@ async def join(
             public_room_timers[room_code].cancel()
             del public_room_timers[room_code]
 
+        if room.room_type == "public" and room.is_full():
+            print(f"[WAIT_LOBBY] Room full again")
+            print(f"[WAIT_LOBBY] Removing from wait lobby")
+            print(f"[WAIT_LOBBY] Removed room {room_code}")
+
+        log_room_state(room)
         await broadcast_lobby_update()
 
     response = RedirectResponse(url="/game", status_code=303)
@@ -302,14 +410,27 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
     if room_id in rooms and username:
         room = rooms[room_id]
         manager = room.manager
+        print(f"[PLAYER_LEAVE] Player {username} leaving room {room_id} via /leave")
+        print(f"[PLAYER_LEAVE] Remaining players before remove={len(room.players)}")
+        print(f"[PLAYER_LEAVE] Max players={room.max_players}")
+
         await manager.handle_voluntary_leave(username)
 
         player_db_id = room.get_player_db_id(username)
         if room.db_id and player_db_id:
             with get_db_session() as db:
                 leave_room_record(db, room.db_id, player_db_id)
+
+        room.remove_player(username)
+        print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
+        print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
+        print(f"[PLAYER_LEAVE] Max players={room.max_players}")
+        log_wait_lobby_eligibility(room)
+        log_room_state(room)
         
         if not manager.active_connections:
+            print(f"[SKIP] Room destroyed")
+            print(f"[WAIT_LOBBY] Removed room {room_id}")
             cancel_private_room_timer(room_id)
             if room.db_id:
                 with get_db_session() as db:
@@ -317,6 +438,10 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
             del rooms[room_id]
             if room_id in public_rooms:
                 del public_rooms[room_id]
+            await broadcast_lobby_update()
+        else:
+            # Running public rooms with a free slot reappear in wait lobby via broadcast
+            await broadcast_lobby_update()
 
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("room_id")
@@ -663,7 +788,7 @@ class ConnectionManager:
         ws_id = id(websocket)
         self.active_connections[name] = websocket
         self.ws_to_name[ws_id] = name
-        print(f"[DEBUG-BACKEND] Player {name} connected. Total players: {len(self.active_connections)}")
+        print(f"[WEBSOCKET] Player {name} connected. Total connections: {len(self.active_connections)}")
 
         if name != original_name:
             await websocket.send_json({
@@ -688,14 +813,20 @@ class ConnectionManager:
                 elif guest_id:
                     join_room_record(db, self.room.room_id, name, guest_id)
                 set_player_online(db, self.room.db_id, player_db_id, True)
+
+        # Mid-game joiners: append to fair drawer rotation without resetting the game
+        if self.room and self.room.game_started and self.drawer_queue:
+            if name not in self.drawer_queue:
+                self.drawer_queue.append(name)
+                print(f"[GAME] Mid-game joiner {name} appended to drawer queue: {self.drawer_queue}")
         
         # Only assign drawer if game has already started
         role = "guesser"
         if self.game_state["drawer_assigned"] and name == self.game_state["drawer_name"]:
             role = "drawer"
-            print(f"[DEBUG-BACKEND] {name} assigned drawer role (already assigned)")
+            print(f"[WEBSOCKET] {name} assigned drawer role (already assigned)")
         else:
-            print(f"[DEBUG-BACKEND] {name} assigned guesser role (game in lobby or not their turn)")
+            print(f"[WEBSOCKET] {name} assigned guesser role (game in lobby or not their turn)")
 
         await self.broadcast({"type": "player_list", "players": self.get_player_data()})
         return role
@@ -1013,6 +1144,14 @@ class ConnectionManager:
             "message": f"💥 {player_name} has been kicked by vote!"
         })
 
+        print(f"[PLAYER_LEAVE] Player {player_name} left room {self.room.room_id if self.room else 'N/A'} (vote kick)")
+        if self.room:
+            print(f"[PLAYER_LEAVE] Remaining players={len(self.room.players)}")
+            print(f"[PLAYER_LEAVE] Max players={self.room.max_players}")
+            log_wait_lobby_eligibility(self.room)
+            log_room_state(self.room)
+            await broadcast_lobby_update()
+
         if was_drawer and self.room and self.room.game_started and self.active_connections:
             await self.reassign_drawer_after_removal()
 
@@ -1270,22 +1409,64 @@ async def get_game(request: Request, room_id: str = Cookie(None), username: str 
 
 
 async def broadcast_lobby_update():
-    """Sends current public rooms to all users in the lobby. Only shows rooms in WAITING state."""
-    public_list = [
-        {
+    """
+    Sends current public rooms to all users in the lobby.
+    Includes:
+      - public rooms still in LOBBY (waiting to start)
+      - public PLAYING rooms that still have vacant slots (mid-game join)
+    """
+    public_list = []
+    for r in rooms.values():
+        eligible = is_wait_lobby_eligible(r)
+        if not eligible:
+            reason = wait_lobby_skip_reason(r)
+            if r.room_type == "public":
+                # Only log public rooms that are skipped (avoid noise for every private room)
+                if reason == "already full":
+                    print(f"[SKIP] Room already full ({r.room_id})")
+                elif reason == "Game already finished":
+                    print(f"[SKIP] Game already finished ({r.room_id})")
+                elif reason == "Room destroyed":
+                    print(f"[SKIP] Room destroyed ({r.room_id})")
+            continue
+
+        entry = {
             "room_id": r.room_id,
             "host": r.host,
             "count": len(r.players),
             "max": r.max_players,
             "status": r.status,
+            "available_slots": r.available_slots(),
+            "game_started": r.game_started,
+            "in_progress": r.status == "PLAYING" and r.game_started,
         }
-        for r in rooms.values() if r.room_type == "public" and r.status == "LOBBY"
-    ]
+        public_list.append(entry)
+        print(
+            f"[WAIT_LOBBY] Refreshed room {r.room_id} "
+            f"players={entry['count']}/{entry['max']} "
+            f"slots={entry['available_slots']} status={r.status}"
+        )
+
+    print("[WAIT_LOBBY] Rooms:")
+    print("[")
+    for entry in public_list:
+        print(
+            f"   {{\n"
+            f"      room:\"{entry['room_id']}\",\n"
+            f"      players:{entry['count']},\n"
+            f"      max:{entry['max']},\n"
+            f"      available_slots:{entry['available_slots']},\n"
+            f"      status:\"{entry['status']}\"\n"
+            f"   }}"
+        )
+    print("]")
+    print(f"[WAIT_LOBBY] Total rooms in wait lobby={len(public_list)} subscribers={len(lobby_connections)}")
+
     for ws in lobby_connections:
         try:
             await ws.send_json({"type": "lobby_update", "rooms": public_list})
         except Exception as e:
-            print(f"[DEBUG] Error sending lobby update: {e}")
+            print(f"[WAIT_LOBBY] Error sending lobby update: {e}")
             continue
 
 async def cleanup_public_room(room_id: str):
@@ -1525,27 +1706,40 @@ async def websocket_endpoint(
         return
 
     manager = room.manager
-    print(f"[DEBUG] WS Connecting: {username} to Room {room_id} (guest={validated_guest_id})")
+    print(f"[WEBSOCKET] Connecting: {username} to room {room_id} (guest={validated_guest_id})")
+    print(f"[WEBSOCKET] Room status={room.status} game_started={room.game_started} players={len(room.players)}/{room.max_players}")
 
     role = await manager.connect(websocket, username, validated_guest_id)
-    print(f"[DEBUG-BACKEND] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
+    print(f"[WEBSOCKET] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
     
+    # Auto-start ONLY when public room first becomes full before game has started.
+    # Mid-game joiners filling the room must NOT restart the game.
     if room.room_type == "public" and room.is_full() and not room.game_started:
-        print(f"[DEBUG-BACKEND] Room {room_id} is now full ({len(room.players)}/{room.max_players}). Auto-starting public game")
+        print(f"[GAME] Starting game in room {room_id}")
+        print(f"[GAME] Removing room from wait lobby because room is full")
+        print(f"[WAIT_LOBBY] Removed room {room_id}")
         room.game_started = True
         room.status = "PLAYING"
         persist_game_start(room)
         await room.manager.restart_game()
+        log_room_state(room)
         await broadcast_lobby_update()
+    elif room.room_type == "public" and room.is_full() and room.game_started:
+        print(f"[GAME] Public room {room_id} is full again during RUNNING game — no restart")
+        print(f"[WAIT_LOBBY] Room full again")
+        print(f"[WAIT_LOBBY] Removing from wait lobby")
+        print(f"[WAIT_LOBBY] Removed room {room_id}")
+        log_room_state(room)
 
     if room.should_start_game() and not room.game_started:
-        print(f"[DEBUG-BACKEND] Room {room_id} conditions met for auto-start")
+        print(f"[GAME] Starting game in room {room_id} (should_start_game)")
+        print(f"[GAME] Removing room from wait lobby because room is full")
         room.game_started = True
         room.status = "PLAYING"
         persist_game_start(room)
         await manager.restart_game()
     
-    print(f"[DEBUG-BACKEND] Broadcasting lobby update")
+    print(f"[WAIT_LOBBY] Broadcasting lobby update after WS connect")
     await broadcast_lobby_update()
 
     if role is None:
@@ -1577,18 +1771,28 @@ async def websocket_endpoint(
         "lobby_time_left": get_lobby_time_left(room),
         "history_movies": manager.movie_history
     })
-    
+    print(
+        f"[WEBSOCKET] Sent init to {username}: status={room.status} "
+        f"movie_set={bool(manager.game_state['movie'])} "
+        f"selection_active={manager.game_state.get('selection_active', False)} "
+        f"drawer={manager.game_state.get('drawer_name')}"
+    )    
     try:
         while True:
             data = await websocket.receive_json()
             if data["type"] == "start_game":
-                print(f"[DEBUG-BACKEND] start_game event from {username} in room {room_id}. Is host? {username == room.host}")
+                print(f"[GAME] start_game event from {username} in room {room_id}. Is host? {username == room.host}")
                 if username == room.host:
                     if len(room.players) >= 2:
-                        print(f"[DEBUG-BACKEND] Host {username} starting room {room_id} with {len(room.players)} players")
+                        print(f"[GAME] Starting game in room {room_id}")
+                        if room.room_type == "public":
+                            print(f"[GAME] Removing room from wait lobby because room is full" if room.is_full() else f"[GAME] Host started public room (may still have slots)")
+                            if room.is_full():
+                                print(f"[WAIT_LOBBY] Removed room {room_id}")
                         room.status = "PLAYING"
                         room.game_started = True
                         persist_game_start(room)
+                        log_room_state(room)
 
                         # Cancel auto-discard timer once game starts
                         if room_id in public_room_timers:
@@ -1602,13 +1806,13 @@ async def websocket_endpoint(
                         await manager.restart_game() 
                         await broadcast_lobby_update()
                     else:
-                        print(f"[DEBUG-BACKEND] Host tried to start with only {len(room.players)} players (need 2+)")
+                        print(f"[GAME] Host tried to start with only {len(room.players)} players (need 2+)")
                         await websocket.send_json({
                             "type": "error",
                             "message": "At least 2 players are required to start the game."
                         })
                 else:
-                    print(f"[DEBUG-BACKEND] Non-host {username} tried to start game (host is {room.host})")
+                    print(f"[GAME] Non-host {username} tried to start game (host is {room.host})")
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
             if data["type"] == "set_movie":
@@ -1723,7 +1927,8 @@ async def websocket_endpoint(
                         "message": "Cannot vote. Either you've already voted or the vote session has ended."
                     })
     except WebSocketDisconnect:
-        print(f"[DEBUG-HOST] {username} disconnected from room {room_id}")
+        print(f"[WEBSOCKET] {username} disconnected from room {room_id}")
+        print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
 
         # Remove websocket connection
         await manager.disconnect(websocket)
@@ -1731,7 +1936,7 @@ async def websocket_endpoint(
         # Remove player from room player list
         if username in room.players:
             room.players.remove(username)
-            print(f"[DEBUG-HOST] Removed {username} from room.players")
+            print(f"[PLAYER_LEAVE] Removed {username} from room.players")
 
             if room.db_id:
                 player_db_id = room.get_player_db_id(username)
@@ -1740,22 +1945,23 @@ async def websocket_endpoint(
                         set_player_online(db, room.db_id, player_db_id, False)
                         leave_room_record(db, room.db_id, player_db_id)
 
-        print(f"[DEBUG-HOST] Remaining players: {room.players}")
-        print(f"[DEBUG-HOST] Current host before check: {room.host}")
-        print(f"[DEBUG-HOST] Game started: {room.game_started}")
+        print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
+        print(f"[PLAYER_LEAVE] Max players={room.max_players}")
+        print(f"[PLAYER_LEAVE] Players list={room.players}")
+        print(f"[PLAYER_LEAVE] Game started={room.game_started} status={room.status}")
 
         # ==========================================
         # HOST TRANSFER LOGIC
         # ==========================================
         if username == room.host and not room.game_started:
-            print(f"[DEBUG-HOST] Host left before game started")
+            print(f"[ROOM] Host left before game started")
 
             # Transfer host if players remain
             if room.players:
                 new_host = room.players[0]
                 room.host = new_host
 
-                print(f"[DEBUG-HOST] New host assigned: {new_host}")
+                print(f"[ROOM] New host assigned: {new_host}")
 
                 old_host_id = room.get_player_db_id(username)
                 new_host_id = room.get_player_db_id(new_host)
@@ -1770,7 +1976,8 @@ async def websocket_endpoint(
                 })
 
             else:
-                print(f"[DEBUG-HOST] No players left. Deleting room {room_id}")
+                print(f"[SKIP] Room destroyed")
+                print(f"[WAIT_LOBBY] Removed room {room_id}")
 
                 if room.db_id:
                     with get_db_session() as db:
@@ -1784,6 +1991,11 @@ async def websocket_endpoint(
 
                 if room_id in public_rooms:
                     del public_rooms[room_id]
+
+        # Mid-game vacancy: running public rooms with open slots re-enter wait lobby
+        if room_id in rooms:
+            log_wait_lobby_eligibility(room)
+            log_room_state(room)
 
         # ==========================================
         # RESTART AUTO-DISCARD TIMER
@@ -1817,14 +2029,15 @@ async def websocket_endpoint(
                     public_room_timers[room_id].cancel()
                     del public_room_timers[room_id]
 
-        # Update public lobby instantly
+        # Update public lobby instantly (re-adds running public rooms with vacant slots)
         await broadcast_lobby_update()
 
         # Send updated player list
-        await manager.broadcast({
-            "type": "player_list",
-            "players": manager.get_player_data()
-        })
+        if room_id in rooms:
+            await manager.broadcast({
+                "type": "player_list",
+                "players": manager.get_player_data()
+            })
 
-        print(f"[DEBUG-HOST] Disconnect handling completed")
+        print(f"[PLAYER_LEAVE] Disconnect handling completed for {username} in {room_id}")
         

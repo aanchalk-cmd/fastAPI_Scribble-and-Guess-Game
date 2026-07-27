@@ -3,7 +3,6 @@ import asyncio
 import time
 import string
 import uuid
-import pandas as pd
 import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
@@ -12,6 +11,10 @@ from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
 
 from database import init_db
+from app.services.word_manager import (
+    CategoryNotFoundError,
+    word_manager,
+)
 from db_helpers import (
     ban_guest_from_room,
     create_game_round,
@@ -58,6 +61,7 @@ class GameRoom:
         max_players: int,
         duration: int = 5,
         total_rounds: int = 3,
+        category: str = "pictionary",
         db_id: Optional[int] = None,
     ):
         self.room_id = room_id
@@ -73,6 +77,8 @@ class GameRoom:
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
         self.lobby_auto_start_deadline: Optional[float] = None
+        # Word category for this room (from words.json via WordManager)
+        self.category = word_manager.normalize_category(category)
         # Validate: only 1, 3, or 5 rounds allowed
         if total_rounds not in [1, 3, 5]:
             total_rounds = 3  # Default to 3 if invalid
@@ -225,6 +231,9 @@ def log_wait_lobby_eligibility(room: GameRoom):
 def startup_event():
     init_db()
     print("[DB] Tables initialized")
+    # Reload words.json into memory once at startup (WordManager is thread-safe).
+    word_manager.load()
+    print(f"[WORD_MANAGER] Categories ready: {word_manager.get_categories()}")
 
 
 def validate_guest_id(guest_id: Optional[str]) -> Optional[str]:
@@ -261,15 +270,19 @@ async def join(
     max_players: int = Form(6),
     duration: int = Form(5),
     rounds: int = Form(3),  # New: rounds selection
+    category: str = Form("pictionary"),  # Word category from words.json
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
-    print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} guest={guest_id}")
+    print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(12, max_players))
         # Validate: only 1, 3, or 5 rounds allowed
         if rounds not in [1, 3, 5]:
             rounds = 3  # Default to 3 if invalid
+
+        # Normalize / fall back if client sent an unknown category
+        category = word_manager.normalize_category(category)
         
         room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
@@ -279,7 +292,8 @@ async def join(
             room_type=room_type,
             max_players=max_players,
             duration=duration,
-            total_rounds=rounds  # Pass rounds to GameRoom
+            total_rounds=rounds,  # Pass rounds to GameRoom
+            category=category,
         )
 
         room.add_player(name)
@@ -302,6 +316,7 @@ async def join(
         print(f"[ROOM] Created room={room_code}")
         print(f"[ROOM] Public={room_type == 'public'}")
         print(f"[ROOM] Max Players={max_players}")
+        print(f"[ROOM] Category={room.category}")
         print(f"[ROOM] Current players={room.players}")
         log_room_state(room)
 
@@ -450,24 +465,9 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
 @app.on_event("shutdown")
 def shutdown_event():
     r.delete("round_end_time")
-    
-def load_movies_by_section():
-    try:
-        df = pd.read_csv("Movie_Names_Dataset.csv")
-        sections = {}
-        for section in df['Section'].unique():
-            movies = df[df['Section'] == section]['Movie Name'].dropna().tolist()
-            sections[section] = [m.strip().upper() for m in movies]
-        return sections
-    except Exception as e:
-        return {"Hollywood": ["INCEPTION"], "Bollywood": ["SHOLAY"]}
 
 
-MOVIE_POOL_DICT = load_movies_by_section()
-
-def get_random_movie():
-    return random.choice(MOVIE_POOL_DICT)
-
+# CSV movie loader removed — words now come from app/data/words.json via WordManager.
 
 
 class ConnectionManager:
@@ -694,6 +694,9 @@ class ConnectionManager:
             "message": f"Drawer changed. New drawer: {new_drawer_name}.",
         })
 
+        # Auto-send 3 word options to the new drawer from the room category
+        await self.send_word_options_to_drawer()
+
     async def handle_selection_expiry(self):
         
         if self.game_state.get("movie"):
@@ -735,6 +738,8 @@ class ConnectionManager:
 
         
         await self.start_selection_timer()
+        # New drawer's turn — offer three words from the room category
+        await self.send_word_options_to_drawer()
 
     async def start_selection_timer(self):
         if self.selection_timer_task:
@@ -774,6 +779,46 @@ class ConnectionManager:
                 pass
 
         self.selection_timer_task = asyncio.create_task(selection_timer())
+
+    def get_room_category(self) -> str:
+        """Return the word category selected for this room."""
+        if self.room and getattr(self.room, "category", None):
+            return self.room.category
+        return "pictionary"
+
+    async def send_word_options_to_drawer(self, count: int = 3):
+        """
+        Fetch `count` random words from the room category and send them
+        only to the current drawer (not broadcast to guessers).
+        """
+        drawer_name = self.game_state.get("drawer_name")
+        if not drawer_name or drawer_name not in self.active_connections:
+            print("[WORD_MANAGER] No active drawer to send word options")
+            return
+
+        category = self.get_room_category()
+        try:
+            options = word_manager.get_random_words(category, count=count)
+        except CategoryNotFoundError as e:
+            print(f"[WORD_MANAGER] {e}")
+            options = word_manager.get_random_words(
+                word_manager.normalize_category(None), count=count
+            )
+
+        print(
+            f"[WORD_MANAGER] Sending {len(options)} options to drawer={drawer_name} "
+            f"category={category}: {options}"
+        )
+
+        payload = {
+            "type": "movie_options",  # keep existing frontend event name
+            "options": options,
+            "category": category,
+        }
+        try:
+            await self.active_connections[drawer_name].send_json(payload)
+        except Exception as e:
+            print(f"[WORD_MANAGER] Failed to send options to {drawer_name}: {e}")
 
     def get_player_data(self):
         players = [{"name": name, "score": self.get_player_score(name)} 
@@ -1311,8 +1356,12 @@ class ConnectionManager:
                 "movie_set": False,
                 "drawer_name": new_drawer_name,
                 "selection_active": True,
-                "selection_time_left": self.get_selection_time_left()
+                "selection_time_left": self.get_selection_time_left(),
+                "category": self.get_room_category(),
             })
+
+        # Drawer's turn begins — send three random words from the room category
+        await self.send_word_options_to_drawer()
 
     async def broadcast(self, message: dict):
         for ws in list(self.active_connections.values()):
@@ -1393,7 +1442,14 @@ def get_unique_name(name, existing_names):
 
 @app.get("/")
 async def get(request: Request):
-    return templates.TemplateResponse("front_page.html", {"request": request})
+    # Pass available word categories to the create-room UI
+    return templates.TemplateResponse(
+        "front_page.html",
+        {
+            "request": request,
+            "categories": word_manager.get_categories(),
+        },
+    )
 
 @app.get("/game")
 async def get_game(request: Request, room_id: str = Cookie(None), username: str = Cookie(None)):
@@ -1769,13 +1825,16 @@ async def websocket_endpoint(
         "revealed": manager.game_state["revealed_movie"],
         "time_left": current_time_left, 
         "lobby_time_left": get_lobby_time_left(room),
-        "history_movies": manager.movie_history
+        "history_movies": manager.movie_history,
+        "category": room.category,
+        "categories": word_manager.get_categories(),
     })
     print(
         f"[WEBSOCKET] Sent init to {username}: status={room.status} "
         f"movie_set={bool(manager.game_state['movie'])} "
         f"selection_active={manager.game_state.get('selection_active', False)} "
-        f"drawer={manager.game_state.get('drawer_name')}"
+        f"drawer={manager.game_state.get('drawer_name')} "
+        f"category={room.category}"
     )    
     try:
         while True:
@@ -1872,28 +1931,44 @@ async def websocket_endpoint(
                 manager.draw_history = []
                 await manager.broadcast(data)
             elif data["type"] == "random_movie":
+                # Drawer requested a fresh set of word options (uses room category)
                 if name == manager.game_state["drawer_name"]:
-                    
-                    section = data.get("section", "Hollywood")
-                    pool = MOVIE_POOL_DICT.get(section, MOVIE_POOL_DICT.get("Hollywood"))
-                    
-                    options = random.sample(pool, min(3, len(pool)))
-                    await websocket.send_json({
-                        "type": "movie_options",
-                        "options": options
-                    })
+                    # Prefer room category; allow optional override from client
+                    requested = data.get("category") or data.get("section")
+                    if requested and word_manager.has_category(requested):
+                        # Temporary override for this pick only (room category stays)
+                        category = requested
+                        try:
+                            options = word_manager.get_random_words(category, count=3)
+                        except CategoryNotFoundError:
+                            options = word_manager.get_random_words(
+                                manager.get_room_category(), count=3
+                            )
+                        await websocket.send_json({
+                            "type": "movie_options",
+                            "options": options,
+                            "category": category,
+                        })
+                    else:
+                        await manager.send_word_options_to_drawer(count=3)
             elif data["type"] == "select_movie":
                 if name == manager.game_state["drawer_name"]:
                     manager.cancel_selection_timer()
                     movie = data["movie"]
-                    manager.game_state["movie"] = movie
+                    # Normalize to uppercase for consistent guessing
+                    manager.game_state["movie"] = movie.strip().upper()
                     manager.game_state["show_vowels"] = data.get("show_vowels", True)
 
                     manager.game_state["display_name"] = process_movie(
-                        movie,
+                        manager.game_state["movie"],
                         manager.game_state["show_vowels"]
                     )
-                    manager.persist_round_word(movie)
+                    manager.persist_round_word(manager.game_state["movie"])
+                    print(
+                        f"[WORD_MANAGER] Drawer {name} selected word="
+                        f"{manager.game_state['movie']} "
+                        f"category={manager.get_room_category()}"
+                    )
 
                     await manager.start_round_timer(duration=manager.round_duration)
 

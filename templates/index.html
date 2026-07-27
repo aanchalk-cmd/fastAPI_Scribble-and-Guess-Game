@@ -405,14 +405,11 @@
                             <span>Show Vowel Hints</span>
                         </label>
                     </div>
-                    <select id="sectionSelect" style="padding: 10px; border-radius: 8px; background: #1e293b; color: white; border: 1px solid #334155;">
-                        <option value="Hollywood">Hollywood 🇺🇸</option>
-                        <option value="Bollywood">Bollywood 🇮🇳</option>
-                    </select>
-                    <input type="text" id="movieInput" placeholder="Enter movie title..." style="padding: 12px; width: 200px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; margin-bottom: 10px;">
+                    <p id="category-label" style="color: var(--text-dim); margin: 8px 0;">Category: —</p>
+                    <input type="text" id="movieInput" placeholder="Or type a custom word..." style="padding: 12px; width: 200px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; margin-bottom: 10px;">
                     <div>
-                        <button class="btn active-tool" onclick="sendMovie()">Start Game</button>
-                        <button class="btn" onclick="generateMovie()">🎲 Random</button>
+                        <button class="btn active-tool" onclick="sendMovie()">Use Custom Word</button>
+                        <button class="btn" onclick="generateMovie()">🎲 New Options</button>
                         <div id="movie-options" style="margin-top:10px;"></div>
                     </div>
                 </div>
@@ -467,6 +464,7 @@
         let ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
+        let roomCategory = "pictionary";
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -581,6 +579,13 @@
             }
             if (data.type === "movie_options") {
                 showMovieOptions(data.options);
+                if (data.category) {
+                    roomCategory = data.category;
+                    const catLabel = document.getElementById('category-label');
+                    if (catLabel) {
+                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                    }
+                }
             }
             if (data.type === "drawer_disconnected") {
                 showToast(`⚠️ Drawer (${data.name}) has left. Selecting new drawer...`);
@@ -603,14 +608,14 @@
                     document.getElementById('role-display').innerText = "Role: DRAWER";
                     document.getElementById('drawer-input').classList.remove('hidden');
                     document.getElementById('controls').classList.remove('hidden');
-                    showToast(`🧩 You are now the drawer. Pick a movie in 60 seconds.`);
+                    showToast(`🧩 You are now the drawer. Pick a word in 60 seconds.`);
                     startSelectionTimer(60);
                 } else {
                     myRole = "guesser";
                     document.getElementById('role-display').innerText = "Role: GUESSER";
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
-                    showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a movie.`);
+                    showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a word.`);
                     stopSelectionTimer();
                 }
                 updateDrawerStatus(newDrawer);
@@ -620,9 +625,16 @@
             }
             if (data.type === "movie_options") {
                 showMovieOptions(data.options);
+                if (data.category) {
+                    roomCategory = data.category;
+                    const catLabel = document.getElementById('category-label');
+                    if (catLabel) {
+                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                    }
+                }
             }
             if (data.type === "movie_selected") {
-                showToast(`✅ Movie picked by drawer. Round is starting...`);
+                showToast(`✅ Word picked by drawer. Round is starting...`);
                 stopSelectionTimer();
             }
 
@@ -708,6 +720,13 @@
                 }
                 if (data.room_type !== undefined) {
                     currentRoomType = data.room_type;
+                }
+                if (data.category) {
+                    roomCategory = data.category;
+                    const catLabel = document.getElementById('category-label');
+                    if (catLabel) {
+                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                    }
                 }
                 
                 // Determine if we're in LOBBY or PLAYING state
@@ -1211,10 +1230,10 @@
             ws.send(JSON.stringify({type: "clear"})); 
         }
         function generateMovie() { 
-            const section = document.getElementById('sectionSelect').value;
+            // Request a fresh set of 3 words from the room's category
             ws.send(JSON.stringify({ 
                 type: "random_movie", 
-                section: section 
+                category: roomCategory
             })); 
         }
         ws.onclose = () => {

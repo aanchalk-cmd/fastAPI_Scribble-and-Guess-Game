@@ -140,6 +140,18 @@
                 <input type="hidden" name="rounds" id="rounds" value="3">
             </div>
 
+            <!-- Word category for the room (WordManager / words.json) -->
+            <div id="category-selection" style="margin-bottom: 20px; text-align: left;">
+                <label for="categorySelect" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
+                    Word Category
+                </label>
+                <select name="category" id="categorySelect" class="name-input" style="width: 100%; cursor: pointer;">
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if cat == 'pictionary' %}selected{% endif %}>{{ cat|capitalize }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <div id="button-container" style="display: flex; gap: 10px; flex-direction: column;">
                 <button type="submit" id="submitBtn" class="start-btn">Create Private Room</button>
             </div>
@@ -172,6 +184,7 @@
         document.getElementById('roomInput').required = false;
         document.getElementById('timer-selection').style.display = 'block';
         document.getElementById('rounds-selection').style.display = 'block';
+        document.getElementById('category-selection').style.display = 'block';
 
         if (type === 'public') {
             document.getElementById('public-settings').style.display = 'block';
@@ -189,6 +202,7 @@
         document.getElementById('public-settings').style.display = 'none';
         document.getElementById('timer-selection').style.display = 'none';
         document.getElementById('rounds-selection').style.display = 'none';
+        document.getElementById('category-selection').style.display = 'none';
         document.getElementById('submitBtn').innerText = 'Join Room';
         document.getElementById('roomInput').required = true;
         if (prefillCode) {
@@ -282,6 +296,8 @@
             document.getElementById('submitBtn').innerText = 'Join Room';
             document.getElementById('public-settings').style.display = 'none';
             document.getElementById('timer-selection').style.display = 'none';
+            document.getElementById('category-selection').style.display = 'none';
+            document.getElementById('rounds-selection').style.display = 'none';
         } catch (e) {
             // If someone tampers with the URL and breaks the encoding, show an error
             const errorBox = document.getElementById("error-box");

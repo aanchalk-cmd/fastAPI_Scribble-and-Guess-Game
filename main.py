@@ -276,7 +276,7 @@ async def join(
     guest_id = ensure_guest_id(guest_id)
     print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
-        max_players = max(2, min(12, max_players))
+        max_players = max(2, min(10, max_players))
         # Validate: only 1, 3, or 5 rounds allowed
         if rounds not in [1, 3, 5]:
             rounds = 3  # Default to 3 if invalid

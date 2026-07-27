@@ -28,7 +28,7 @@ class Room(Base):
     room_type = Column(String(20), default="private")
     status = Column(String(30), default="LOBBY")
     host_player_id = Column(Integer, ForeignKey("players.id"))
-    max_players = Column(Integer, default=6)
+    max_players = Column(Integer, default=10)
     current_players = Column(Integer, default=0)
     total_rounds = Column(Integer, default=3)
     current_round_number = Column(Integer, default=0)

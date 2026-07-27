@@ -96,7 +96,7 @@
 
             <input type="hidden" name="action" id="actionInput" value="create">
             <input type="hidden" name="room_type" id="roomTypeInput" value="private">
-            <input type="hidden" name="max_players" id="maxPlayersInput" value="4">
+            <input type="hidden" name="max_players" id="maxPlayersInput" value="10">
             <input type="hidden" name="rounds" id="roundsInput" value="3">
             <input type="hidden" name="guest_id" id="guestIdInput" value="">
 
@@ -112,9 +112,9 @@
 
             <div id="public-settings" style="display: none; margin-bottom: 20px; text-align: left;">
                 <label for="maxPlayers" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
-                    Max Players: <span id="max-players-display" style="color: var(--primary); font-weight: bold;">4</span>
+                    Max Players: <span id="max-players-display" style="color: var(--primary); font-weight: bold;">10</span>
                 </label>
-                <input type="range" name="max_players" id="maxPlayers" min="2" max="6" value="4" 
+                <input type="range" name="max_players" id="maxPlayers" min="2" max="10" value="10" 
                     style="width: 100%; accent-color: var(--primary);"
                     oninput="setMaxPlayers(this.value)">
             </div>

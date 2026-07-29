@@ -487,6 +487,7 @@ class ConnectionManager:
             total_rounds = 3  # Default to 3 if invalid
         self.total_rounds = total_rounds
         self.current_round = 0
+        self.game_complete = False  # True after all configured rounds finish
         self.drawer_queue = []  # Fair rotation queue
         self.drawer_queue_index = 0
         
@@ -1261,13 +1262,22 @@ class ConnectionManager:
                     self.game_state["winner_announcement"] = "⏰ Time's up!"
                     self.game_state["revealed_movie"] = self.game_state["movie"]
                     self.finish_current_round()
+                    is_final_round = self.current_round >= self.total_rounds
                     await self.broadcast({
                         "type": "announcement",
                         "message": self.game_state["winner_announcement"],
-                        "reveal": self.game_state["revealed_movie"]
+                        "reveal": self.game_state["revealed_movie"],
+                        "is_final_round": is_final_round,
+                        "round_number": self.current_round,
+                        "total_rounds": self.total_rounds,
                     })
-                    await asyncio.sleep(5)
-                    await self.restart_game()
+                    if is_final_round:
+                        # Brief pause to show the reveal, then Quit / Continue UI
+                        await asyncio.sleep(2)
+                        await self.end_game()
+                    else:
+                        await asyncio.sleep(5)
+                        await self.restart_game()
             except asyncio.CancelledError:
                 
                 pass
@@ -1363,6 +1373,46 @@ class ConnectionManager:
         # Drawer's turn begins — send three random words from the room category
         await self.send_word_options_to_drawer()
 
+    async def continue_game(self):
+        """
+        After all configured rounds finish, start another series of the same
+        number of rounds without kicking players or resetting scores.
+        """
+        print(
+            f"[GAME] continue_game() room={self.room_id} "
+            f"resetting rounds (was {self.current_round}/{self.total_rounds})"
+        )
+        self.game_complete = False
+        self.reset_round()
+        self.current_round = 0
+        self.cancel_selection_timer()
+        if self.round_timer_task:
+            self.round_timer_task.cancel()
+            self.round_timer_task = None
+        r.delete("round_end_time")
+        self.game_state.update({
+            "movie": "",
+            "display_name": "",
+            "is_round_active": False,
+            "winner_announcement": None,
+            "revealed_movie": None,
+            "drawer_assigned": False,
+            "drawer_name": None,
+            "is_selecting": False,
+            "selection_active": False,
+        })
+        self.draw_history = []
+        # Keep drawer_queue order; rebuild if empty so newcomers are included
+        if not self.drawer_queue:
+            self.initialize_drawer_queue(list(self.active_connections.keys()))
+
+        await self.broadcast({
+            "type": "game_continued",
+            "message": f"Continuing! Starting another {self.total_rounds} round(s).",
+            "total_rounds": self.total_rounds,
+        })
+        await self.restart_game()
+
     async def broadcast(self, message: dict):
         for ws in list(self.active_connections.values()):
             try:
@@ -1371,24 +1421,22 @@ class ConnectionManager:
                 continue
 
     async def end_game(self):
-        """End the game and show final leaderboard."""
+        """All configured rounds finished — show final options (quit / continue)."""
         print(f"[DEBUG-ROUNDS] Game ended after {self.total_rounds} rounds")
+        self.game_complete = True
         final_scores = self.get_player_data()
 
         if self.current_db_round_id:
             self.finish_current_round()
 
-        if self.room and self.room.db_id:
-            winner_name = final_scores[0]["name"] if final_scores else None
-            winner_id = self.room.get_player_db_id(winner_name) if winner_name else None
-            with get_db_session() as db:
-                finalize_player_game_stats(db, self.room.db_id, winner_id)
-                end_room_record(db, self.room.db_id)
-        
+        # Do not finalize/end the DB room here so players can choose Continue.
+        # Stats/room end still happen when players leave via /leave.
+
         await self.broadcast({
             "type": "game_ended",
             "final_scores": final_scores,
-            "total_rounds": self.total_rounds
+            "total_rounds": self.total_rounds,
+            "can_continue": True,
         })
 
     async def handle_voluntary_leave(self, name: str):
@@ -1915,15 +1963,29 @@ async def websocket_endpoint(
 
                 manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"
                 manager.game_state["revealed_movie"] = manager.game_state["movie"]
+                is_final_round = manager.current_round >= manager.total_rounds
 
                 await manager.broadcast({"type": "player_list", "players": manager.get_player_data()})
                 await manager.broadcast({
                     "type": "announcement",
                     "message": manager.game_state["winner_announcement"],
-                    "reveal": manager.game_state["revealed_movie"]
+                    "reveal": manager.game_state["revealed_movie"],
+                    "is_final_round": is_final_round,
+                    "round_number": manager.current_round,
+                    "total_rounds": manager.total_rounds,
                 })
+                # Last round finished — show Quit / Continue (no "Next Round")
+                if is_final_round:
+                    await manager.end_game()
             elif data["type"] == "restart":
-                await manager.restart_game()
+                # Ignore mid-click "next round" once the series is already complete
+                if manager.current_round >= manager.total_rounds or manager.game_complete:
+                    await manager.end_game()
+                else:
+                    await manager.restart_game()
+            elif data["type"] == "continue_game":
+                print(f"[GAME] continue_game requested by {username} in room {room_id}")
+                await manager.continue_game()
             elif data["type"] == "drawing":
                 manager.draw_history.append(data)
                 await manager.broadcast(data)

@@ -114,7 +114,7 @@
                 <label for="maxPlayers" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
                     Max Players: <span id="max-players-display" style="color: var(--primary); font-weight: bold;">10</span>
                 </label>
-                <input type="range" name="max_players" id="maxPlayers" min="2" max="10" value="10" 
+                <input type="range" id="maxPlayers" min="2" max="10" value="10"
                     style="width: 100%; accent-color: var(--primary);"
                     oninput="setMaxPlayers(this.value)">
             </div>
@@ -185,12 +185,18 @@
         document.getElementById('timer-selection').style.display = 'block';
         document.getElementById('rounds-selection').style.display = 'block';
         document.getElementById('category-selection').style.display = 'block';
+        document.getElementById('public-settings').style.display = 'block';
+
+        const maxPlayersSlider = document.getElementById('maxPlayers');
+        const savedValue = document.getElementById('maxPlayersInput').value || '10';
+        if (maxPlayersSlider) {
+            maxPlayersSlider.value = savedValue;
+            setMaxPlayers(savedValue);
+        }
 
         if (type === 'public') {
-            document.getElementById('public-settings').style.display = 'block';
             document.getElementById('submitBtn').innerText = 'Create Public Room';
         } else {
-            document.getElementById('public-settings').style.display = 'none';
             document.getElementById('submitBtn').innerText = 'Create Private Room';
         }
     }
@@ -211,8 +217,13 @@
     }
 
     function setMaxPlayers(value) {
-        document.getElementById('max-players-display').innerText = value;
-        document.getElementById('maxPlayersInput').value = value;
+        const parsedValue = Number(value) || 10;
+        document.getElementById('max-players-display').innerText = parsedValue;
+        document.getElementById('maxPlayersInput').value = parsedValue;
+        const slider = document.getElementById('maxPlayers');
+        if (slider) {
+            slider.value = parsedValue;
+        }
     }
 
     function setRounds(value) {

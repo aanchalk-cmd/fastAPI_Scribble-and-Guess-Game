@@ -141,38 +141,3 @@ class VoteKickVote(Base):
     player_id = Column(Integer, ForeignKey("players.id"))
     vote = Column(Boolean) # True for Yes, False for No
     voted_at = Column(DateTime(timezone=True), server_default=func.now())
-
-class Role(Base):
-    __tablename__ = "roles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    role_name = Column(String(50), nullable=False, unique=True)
-    description = Column(Text)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-class PlayerRole(Base):
-    __tablename__ = "player_roles"
-
-    id = Column(Integer, primary_key=True, index=True)
-    player_id = Column(Integer, ForeignKey("players.id"))
-    role_id = Column(Integer, ForeignKey("roles.id"))
-    assigned_at = Column(DateTime(timezone=True), server_default=func.now())
-
-class Message(Base):
-    __tablename__ = "messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(Integer, ForeignKey("rooms.id"))
-    player_id = Column(Integer, ForeignKey("players.id"))
-    message = Column(Text)
-    message_type = Column(String(30)) # e.g., 'CHAT', 'SYSTEM'
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-class RoomEvent(Base):
-    __tablename__ = "room_events"
-
-    id = Column(Integer, primary_key=True, index=True)
-    room_id = Column(Integer, ForeignKey("rooms.id"))
-    event_type = Column(String(50))
-    event_data = Column(Text) # JSON string to store arbitrary event data
-    created_at = Column(DateTime(timezone=True), server_default=func.now())

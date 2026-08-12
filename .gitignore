@@ -4,3 +4,5 @@ Movie_Names_Dataset.csv
 Movie_Names_Dataset.csv.xlsx
 ~$Movie_Names_Dataset.csv.xlsx
 Documentation
+.env
+.env.*.env

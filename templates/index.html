@@ -1,18 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Movie Guessing Game</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scribble &amp; Guess — Room</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* ---------- design tokens ---------- */
         :root {
-            --bg: #0f172a;
-            --sidebar-bg: #1e293b;
-            --accent: #ff4757;
-            --accent-soft: rgba(255, 71, 87, 0.1);
+            --bg: #0b1120;
+            --bg-2: #0f172a;
+            --sidebar-bg: #151f36;
+            --surface: #1b2740;
+            --line: #334155;
+            --line-soft: rgba(148, 163, 184, 0.14);
+            --primary: #6366f1;
+            --accent: #f43f5e;
+            --accent-soft: rgba(244, 63, 94, 0.12);
             --draw-blue: #3b82f6;
             --success: #22c55e;
-            --text-main: #f8fafc;
-            --text-dim: #94a3b8;
+            --warning: #f59e0b;
+            --text-main: #e6ecf8;
+            --text-dim: #93a3bd;
+            --radius: 14px;
+            --radius-lg: 20px;
         }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         html, body {
             margin: 0;
             padding: 0;
@@ -23,16 +40,19 @@
             color: var(--text-main);
         }
         body {
-            font-family: 'Inter', system-ui, sans-serif;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            -webkit-font-smoothing: antialiased;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
             overflow: hidden;
         }
+
+        /* ---------- header ---------- */
         header {
-            padding: 12px 16px;
-            background: var(--sidebar-bg);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 10px 18px;
+            background: rgba(21, 31, 54, 0.96);
+            border-bottom: 1px solid var(--line-soft);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -42,8 +62,26 @@
             top: 0;
             z-index: 10;
         }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+        .brand-mark {
+            width: 36px;
+            height: 36px;
+            flex-shrink: 0;
+            border-radius: 11px;
+            display: grid;
+            place-items: center;
+            font-size: 1.05rem;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+        }
         header h1 {
-            font-size: 1.4rem;
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
             margin: 0;
             white-space: nowrap;
             overflow: hidden;
@@ -55,66 +93,110 @@
             gap: 8px;
             flex-wrap: wrap;
         }
-        #sidebar-toggle {
-            display: none;
-            border: 1px solid #334155;
-            background: #0f172a;
-            color: #f8fafc;
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 0.9rem;
+        .meta-chips {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
         }
+        .meta-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 11px;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--line-soft);
+            white-space: nowrap;
+        }
+        #round-display { color: var(--success); }
+        #room-display { color: var(--accent); letter-spacing: 0.09em; }
+        #player-welcome { color: var(--text-dim); }
+
+        /* ---------- shell ---------- */
         .main-container {
             display: flex;
             flex: 1;
             min-height: 0;
             overflow: hidden;
         }
+
+        /* ---------- sidebar ---------- */
         #sidebar {
             width: 280px;
+            flex-shrink: 0;
             background: var(--sidebar-bg);
-            border-right: 1px solid rgba(255,255,255,0.1);
-            padding: 16px;
+            border-right: 1px solid var(--line-soft);
+            padding: 18px 16px;
             text-align: left;
             overflow-y: auto;
             min-height: 0;
             transition: transform 0.25s ease;
         }
-        #sidebar.open-mobile {
-            transform: translateX(0);
-        }
+        #sidebar.open-mobile { transform: translateX(0); }
         .sidebar-title {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             margin-bottom: 12px;
             color: var(--text-dim);
             text-transform: uppercase;
-            letter-spacing: 1.5px;
+            letter-spacing: 0.14em;
         }
+        .sidebar-status {
+            padding: 11px 13px;
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.10);
+            border: 1px solid rgba(59, 130, 246, 0.28);
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+        .sidebar-status #sidebar-drawer { color: var(--text-main); font-weight: 700; }
         .player-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 8px;
             padding: 10px 12px;
             margin-bottom: 8px;
-            background: rgba(255,255,255,0.03);
-            border-radius: 10px;
-            transition: background 0.2s;
+            background: rgba(148, 163, 184, 0.06);
+            border: 1px solid transparent;
+            border-radius: 12px;
+            transition: background 0.2s, border-color 0.2s;
             word-break: break-word;
         }
-        .player-name { font-weight: 600; font-size: 0.95rem; }
+        .player-item:hover { background: rgba(148, 163, 184, 0.11); }
+        .player-name { font-weight: 600; font-size: 0.92rem; }
         .player-score {
             background: var(--accent);
             color: white;
-            padding: 4px 8px;
-            border-radius: 8px;
-            font-size: 0.78rem;
-            font-weight: 700;
+            padding: 4px 9px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            font-weight: 800;
+            white-space: nowrap;
         }
-        .is-me { border: 2px solid var(--draw-blue); background: rgba(59, 130, 246, 0.12); }
+        .is-me {
+            border-color: var(--draw-blue);
+            background: rgba(59, 130, 246, 0.14);
+        }
+        .kick-btn {
+            padding: 4px 8px !important;
+            min-height: 0 !important;
+            font-size: 0.72rem !important;
+            border-radius: 8px !important;
+            background: rgba(244, 63, 94, 0.16) !important;
+            border: 1px solid rgba(244, 63, 94, 0.4) !important;
+            color: #fb7185 !important;
+        }
+        .kick-btn:hover { background: var(--accent) !important; color: #fff !important; }
+
+        /* ---------- content ---------- */
         #content {
             flex: 1;
-            padding: 16px;
+            padding: 18px;
             min-width: 0;
             overflow-y: auto;
             overflow-x: hidden;
@@ -123,33 +205,253 @@
             align-items: center;
             gap: 12px;
         }
-        #status-bar { font-size: 1rem; margin-bottom: 8px; font-weight: 500; }
-        #timer-display, #selection-timer-display, #lobby-timer-display {
-            font-size: 1rem;
-            color: var(--accent);
-            font-weight: 700;
-            margin-bottom: 10px;
-            background: var(--accent-soft);
-            padding: 8px 16px;
-            border-radius: 999px;
-            border: 1px solid var(--accent);
-            white-space: nowrap;
+        .stage-head {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            width: 100%;
         }
+        #status-bar {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-dim);
+        }
+        #drawer-status { color: var(--text-main); }
+        #timer-display, #selection-timer-display, #lobby-timer-display {
+            font-size: 0.92rem;
+            color: var(--accent);
+            font-weight: 800;
+            background: var(--accent-soft);
+            padding: 7px 15px;
+            border-radius: 999px;
+            border: 1px solid rgba(244, 63, 94, 0.4);
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+        }
+        #timer-display.timer-low, #selection-timer-display.timer-low {
+            animation: pulseWarn 1s ease-in-out infinite;
+        }
+        @keyframes pulseWarn { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
         #lobby-timer-display {
+            display: inline-block;
+            margin-top: 14px;
             color: var(--success);
-            border-color: var(--success);
-            background: rgba(34, 197, 94, 0.15);
+            border-color: rgba(34, 197, 94, 0.45);
+            background: rgba(34, 197, 94, 0.14);
         }
         #lobby-timer-display.timer-low {
             color: #fbbf24;
-            border-color: #fbbf24;
-            background: rgba(251, 191, 36, 0.15);
+            border-color: rgba(251, 191, 36, 0.5);
+            background: rgba(251, 191, 36, 0.14);
+        }
+
+        /* ---------- lobby card ---------- */
+        #lobby-waiting-area {
+            text-align: center;
+            padding: 36px 28px;
+            background: linear-gradient(180deg, rgba(27, 39, 64, 0.95), rgba(15, 23, 42, 0.95));
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 24px 60px -30px rgba(2, 6, 23, 0.9);
+            max-width: 560px;
+            margin: 0 auto;
+        }
+        #lobby-waiting-area h2 {
+            color: var(--success);
+            margin: 0 0 6px;
+            font-size: 1.3rem;
+        }
+        #lobby-count-text { color: var(--text-dim); margin: 0; font-size: 0.9rem; }
+        .info-panel {
+            margin: 22px 0 0;
+            padding: 18px;
+            border-radius: var(--radius);
+            text-align: center;
+        }
+        .info-panel.is-private {
+            background: rgba(59, 130, 246, 0.08);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .info-panel.is-public {
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+        .info-label {
+            margin: 0 0 12px;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+        .code-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        #room-code-display {
+            background: var(--bg-2);
+            padding: 12px 24px;
+            border-radius: 10px;
+            border: 2px dashed rgba(59, 130, 246, 0.6);
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: 0.22em;
+        }
+        .info-hint {
+            margin: 14px 0 8px;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+        #host-controls { margin-top: 22px; }
+        #host-controls > p {
+            color: var(--text-dim);
+            font-size: 0.82rem;
+            margin: 0 0 12px;
+        }
+        .start-btn {
+            font: inherit;
+            font-weight: 800;
+            font-size: 0.95rem;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border: none;
+            border-radius: var(--radius);
+            padding: 14px 38px;
+            cursor: pointer;
+            transition: transform 0.18s ease, filter 0.18s ease;
+            box-shadow: 0 16px 32px -18px rgba(99, 102, 241, 0.95);
+        }
+        .start-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
+        #start-error {
+            margin-top: 14px;
+            padding: 11px 13px;
+            background: rgba(244, 63, 94, 0.12);
+            border: 1px solid rgba(244, 63, 94, 0.4);
+            border-radius: 10px;
+            color: #fda4af;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        #guest-waiting p {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            animation: blink 1.6s infinite;
+        }
+
+        /* ---------- role + drawer panel ---------- */
+        #role-display {
+            margin: 4px 0;
+            font-size: 0.8rem;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            text-align: center;
+        }
+        #drawer-input {
+            width: 100%;
+            max-width: 560px;
+            margin: 0 auto;
+            padding: 22px;
+            background: linear-gradient(180deg, rgba(27, 39, 64, 0.95), rgba(15, 23, 42, 0.95));
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+        .hint-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.08);
+            border: 1px solid var(--line-soft);
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        #hintToggle { accent-color: var(--primary); width: 16px; height: 16px; cursor: pointer; }
+        #category-label {
+            margin: 14px 0 4px;
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        #movie-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 14px;
+        }
+        .word-choice {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.18)) !important;
+            border-color: rgba(99, 102, 241, 0.55) !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.03em;
+        }
+        .word-choice:hover {
+            background: linear-gradient(135deg, var(--primary), #8b5cf6) !important;
+            transform: translateY(-2px);
+        }
+        #movieInput {
+            padding: 12px 14px;
+            width: 100%;
+            max-width: 280px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: var(--bg-2);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 0.92rem;
+            outline: none;
+        }
+        #movieInput:focus { border-color: var(--primary); }
+        .drawer-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .divider-text {
+            margin: 18px 0 12px;
+            color: var(--text-dim);
+            font-size: 0.72rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        /* ---------- canvas + toolbar ---------- */
+        #game-area {
+            width: 100%;
+            max-width: 900px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #drawer-movie {
+            color: var(--draw-blue);
+            margin: 0 0 10px;
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            text-align: center;
         }
         #canvas {
             background: #ffffff;
             cursor: crosshair;
-            border-radius: 16px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 30px 60px -24px rgba(2, 6, 23, 0.85);
             width: 100%;
             max-width: 100%;
             height: auto;
@@ -158,273 +460,443 @@
         .toolbar {
             width: 100%;
             margin-bottom: 12px;
-            background: var(--sidebar-bg);
-            padding: 12px;
-            border-radius: 12px;
+            background: var(--surface);
+            padding: 10px;
+            border-radius: var(--radius);
             display: flex;
             gap: 8px;
             align-items: center;
-            border: 1px solid rgba(255,255,255,0.15);
+            border: 1px solid var(--line-soft);
             flex-wrap: wrap;
         }
         .btn, .btn-restart, #sidebar-toggle {
             padding: 10px 14px;
             cursor: pointer;
-            border: 1px solid #334155;
+            border: 1px solid var(--line);
             border-radius: 10px;
-            background: #0f172a;
-            color: white;
+            background: rgba(15, 23, 42, 0.9);
+            color: var(--text-main);
+            font-family: inherit;
             font-weight: 600;
-            font-size: 0.95rem;
+            font-size: 0.88rem;
             min-height: 42px;
             touch-action: manipulation;
+            transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         }
-        .btn:hover, .btn-restart:hover {
-            background: #334155;
+        .btn:hover, .btn-restart:hover, #sidebar-toggle:hover {
+            background: rgba(148, 163, 184, 0.16);
+            border-color: rgba(148, 163, 184, 0.4);
         }
-        .active-tool { background: var(--draw-blue); border-color: var(--draw-blue); }
-        .box-container {
-            margin: 16px auto;
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 8px;
-            max-width: 90%;
-        }
-        .letter-input {
-            width: 42px;
-            height: 52px;
-            font-size: 24px;
-            text-align: center;
-            border: 2px solid #334155;
-            border-radius: 10px;
-            background: #1e293b;
-            color: white;
-            text-transform: uppercase;
-            font-weight: 800;
-        }
-        .letter-input:focus { border-color: var(--draw-blue); outline: none; }
-        .letter-input:disabled { background: #0f172a; border-color: transparent; color: var(--text-dim); }
-        #congrats-area {
-            margin-bottom: 16px;
-            padding: 16px;
-            background: rgba(34, 197, 94, 0.15);
-            border-radius: 14px;
-            width: 100%;
-            max-width: 950px;
-            border: 1px solid var(--success);
-            animation: slideDown 0.3s ease-out;
-        }
-        @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        #congrats-text { font-size: 1.2rem; color: var(--success); font-weight: 800; }
-        .btn-restart {
-            background: var(--success);
-            color: white;
-            border: none;
-            font-size: 1rem;
-            font-weight: bold;
-            padding: 11px 18px;
-            cursor: pointer;
-            border-radius: 10px;
-            margin-top: 12px;
-            min-width: 140px;
+        .active-tool {
+            background: var(--draw-blue) !important;
+            border-color: var(--draw-blue) !important;
+            color: #fff !important;
         }
         #colorPicker {
             width: 42px;
             height: 42px;
-            border: none;
-            border-radius: 8px;
+            padding: 0;
+            border: 1px solid var(--line);
+            border-radius: 10px;
             overflow: hidden;
             cursor: pointer;
+            background: transparent;
         }
-        .hidden { display: none !important; }
-        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-        .space {
-            width: 35px;
+
+        /* ---------- guess boxes ---------- */
+        .box-container {
+            margin: 18px auto 4px;
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-width: 100%;
+        }
+        .letter-input {
+            width: 42px;
             height: 52px;
-            display: inline-block;
+            font-family: inherit;
+            font-size: 22px;
+            text-align: center;
+            border: 2px solid var(--line);
+            border-radius: 10px;
+            background: var(--surface);
+            color: var(--text-main);
+            text-transform: uppercase;
+            font-weight: 800;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        #toast-container {
-            position: fixed;
-            bottom: 14px;
-            left: 14px;
-            right: 14px;
-            z-index: 1000;
-            pointer-events: none;
+        .letter-input:focus {
+            border-color: var(--draw-blue);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+            outline: none;
         }
-        .toast {
-            background: #ef4444;
+        .letter-input:disabled {
+            background: rgba(15, 23, 42, 0.7);
+            border-color: transparent;
+            color: var(--text-dim);
+        }
+        .space { width: 34px; height: 52px; display: inline-block; }
+
+        /* ---------- round result banner ---------- */
+        #congrats-area {
+            margin-bottom: 16px;
+            padding: 18px;
+            background: linear-gradient(180deg, rgba(34, 197, 94, 0.16), rgba(34, 197, 94, 0.06));
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 900px;
+            border: 1px solid rgba(34, 197, 94, 0.45);
+            text-align: center;
+            animation: slideDown 0.3s ease-out;
+        }
+        @keyframes slideDown { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        #congrats-text { font-size: 1.15rem; color: var(--success); font-weight: 800; }
+        #movie-reveal {
+            margin-top: 8px;
+            color: var(--text-dim);
+            font-size: 0.92rem;
+        }
+        #revealed-name { font-weight: 800; letter-spacing: 0.04em; }
+        .btn-restart {
+            background: linear-gradient(135deg, var(--success), #16a34a);
             color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            margin-top: 10px;
-            font-weight: 600;
-            animation: slideIn 0.3s ease-out;
-            pointer-events: auto;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 800;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 12px;
+            margin-top: 14px;
+            min-width: 160px;
         }
-        @keyframes slideIn { from { transform: translateX(-100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        #end-game-actions { margin-left: auto; margin-right: auto; }
+
+        /* ---------- overlays / modals ---------- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.72);
+            backdrop-filter: blur(3px);
+            z-index: 9998;
+        }
+        .modal-card {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(180deg, rgba(27, 39, 64, 0.98), rgba(15, 23, 42, 0.98));
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            z-index: 10001;
+            width: calc(100% - 32px);
+            max-width: 380px;
+            text-align: center;
+            box-shadow: 0 40px 80px -30px rgba(2, 6, 23, 0.95);
+        }
+        #vote-kick-modal { border: 1px solid rgba(244, 63, 94, 0.5); }
+        #vote-kick-question { margin: 0 0 18px; font-size: 1.08rem; font-weight: 700; }
+        #vote-kick-countdown {
+            margin-bottom: 18px;
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--accent);
+        }
+        .vote-actions { display: flex; gap: 10px; justify-content: center; }
+        .vote-actions .btn { flex: 1; font-weight: 800; }
+        #vote-yes-btn { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.5); color: #4ade80; }
+        #vote-no-btn { background: rgba(244, 63, 94, 0.18); border-color: rgba(244, 63, 94, 0.5); color: #fb7185; }
+        #vote-kick-status { margin-top: 14px; font-size: 0.85rem; color: var(--text-dim); }
+        #vote-kick-overlay { z-index: 10000; }
+
+        #disconnect-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(11, 17, 32, 0.96);
+            color: white;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+        }
+        #disconnect-overlay .emoji { font-size: 3.4rem; }
+        #disconnect-overlay h2 { margin: 0 0 14px; font-weight: 700; }
+
+        /* final leaderboard (built in JS) */
+        #final-leaderboard-modal { max-width: 460px; border: 1px solid rgba(34, 197, 94, 0.45); }
+        .lb-title { color: var(--success); margin: 0; font-size: 1.7rem; font-weight: 800; }
+        .lb-sub { color: var(--text-dim); font-size: 0.88rem; margin: 8px 0 22px; }
+        .lb-list {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius);
+            padding: 8px 16px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .lb-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--line-soft);
+        }
+        .lb-row:last-child { border-bottom: none; }
+        .lb-name { font-weight: 700; font-size: 1rem; }
+        .lb-score {
+            background: var(--accent);
+            color: #fff;
+            padding: 5px 11px;
+            border-radius: 999px;
+            font-weight: 800;
+            font-size: 0.8rem;
+        }
+        .lb-actions { display: flex; flex-direction: column; gap: 10px; }
+        .lb-actions .btn { width: 100%; font-weight: 800; padding: 13px 24px; }
+        .btn-primary-success {
+            background: linear-gradient(135deg, var(--success), #16a34a) !important;
+            border-color: transparent !important;
+            color: #fff !important;
+        }
+        .btn-danger {
+            background: rgba(244, 63, 94, 0.16) !important;
+            border-color: rgba(244, 63, 94, 0.45) !important;
+            color: #fb7185 !important;
+        }
+        .btn-danger:hover { background: var(--accent) !important; color: #fff !important; }
+
+        /* ---------- history drawer ---------- */
         #history-modal {
-            transition: transform 0.3s ease;
-            transform: translateX(100%);
             position: fixed;
             top: 0;
             right: 0;
             width: 320px;
+            max-width: 100%;
             height: 100%;
-            background: #1e293b;
-            border-left: 1px solid rgba(255,255,255,0.1);
-            padding: 18px;
+            background: var(--sidebar-bg);
+            border-left: 1px solid var(--line-soft);
+            padding: 20px;
             overflow-y: auto;
             z-index: 9999;
-            box-sizing: border-box;
         }
-        #history-modal:not(.hidden) { transform: translateX(0); }
+        .history-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .history-head h3 { margin: 0; font-size: 1rem; font-weight: 700; }
+        #history-list p { color: var(--text-dim); font-size: 0.88rem; }
+        .history-item {
+            padding: 11px 13px;
+            margin-bottom: 8px;
+            background: rgba(148, 163, 184, 0.07);
+            border: 1px solid var(--line-soft);
+            border-radius: 10px;
+            font-size: 0.88rem;
+            font-weight: 600;
+        }
         #history-overlay {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.6);
+            inset: 0;
+            background: rgba(2, 6, 23, 0.65);
             z-index: 9998;
         }
+
+        /* ---------- toasts ---------- */
+        #toast-container {
+            position: fixed;
+            bottom: 16px;
+            right: 16px;
+            left: auto;
+            width: min(340px, calc(100% - 32px));
+            z-index: 11000;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+        }
+        .toast {
+            background: rgba(27, 39, 64, 0.98);
+            border: 1px solid var(--line-soft);
+            border-left: 3px solid var(--primary);
+            color: var(--text-main);
+            padding: 12px 15px;
+            border-radius: 12px;
+            box-shadow: 0 18px 36px -18px rgba(2, 6, 23, 0.95);
+            margin-top: 10px;
+            font-weight: 600;
+            font-size: 0.88rem;
+            animation: slideIn 0.28s ease-out;
+            pointer-events: auto;
+            width: 100%;
+        }
+        @keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .hidden { display: none !important; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+        /* ---------- responsive ---------- */
         @media (max-width: 1024px) {
             .main-container { flex-direction: column; }
             #sidebar {
                 width: 100%;
                 border-right: none;
-                border-top: 1px solid rgba(255,255,255,0.1);
+                border-top: 1px solid var(--line-soft);
                 max-height: 240px;
             }
-            #content { padding: 12px; }
+            #content { padding: 14px; }
             #canvas { max-height: 45vh; }
-            .toolbar { gap: 6px; padding: 10px; }
-            .btn, .btn-restart { font-size: 0.92rem; }
-            header h1 { font-size: 1.2rem; }
+            .toolbar { gap: 6px; padding: 9px; }
+            .btn, .btn-restart { font-size: 0.86rem; }
         }
         @media (max-width: 768px) {
-            header { padding: 10px; }
+            header { padding: 10px 12px; }
             #sidebar-toggle { display: inline-flex; }
-            #sidebar { position: fixed; left: 0; top: 54px; width: 72%; max-width: 280px; height: calc(100% - 54px); transform: translateX(-105%); z-index: 200; }
+            #sidebar {
+                position: fixed;
+                left: 0;
+                top: 58px;
+                width: 78%;
+                max-width: 300px;
+                height: calc(100% - 58px);
+                transform: translateX(-105%);
+                z-index: 200;
+            }
             #sidebar.open-mobile { transform: translateX(0); }
             #sidebar.hidden-mobile { transform: translateX(-105%); }
-            .main-container { padding-top: 0; }
-            #content { padding: 10px; }
-            #canvas { max-height: 35vh; }
+            #content { padding: 12px; }
+            #canvas { max-height: 38vh; }
             .box-container { gap: 6px; }
-            .letter-input { width: 38px; height: 50px; font-size: 22px; }
-            .space { width: 32px; height: 50px; }
+            .letter-input { width: 38px; height: 48px; font-size: 20px; }
+            .space { width: 30px; height: 48px; }
             #history-modal { width: 100%; }
-            #history-modal:not(.hidden) { transform: translateX(0); }
-            #timer-display, #selection-timer-display { font-size: 0.95rem; padding: 6px 12px; }
-            #header-right { width: 100%; justify-content: flex-end; }
+            #lobby-waiting-area { padding: 26px 18px; }
+            #timer-display, #selection-timer-display { font-size: 0.85rem; padding: 6px 12px; }
+            #header-right { width: 100%; justify-content: space-between; }
+            .meta-chip { font-size: 0.7rem; padding: 5px 9px; }
+        }
+        @media (max-width: 480px) {
+            header h1 { display: none; }
+            .brand-mark { width: 32px; height: 32px; }
         }
     </style>
 </head>
 <body>
     <div id="toast-container"></div>
     <header>
-        <h1>🎬 Movie Guess</h1>
+        <div class="brand">
+            <div class="brand-mark">✏️</div>
+            <h1>Scribble &amp; Guess</h1>
+        </div>
         <div id="header-right">
             <button id="sidebar-toggle" onclick="toggleSidebar()">👥 Players</button>
-            <div style="text-align: right; min-width: 165px;">
-                <p id="round-display" style="margin: 0; font-weight: bold; color: var(--success);">ROUND: 1</p>
-                <p id="room-display" style="margin: 0; font-weight: bold; color: var(--accent);">ROOM: {{ room_code }}</p>
-                <p id="player-welcome" style="margin: 0; font-size: 0.8rem; color: var(--text-dim);">{{ username }}</p>
+            <div class="meta-chips">
+                <span class="meta-chip" id="round-display">ROUND: 1</span>
+                <span class="meta-chip" id="room-display">ROOM: {{ room_code }}</span>
+                <span class="meta-chip" id="player-welcome">{{ username }}</span>
             </div>
             <button onclick="toggleHistory()" class="btn">📜 History</button>
-            <button onclick="leaveGame()" class="btn" style="background: #ef4444; border: none;">Leave</button>
+            <button onclick="leaveGame()" class="btn btn-danger">Leave</button>
         </div>
     </header>
-    <div id="disconnect-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); color: white; z-index: 10000; display: flex; flex-direction: column; justify-content: center; align-items: center;">
-        <h1 style="font-size: 4rem; margin-bottom: 0;">🚫</h1>
-        <h2>Connection Lost</h2>
-        <button class="btn" onclick="location.href='http://127.0.0.1:8000/'" style="background: var(--accent); border: none; padding: 15px 30px;">Try Reconnecting</button>
+
+    <div id="disconnect-overlay" class="hidden">
+        <div class="emoji">🔌</div>
+        <h2>Connection lost</h2>
+        <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
     </div>
-    <div id="vote-kick-modal" class="hidden" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--sidebar-bg); padding: 30px; border-radius: 16px; border: 2px solid var(--accent); z-index: 10001; min-width: 320px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); text-align: center;">
-        <h2 id="vote-kick-question" style="margin: 0 0 20px 0; color: var(--text-main); font-size: 1.2rem;">Do you want to kick Player X?</h2>
-        <div id="vote-kick-countdown" style="margin-bottom: 20px; font-size: 1.4rem; font-weight: bold; color: var(--accent);">⏱️ <span id="vote-kick-timer">15</span>s</div>
-        <div style="display: flex; gap: 12px; justify-content: center;">
-            <button id="vote-yes-btn" class="btn" onclick="submitVoteKickVote('yes')" style="background: var(--success); border: none; flex: 1; padding: 12px; font-size: 1rem; font-weight: bold;">✅ Yes</button>
-            <button id="vote-no-btn" class="btn" onclick="submitVoteKickVote('no')" style="background: var(--accent); border: none; flex: 1; padding: 12px; font-size: 1rem; font-weight: bold;">❌ No</button>
+
+    <div id="vote-kick-modal" class="modal-card hidden">
+        <h2 id="vote-kick-question">Do you want to kick Player X?</h2>
+        <div id="vote-kick-countdown">⏱️ <span id="vote-kick-timer">15</span>s</div>
+        <div class="vote-actions">
+            <button id="vote-yes-btn" class="btn" onclick="submitVoteKickVote('yes')">✅ Yes</button>
+            <button id="vote-no-btn" class="btn" onclick="submitVoteKickVote('no')">❌ No</button>
         </div>
-        <div id="vote-kick-status" style="margin-top: 16px; font-size: 0.9rem; color: var(--text-dim);"></div>
+        <div id="vote-kick-status"></div>
     </div>
-    <div id="vote-kick-overlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); z-index: 10000;"></div>
+    <div id="vote-kick-overlay" class="modal-overlay hidden"></div>
+
     <div class="main-container">
         <div id="sidebar">
-            <div class="sidebar-title">Leaderboard</div>
-            <div class="sidebar-status" style="margin-bottom: 12px; color: var(--text-main); font-weight: 600; font-size: 0.95rem;">
+            <div class="sidebar-status">
                 Drawer: <span id="sidebar-drawer">Waiting...</span>
             </div>
+            <div class="sidebar-title" style="margin-top: 18px;">Leaderboard</div>
             <div id="player-list"></div>
         </div>
+
         <div id="content">
-            <div id="status-bar"><span id="drawer-status">Waiting for game...</span></div>
-            <div id="timer-display" class="hidden">⏱️ <span id="time-left">05:00</span></div>
-            <div id="selection-timer-display" class="hidden">🕒 <span id="selection-time-left">01:00</span></div>
+            <div class="stage-head">
+                <div id="status-bar"><span id="drawer-status">Waiting for game...</span></div>
+                <div id="timer-display" class="hidden">⏱️ <span id="time-left">05:00</span></div>
+                <div id="selection-timer-display" class="hidden">🕒 <span id="selection-time-left">01:00</span></div>
+            </div>
+
             <div id="setup-area">
-                <div id="lobby-waiting-area" class="hidden" style="text-align: center; padding: 40px; background: var(--sidebar-bg); border-radius: 20px;">
-                <h2 style="color: var(--success);">🎮 In Lobby</h2>
+                <div id="lobby-waiting-area" class="hidden">
+                <h2>🎮 In Lobby</h2>
                 <p id="lobby-count-text">Waiting for players ...</p>
                 <div id="lobby-timer-display" class="hidden">⏳ Game starts in <span id="lobby-time-left">05:00</span></div>
-                
-                <div id="room-info" class="hidden" style="margin: 20px 0; padding: 16px; background: rgba(255,255,255,0.05); border-radius: 12px; border: 1px solid rgba(59, 130, 246, 0.3);">
-                    <p style="margin: 0 0 12px 0; color: var(--text-dim); font-size: 0.9rem;">PRIVATE ROOM CODE</p>
-                    <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
-                        <div style="background: #0f172a; padding: 12px 24px; border-radius: 8px; border: 2px solid var(--draw-blue); font-weight: 800; font-size: 1.3rem; letter-spacing: 2px;" id="room-code-display"></div>
-                        <button class="btn" onclick="copyRoomCode()" style="padding: 12px 16px; background: var(--draw-blue); border: none;">📋 Copy</button>
+
+                <div id="room-info" class="info-panel is-private hidden">
+                    <p class="info-label">Private room code</p>
+                    <div class="code-row">
+                        <div id="room-code-display"></div>
+                        <button class="btn" onclick="copyRoomCode()">📋 Copy</button>
                     </div>
-                    <p style="margin: 12px 0 8px 0; color: var(--text-dim); font-size: 0.85rem;">Share the code with friends or use the link below</p>
-                    <button class="btn" onclick="copyInviteLink()" style="width: 100%; margin-top: 8px; background: rgba(59, 130, 246, 0.2); border-color: var(--draw-blue);">🔗 Copy Invite Link</button>
+                    <p class="info-hint">Share the code with friends, or send them the invite link.</p>
+                    <button class="btn" onclick="copyInviteLink()" style="width: 100%;">🔗 Copy Invite Link</button>
                 </div>
 
-                <div id="public-room-info" class="hidden" style="margin: 20px 0; padding: 16px; background: rgba(34, 197, 94, 0.1); border-radius: 12px; border: 1px solid rgba(34, 197, 94, 0.3);">
-                    <p style="margin: 0; color: var(--success); font-size: 0.9rem; font-weight: 600;">🌐 PUBLIC ROOM</p>
-                    <p style="margin: 8px 0 0 0; color: var(--text-dim); font-size: 0.85rem;">Anyone can join this room directly from the lobby</p>
+                <div id="public-room-info" class="info-panel is-public hidden">
+                    <p class="info-label" style="color: var(--success); margin-bottom: 6px;">🌐 Public room</p>
+                    <p class="info-hint" style="margin: 0;">Anyone can join this room directly from the lobby.</p>
                 </div>
-                
-                <div id="host-controls" class="hidden" style="margin-top: 20px;">
-                    <p style="color: var(--text-dim); font-size: 0.9rem;">You are the Host</p>
-                    <button class="start-btn" onclick="hostStartGame()" style="background: var(--success); width: auto; padding: 15px 40px;">
-                        START GAME
-                    </button>
-                    <div id="start-error" class="hidden" style="margin-top: 12px; padding: 12px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); border-radius: 8px; color: #fca5a5; font-size: 0.9rem;"></div>
+
+                <div id="host-controls" class="hidden">
+                    <p>You are the host</p>
+                    <button class="start-btn" onclick="hostStartGame()">Start Game</button>
+                    <div id="start-error" class="hidden"></div>
                 </div>
-                
+
                 <div id="guest-waiting" class="hidden">
-                    <p style="animation: blink 1.5s infinite;" id="guest-waiting-text">Waiting for host to start...</p>
+                    <p id="guest-waiting-text">Waiting for host to start...</p>
                 </div>
             </div>
-                <h3 id="role-display" style="color: var(--text-dim);">Determining Role...</h3>
+                <h3 id="role-display">Determining Role...</h3>
                 <div id="drawer-input" class="hidden">
-                    <div style="margin: 10px 0;">
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" id="hintToggle" checked style="transform: scale(1.3);">
-                            <span>Show Vowel Hints</span>
-                        </label>
-                    </div>
-                    <p id="category-label" style="color: var(--text-dim); margin: 8px 0;">Category: —</p>
-                    <input type="text" id="movieInput" placeholder="Or type a custom word..." style="padding: 12px; width: 200px; border-radius: 8px; border: 1px solid #334155; background: #1e293b; color: white; margin-bottom: 10px;">
-                    <div>
+                    <label class="hint-toggle">
+                        <input type="checkbox" id="hintToggle" checked>
+                        <span>Show vowel hints</span>
+                    </label>
+                    <p id="category-label">Category: —</p>
+                    <div id="movie-options"></div>
+                    <p class="divider-text">or pick your own</p>
+                    <input type="text" id="movieInput" placeholder="Type a custom word...">
+                    <div class="drawer-actions">
                         <button class="btn active-tool" onclick="sendMovie()">Use Custom Word</button>
                         <button class="btn" onclick="generateMovie()">🎲 New Options</button>
-                        <div id="movie-options" style="margin-top:10px;"></div>
                     </div>
                 </div>
             </div>
+
             <div id="game-area" class="hidden">
                 <div id="congrats-area" style="display: none;">
                     <div id="congrats-text"></div>
                     <div id="movie-reveal" class="hidden">The word was: <span id="revealed-name" style="color: var(--accent);"></span></div>
                     <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
                     <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
-                        <button class="btn-restart" id="continue-game-btn" onclick="continueGame()" style="background: var(--success); border: none;">Continue Game</button>
-                        <button class="btn" id="quit-game-btn" onclick="quitGame()" style="background: var(--accent); border: none; padding: 12px 20px; font-weight: 700;">Quit Game</button>
+                        <button class="btn-restart" id="continue-game-btn" onclick="continueGame()">Continue Game</button>
+                        <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
                     </div>
                 </div>
-                <h2 id="drawer-movie" style="color: var(--draw-blue); margin: 0 0 10px 0;"></h2>
+                <h2 id="drawer-movie"></h2>
                 <div id="controls" class="toolbar hidden">
                     <button id="drawBtn" class="btn active-tool" onclick="setTool('draw')">✏️ Pencil</button>
                     <button id="eraseBtn" class="btn" onclick="setTool('erase')">🧽 Eraser</button>
@@ -782,6 +1254,8 @@
                 } else {
                     console.log(`[DEBUG-FRONTEND] Room is PLAYING. Hiding lobby area.`);
                     document.getElementById('lobby-waiting-area').classList.add('hidden');
+                    // Undo the lobby-only hide so the role label is visible again in-game
+                    document.getElementById('role-display').style.display = '';
                     stopLobbyTimer();
                 }
                 if (data.history_movies) {
@@ -896,7 +1370,7 @@
                 
                 // Can only kick others, not yourself
                 const canKick = p.name !== myName;
-                const kickButton = canKick ? `<button class="btn" onclick="initiateVoteKick('${p.name}')" style="padding: 4px 8px; font-size: 0.8rem; background: var(--accent); border: none;">🚫 Kick</button>` : '';
+                const kickButton = canKick ? `<button class="btn kick-btn" onclick="initiateVoteKick('${p.name}')">🚫 Kick</button>` : '';
                 
                 div.innerHTML = `
                     <span class="player-name">${p.name}${drawerIcon}</span>
@@ -1057,26 +1531,12 @@
 
             const modal = document.createElement('div');
             modal.id = 'final-leaderboard-modal';
-            modal.style.cssText = `
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: var(--sidebar-bg);
-                border: 2px solid var(--success);
-                border-radius: 20px;
-                padding: 40px;
-                z-index: 10001;
-                text-align: center;
-                min-width: 350px;
-                max-width: 500px;
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            `;
-            
+            modal.className = 'modal-card';
+
             let leaderboardHTML = `
-                <h1 style="color: var(--success); margin-top: 0; font-size: 2rem;">🎉 Game Over!</h1>
-                <p style="color: var(--text-dim); font-size: 1rem; margin: 10px 0 30px 0;">Completed ${totalRoundsCompleted} rounds</p>
-                <div style="background: #0f172a; border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: left;">
+                <h1 class="lb-title">🎉 Game Over!</h1>
+                <p class="lb-sub">Completed ${totalRoundsCompleted} rounds</p>
+                <div class="lb-list">
             `;
             
             const sorted = [...finalScores].sort((a, b) => b.score - a.score);
@@ -1084,23 +1544,19 @@
             sorted.forEach((player, index) => {
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🔹';
                 leaderboardHTML += `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: ${index < sorted.length - 1 ? '1px solid #334155' : 'none'}; margin-bottom: ${index < sorted.length - 1 ? '12px' : '0'};">
-                        <span style="font-weight: 700; font-size: 1.1rem;">${medal} ${player.name}</span>
-                        <span style="background: var(--accent); color: white; padding: 6px 12px; border-radius: 8px; font-weight: 700;">${player.score} pts</span>
+                    <div class="lb-row">
+                        <span class="lb-name">${medal} ${player.name}</span>
+                        <span class="lb-score">${player.score} pts</span>
                     </div>
                 `;
             });
             
             leaderboardHTML += `
                 </div>
-                <p style="color: var(--text-dim); font-size: 0.9rem; margin: 0 0 16px 0;">Play another ${totalRoundsCompleted} round(s), or leave the room.</p>
-                <div style="display: flex; flex-direction: column; gap: 10px;">
-                    <button onclick="continueGame()" class="btn" style="background: var(--success); border: none; padding: 14px 32px; font-size: 1rem; font-weight: bold; cursor: pointer; border-radius: 10px; color: white; width: 100%;">
-                        Continue Game
-                    </button>
-                    <button onclick="quitGame()" class="btn" style="background: var(--accent); border: none; padding: 14px 32px; font-size: 1rem; font-weight: bold; cursor: pointer; border-radius: 10px; color: white; width: 100%;">
-                        Quit Game
-                    </button>
+                <p class="lb-sub" style="margin-top: 0;">Play another ${totalRoundsCompleted} round(s), or leave the room.</p>
+                <div class="lb-actions">
+                    <button onclick="continueGame()" class="btn btn-primary-success">Continue Game</button>
+                    <button onclick="quitGame()" class="btn btn-danger">Quit Game</button>
                 </div>
             `;
             
@@ -1109,15 +1565,8 @@
             
             const overlay = document.createElement('div');
             overlay.id = 'final-leaderboard-overlay';
-            overlay.style.cssText = `
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background: rgba(0, 0, 0, 0.7);
-                z-index: 10000;
-            `;
+            overlay.className = 'modal-overlay';
+            overlay.style.zIndex = '10000';
             document.body.appendChild(overlay);
 
             // Also switch the in-page congrats actions to Quit / Continue
@@ -1227,8 +1676,7 @@
             container.innerHTML = "";
             options.forEach(movie => {
                 let btn = document.createElement("button");
-                btn.className = "btn";
-                btn.style.margin = "5px";
+                btn.className = "btn word-choice";
                 btn.innerText = movie;
                 btn.onclick = () => {
                     const showVowels = document.getElementById('hintToggle').checked;
@@ -1434,15 +1882,12 @@
             const container = document.getElementById("history-list");
             container.innerHTML = "";
             if (movieHistory.length === 0) {
-                container.innerHTML = "<p>No movies yet</p>";
+                container.innerHTML = "<p>No words yet</p>";
                 return;
             }
             movieHistory.forEach((movie, index) => {
                 const div = document.createElement("div");
-                div.style.padding = "10px";
-                div.style.marginBottom = "8px";
-                div.style.background = "rgba(255,255,255,0.05)";
-                div.style.borderRadius = "8px";
+                div.className = "history-item";
                 div.innerText = `${index + 1}. ${movie}`;
                 container.appendChild(div);
             });
@@ -1460,28 +1905,11 @@
             overlay.classList.toggle("hidden");
         }
     </script>
-    <div id="history-overlay" class="hidden" onclick="toggleHistory()" style="
-        position: fixed;
-        top: 0; left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.6);
-        z-index: 9998;
-    "></div>
-    <div id="history-modal" class="hidden" style="
-        position: fixed;
-        top: 0; right: 0;
-        width: 300px;
-        height: 100%;
-        background: #1e293b;
-        border-left: 1px solid rgba(255,255,255,0.1);
-        padding: 20px;
-        overflow-y: auto;
-        z-index: 9999;
-    ">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="margin:0;">🎬 Movie History</h3>
-            <button onclick="toggleHistory()" class="btn" style="padding:5px 10px;">❌</button>
+    <div id="history-overlay" class="hidden" onclick="toggleHistory()"></div>
+    <div id="history-modal" class="hidden">
+        <div class="history-head">
+            <h3>📜 Word History</h3>
+            <button onclick="toggleHistory()" class="btn" style="padding: 6px 10px; min-height: 0;">✕</button>
         </div>
         <div id="history-list"></div>
     </div>

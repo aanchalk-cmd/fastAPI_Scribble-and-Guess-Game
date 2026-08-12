@@ -1,166 +1,495 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Scribble Game - Join</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scribble &amp; Guess — Play</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* ---------- design tokens ---------- */
         :root {
-            --primary: #ff4757;
-            --primary-hover: #ff6b81;
-            --bg: #0f172a;
+            --bg: #0b1120;
+            --bg-2: #0f172a;
+            --surface: #1e293b;
             --card: #1e293b;
-            --text: #f8fafc;
+            --line: #334155;
+            --line-soft: rgba(148, 163, 184, 0.16);
+            --primary: #6366f1;
+            --primary-hover: #818cf8;
+            --accent: #f43f5e;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --draw-blue: #3b82f6;
+            --text: #e6ecf8;
+            --text-main: #e6ecf8;
+            --text-dim: #93a3bd;
+            --radius: 14px;
+            --radius-lg: 22px;
+            --shadow-lg: 0 24px 60px -24px rgba(2, 6, 23, 0.9);
         }
-        body { 
-            margin: 0; 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column; 
-            justify-content: center; 
-            align-items: center; 
-            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
-            font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body { margin: 0; padding: 0; }
+
+        body {
+            min-height: 100vh;
+            background: var(--bg);
             color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
         }
-        .login-card {
-            background: var(--card);
-            padding: 40px;
-            border-radius: 24px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-            text-align: center;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+
+        /* soft ambient background glow */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background:
+                radial-gradient(900px 520px at 12% -12%, rgba(99, 102, 241, 0.22), transparent 62%),
+                radial-gradient(820px 480px at 106% 6%, rgba(244, 63, 94, 0.16), transparent 60%),
+                radial-gradient(760px 520px at 50% 115%, rgba(34, 197, 94, 0.10), transparent 62%);
         }
-        h1 { font-size: 2rem; margin-bottom: 1.5rem; letter-spacing: -0.025em; }
-        .name-input { 
-            padding: 16px 20px; 
-            font-size: 18px; 
-            border: 2px solid #334155; 
-            border-radius: 12px; 
-            margin-bottom: 24px; 
-            width: 280px; 
-            text-align: center; 
-            background: #0f172a;
-            color: white;
-            outline: none;
-            transition: border-color 0.2s;
+
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 36px 20px 64px;
         }
-        .name-input:focus { border-color: var(--primary); }
-        .start-btn { 
-            padding: 16px 48px; 
-            font-size: 20px; 
-            font-weight: bold;
-            color: white; 
-            background-color: var(--primary); 
-            border-radius: 12px; 
-            border: none; 
-            cursor: pointer; 
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+        /* ---------- brand ---------- */
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 26px;
+        }
+        .brand-mark {
+            width: 54px;
+            height: 54px;
+            flex-shrink: 0;
+            border-radius: 17px;
+            display: grid;
+            place-items: center;
+            font-size: 1.6rem;
+            background: linear-gradient(135deg, var(--primary), #a855f7);
+            box-shadow: 0 14px 32px -12px rgba(99, 102, 241, 0.9);
+        }
+        .brand h1 {
+            margin: 0;
+            font-size: 1.65rem;
+            font-weight: 800;
+            letter-spacing: -0.025em;
+        }
+        .brand-sub {
+            margin: 3px 0 0;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+
+        /* ---------- layout ---------- */
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+        .card {
+            background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+            border: 1px solid var(--line-soft);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow-lg);
+        }
+        .card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .card-title {
+            margin: 0;
+            font-size: 1.02rem;
+            font-weight: 700;
+        }
+        .card-sub {
+            margin: 4px 0 0;
+            color: var(--text-dim);
+            font-size: 0.82rem;
+        }
+
+        /* ---------- inputs ---------- */
+        .name-input {
             width: 100%;
-            text-transform: uppercase;
-            letter-spacing: 1px;
+            padding: 14px 16px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text);
+            background: rgba(15, 23, 42, 0.85);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            outline: none;
+            transition: border-color 0.18s, box-shadow 0.18s;
         }
-        .start-btn:hover { 
-            background-color: var(--primary-hover); 
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(255, 71, 87, 0.4);
+        .name-input::placeholder { color: #64748b; font-weight: 500; }
+        .name-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
+        }
+        select.name-input {
+            appearance: none;
+            cursor: pointer;
+            padding-right: 42px;
+            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2393a3bd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 15px center;
+        }
+        #roomInput { text-transform: uppercase; letter-spacing: 0.22em; text-align: center; }
+
+        /* ---------- segmented mode switch ---------- */
+        .segmented {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            padding: 6px;
+            margin: 16px 0 20px;
+            background: rgba(15, 23, 42, 0.7);
+            border: 1px solid var(--line-soft);
+            border-radius: 16px;
+        }
+        .mode-btn {
+            padding: 11px 6px;
+            border: 1px solid transparent;
+            border-radius: 11px;
+            background: transparent;
+            color: var(--text-dim);
+            font: inherit;
+            font-weight: 700;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+        .mode-btn:hover { color: var(--text); background: rgba(148, 163, 184, 0.10); }
+        .mode-btn.is-active {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #fff;
+            box-shadow: 0 10px 22px -12px rgba(99, 102, 241, 0.95);
+        }
+
+        /* ---------- form fields ---------- */
+        .field { margin-bottom: 18px; }
+        .field-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
+        .field-value {
+            color: var(--primary);
+            font-weight: 800;
+            font-size: 0.9rem;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .range {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            accent-color: var(--primary);
+        } 
+        .rounds-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
         }
         .rounds-btn {
-            transition: all 0.2s ease;
+            padding: 12px 8px;
+            border: 2px solid var(--line);
+            background: var(--bg-2);
+            color: var(--text-main);
+            border-radius: 12px;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            font-size: 0.88rem;
+            transition: all 0.18s ease;
         }
-        .rounds-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        }
+        .rounds-btn:hover { transform: translateY(-2px); border-color: var(--primary); }
         .active-rounds {
             background-color: var(--primary) !important;
             border-color: var(--primary) !important;
-            color: white !important;
+            color: #fff !important;
+            box-shadow: 0 12px 24px -14px rgba(99, 102, 241, 0.95);
         }
-        </style>
+
+        /* ---------- primary button ---------- */
+        .start-btn {
+            width: 100%;
+            padding: 15px 24px;
+            font: inherit;
+            font-size: 0.98rem;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #fff;
+            background: linear-gradient(135deg, var(--primary), #8b5cf6);
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: transform 0.18s ease, filter 0.18s ease;
+            box-shadow: 0 16px 32px -16px rgba(99, 102, 241, 0.95);
+        }
+        .start-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
+        .start-btn:active { transform: translateY(0); }
+        #button-container { display: flex; flex-direction: column; gap: 10px; }
+
+        /* ---------- error banner ---------- */
+        #error-box {
+            background: rgba(244, 63, 94, 0.12);
+            border: 1px solid rgba(244, 63, 94, 0.35);
+            color: #fda4af;
+            padding: 12px 14px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            font-size: 0.86rem;
+            font-weight: 600;
+        }
+
+        /* ---------- public lobby ---------- */
+        .live-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+        #room-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 560px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        #room-list::-webkit-scrollbar { width: 6px; }
+        #room-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+
+        .room-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--line-soft);
+            border-radius: 16px;
+            transition: transform 0.18s ease, border-color 0.18s ease;
+        }
+        .room-card:hover { transform: translateY(-2px); border-color: rgba(99, 102, 241, 0.5); }
+        .room-main { flex: 1; min-width: 0; }
+        .room-top {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 8px;
+        }
+        .room-code {
+            font-weight: 800;
+            font-size: 0.98rem;
+            letter-spacing: 0.09em;
+            color: var(--text);
+        }
+        .chip {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 999px;
+            white-space: nowrap;
+            border: 1px solid transparent;
+        }
+        .chip-open { background: rgba(34, 197, 94, 0.14); color: #4ade80; border-color: rgba(34, 197, 94, 0.35); }
+        .chip-live { background: rgba(245, 158, 11, 0.14); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); }
+        .chip-full { background: rgba(244, 63, 94, 0.14); color: #fb7185; border-color: rgba(244, 63, 94, 0.35); }
+        .room-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 0.79rem;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .room-meta strong { color: var(--text); font-weight: 600; }
+        .bar {
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.18);
+            overflow: hidden;
+        }
+        .bar > span {
+            display: block;
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--draw-blue), var(--success));
+            transition: width 0.25s ease;
+        }
+        .join-btn {
+            padding: 11px 16px;
+            border: none;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--draw-blue), var(--primary));
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            font-size: 0.86rem;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: transform 0.18s ease, filter 0.18s ease;
+        }
+        .join-btn:hover:not(:disabled) { transform: translateX(2px); filter: brightness(1.1); }
+        .join-btn:disabled { opacity: 0.4; cursor: not-allowed; background: var(--line); }
+
+        .empty-state {
+            text-align: center;
+            color: var(--text-dim);
+            padding: 30px 12px;
+            font-size: 0.88rem;
+        }
+
+        /* ---------- responsive ---------- */
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+            .page { padding: 24px 16px 48px; }
+        }
+        @media (max-width: 480px) {
+            .card { padding: 20px 16px; }
+            .brand h1 { font-size: 1.35rem; }
+            .brand-mark { width: 46px; height: 46px; font-size: 1.35rem; }
+            .mode-btn { font-size: 0.74rem; padding: 10px 4px; }
+        }
+    </style>
 </head>
 <body>
-    <div class="login-card">
-        <h1>🎬 Movie Guess</h1>
-        <div id="error-box" style="
-            display:none;
-            background: rgba(255, 71, 87, 0.15);
-            color: #ff6b81;
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            font-size: 14px;
-        "></div>
-
-        <form action="/join" method="POST" id="gameForm">
-            <input type="text" name="name" class="name-input" placeholder="Enter Your Name" required>
-
-            <input type="hidden" name="action" id="actionInput" value="create">
-            <input type="hidden" name="room_type" id="roomTypeInput" value="private">
-            <input type="hidden" name="max_players" id="maxPlayersInput" value="10">
-            <input type="hidden" name="rounds" id="roundsInput" value="3">
-            <input type="hidden" name="guest_id" id="guestIdInput" value="">
-
-            <div id="room-mode-buttons" style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; justify-content: center;">
-                <button type="button" class="start-btn" onclick="prepareCreate('private')" style="flex: 1;">Create Private Room</button>
-                <button type="button" class="start-btn" onclick="prepareCreate('public')" style="flex: 1; background: #22c55e;">Create Public Room</button>
-                <button type="button" class="start-btn" onclick="toggleJoinUI()" style="flex: 1; background: #334155;">Join Room</button>
+    <div class="page">
+        <header class="brand">
+            <div class="brand-mark">✏️</div>
+            <div>
+                <h1>Scribble &amp; Guess</h1>
+                <p class="brand-sub">Draw it, guess it, outscore everyone.</p>
             </div>
+        </header>
 
-            <div id="join-section" style="display: none; margin-bottom: 20px;">
-                <input type="text" name="room_code" id="roomInput" class="name-input" placeholder="6-Digit Code" maxlength="6" style="text-transform: uppercase;">
-            </div>
-
-            <div id="public-settings" style="display: none; margin-bottom: 20px; text-align: left;">
-                <label for="maxPlayers" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
-                    Max Players: <span id="max-players-display" style="color: var(--primary); font-weight: bold;">10</span>
-                </label>
-                <input type="range" id="maxPlayers" min="2" max="10" value="10"
-                    style="width: 100%; accent-color: var(--primary);"
-                    oninput="setMaxPlayers(this.value)">
-            </div>
-
-            <div id="timer-selection" style="margin-bottom: 20px;">
-                <label for="duration" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
-                    Round Duration: <span id="duration-val" style="color: var(--primary); font-weight: bold;">5</span> Minutes
-                </label>
-                <input type="range" name="duration" id="duration" min="1" max="10" value="5" 
-                    style="width: 100%; accent-color: var(--primary);"
-                    oninput="document.getElementById('duration-val').innerText = this.value">
-            </div>
-
-            <div id="rounds-selection" style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 12px; font-size: 14px; color: var(--text-dim);">
-                    Number of Rounds: <span id="rounds-val" style="color: var(--primary); font-weight: bold;">3</span>
-                </label>
-                <div style="display: flex; gap: 10px; justify-content: space-between;">
-                    <button type="button" class="rounds-btn" onclick="selectRounds(1)" data-rounds="1" style="flex: 1; padding: 12px 16px; border: 2px solid #334155; background: #0f172a; color: var(--text-main); border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s;">1 Round</button>
-                    <button type="button" class="rounds-btn active-rounds" onclick="selectRounds(3)" data-rounds="3" style="flex: 1; padding: 12px 16px; border: 2px solid var(--primary); background: var(--primary); color: white; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s;">3 Rounds</button>
-                    <button type="button" class="rounds-btn" onclick="selectRounds(5)" data-rounds="5" style="flex: 1; padding: 12px 16px; border: 2px solid #334155; background: #0f172a; color: var(--text-main); border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s;">5 Rounds</button>
+        <div class="layout">
+            <!-- ======== create / join ======== -->
+            <section class="card">
+                <div class="card-head">
+                    <div>
+                        <h2 class="card-title">Start playing</h2>
+                        <p class="card-sub">Create a room or join one with a code.</p>
+                    </div>
                 </div>
-                <input type="hidden" name="rounds" id="rounds" value="3">
-            </div>
 
-            <!-- Word category for the room (WordManager / words.json) -->
-            <div id="category-selection" style="margin-bottom: 20px; text-align: left;">
-                <label for="categorySelect" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-dim);">
-                    Word Category
-                </label>
-                <select name="category" id="categorySelect" class="name-input" style="width: 100%; cursor: pointer;">
-                    {% for cat in categories %}
-                    <option value="{{ cat }}" {% if cat == 'pictionary' %}selected{% endif %}>{{ cat|capitalize }}</option>
-                    {% endfor %}
-                </select>
-            </div>
+                <div id="error-box" style="display:none;"></div>
 
-            <div id="button-container" style="display: flex; gap: 10px; flex-direction: column;">
-                <button type="submit" id="submitBtn" class="start-btn">Create Private Room</button>
-            </div>
-        </form>
-    </div>
-    <div id="public-lobby" style="margin-top: 30px; border-top: 1px solid #334155; padding-top: 20px; width: 100%; max-width: 600px;">
-        <h3 style="margin-top: 0; margin-bottom: 16px; font-size: 1.2rem;">🌐 Public Rooms Lobby</h3>
-        <div id="room-list" style="display: flex; flex-direction: column; gap: 10px;">
-            <p style="color: var(--text-dim); text-align: center; padding: 20px;">Looking for active games...</p>
+                <form action="/join" method="POST" id="gameForm">
+                    <input type="text" name="name" class="name-input" placeholder="Enter your name" required>
+
+                    <input type="hidden" name="action" id="actionInput" value="create">
+                    <input type="hidden" name="room_type" id="roomTypeInput" value="private">
+                    <input type="hidden" name="max_players" id="maxPlayersInput" value="10">
+                    <input type="hidden" name="rounds" id="roundsInput" value="3">
+                    <input type="hidden" name="guest_id" id="guestIdInput" value="">
+
+                    <div id="room-mode-buttons" class="segmented">
+                        <button type="button" class="mode-btn is-active" onclick="prepareCreate('private')">🔒 Private</button>
+                        <button type="button" class="mode-btn" onclick="prepareCreate('public')">🌐 Public</button>
+                        <button type="button" class="mode-btn" onclick="toggleJoinUI()">🔑 Join</button>
+                    </div>
+
+                    <div id="join-section" class="field" style="display: none;">
+                        <label class="field-label" for="roomInput">Room code</label>
+                        <input type="text" name="room_code" id="roomInput" class="name-input" placeholder="ABC123" maxlength="6">
+                    </div>
+
+                    <div id="public-settings" class="field" style="display: none;">
+                        <label class="field-label" for="maxPlayers">
+                            Max players
+                            <span class="field-value" id="max-players-display">10</span>
+                        </label>
+                        <input type="range" id="maxPlayers" class="range" min="2" max="10" value="10"
+                            oninput="setMaxPlayers(this.value)">
+                    </div>
+
+                    <div id="timer-selection" class="field">
+                        <label class="field-label" for="duration">
+                            Round duration
+                            <span class="field-value"><span id="duration-val">5</span> min</span>
+                        </label>
+                        <input type="range" name="duration" id="duration" class="range" min="1" max="10" value="5"
+                            oninput="document.getElementById('duration-val').innerText = this.value">
+                    </div>
+
+                    <div id="rounds-selection" class="field">
+                        <label class="field-label">
+                            Number of rounds
+                            <span class="field-value" id="rounds-val">3</span>
+                        </label>
+                        <div class="rounds-grid">
+                            <button type="button" class="rounds-btn" onclick="selectRounds(1)" data-rounds="1">1 Round</button>
+                            <button type="button" class="rounds-btn active-rounds" onclick="selectRounds(3)" data-rounds="3">3 Rounds</button>
+                            <button type="button" class="rounds-btn" onclick="selectRounds(5)" data-rounds="5">5 Rounds</button>
+                        </div>
+                        <input type="hidden" name="rounds" id="rounds" value="3">
+                    </div>
+
+                    <!-- Word category for the room (WordManager / words.json) -->
+                    <div id="category-selection" class="field">
+                        <label class="field-label" for="categorySelect">Word category</label>
+                        <select name="category" id="categorySelect" class="name-input">
+                            {% for cat in categories %}
+                            <option value="{{ cat }}" {% if cat == 'pictionary' %}selected{% endif %}>{{ cat|capitalize }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div id="button-container">
+                        <button type="submit" id="submitBtn" class="start-btn">Create Private Room</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ======== public lobby ======== -->
+            <aside class="card" id="public-lobby">
+                <div class="card-head">
+                    <div>
+                        <h2 class="card-title">🌐 Public rooms</h2>
+                        <p class="card-sub">Jump into a game that already has space.</p>
+                    </div>
+                    <span class="live-dot" title="Live"></span>
+                </div>
+                <div id="room-list">
+                    <p class="empty-state">Looking for active games...</p>
+                </div>
+            </aside>
         </div>
     </div>
 
@@ -267,6 +596,15 @@
         document.getElementById('roomInput').focus();
     }
 
+    // Purely cosmetic: highlight the selected mode in the segmented control.
+    document.getElementById('room-mode-buttons').addEventListener('click', (event) => {
+        const clicked = event.target.closest('.mode-btn');
+        if (!clicked) return;
+        document.querySelectorAll('#room-mode-buttons .mode-btn').forEach(btn => {
+            btn.classList.toggle('is-active', btn === clicked);
+        });
+    });
+
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error");
     const inviteCode = params.get("invite");
@@ -325,7 +663,7 @@
             const list = document.getElementById('room-list');
             list.innerHTML = "";
             if (data.rooms.length === 0) {
-                list.innerHTML = "<p style='text-align: center; color: var(--text-dim); padding: 20px;'>No public rooms available. Create one!</p>";
+                list.innerHTML = "<p class='empty-state'>No public rooms available right now. Create one!</p>";
             } else {
                 data.rooms.forEach(room => {
                     const row = document.createElement('div');
@@ -334,32 +672,30 @@
                     const availableSlots = room.available_slots != null
                         ? room.available_slots
                         : Math.max(0, room.max - room.count);
-                    let statusLabel = "🟢 Waiting";
-                    let statusColor = "#22c55e";
+                    let statusLabel = "Waiting";
+                    let statusClass = "chip-open";
                     if (isFull) {
-                        statusLabel = "🔴 Full";
-                        statusColor = "#ef4444";
+                        statusLabel = "Full";
+                        statusClass = "chip-full";
                     } else if (inProgress) {
-                        statusLabel = `🟡 In Progress · ${availableSlots} slot${availableSlots === 1 ? "" : "s"}`;
-                        statusColor = "#eab308";
+                        statusLabel = `In progress · ${availableSlots} slot${availableSlots === 1 ? "" : "s"}`;
+                        statusClass = "chip-live";
                     }
                     const progressPercent = Math.round((room.count / room.max) * 100);
                     row.innerHTML = `
-                        <div style="display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 14px; border-radius: 10px; border: 1px solid #334155; gap: 12px;">
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                                    <span style="font-weight: 700; color: var(--primary);">${room.room_id}</span>
-                                    <span style="font-size: 0.85rem; background: ${statusColor}; color: white; padding: 2px 8px; border-radius: 6px; white-space: nowrap;">${statusLabel}</span>
+                        <div class="room-card">
+                            <div class="room-main">
+                                <div class="room-top">
+                                    <span class="room-code">${room.room_id}</span>
+                                    <span class="chip ${statusClass}">${statusLabel}</span>
                                 </div>
-                                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--text-dim); margin-bottom: 6px;">
-                                    <span>Host: <strong>${room.host}</strong></span>
-                                    <span>Players: <strong>${room.count}/${room.max}</strong></span>
+                                <div class="room-meta">
+                                    <span>Host <strong>${room.host}</strong></span>
+                                    <span><strong>${room.count}/${room.max}</strong> players</span>
                                 </div>
-                                <div style="width: 100%; height: 6px; background: #334155; border-radius: 3px; overflow: hidden;">
-                                    <div style="height: 100%; width: ${progressPercent}%; background: linear-gradient(90deg, #3b82f6, #22c55e); transition: width 0.2s;"></div>
-                                </div>
+                                <div class="bar"><span style="width: ${progressPercent}%;"></span></div>
                             </div>
-                            <button onclick="joinPublic('${room.room_id}')" class="btn" style="padding: 10px 16px; white-space: nowrap; background: var(--draw-blue); border-color: var(--draw-blue); font-weight: 700;" ${isFull ? "disabled" : ""}>Join →</button>
+                            <button onclick="joinPublic('${room.room_id}')" class="join-btn" ${isFull ? "disabled" : ""}>Join →</button>
                         </div>
                     `;
                     list.appendChild(row);

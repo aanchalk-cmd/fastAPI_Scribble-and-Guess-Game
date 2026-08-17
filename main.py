@@ -6,11 +6,13 @@ import uuid
 import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
 
 from database import init_db
+from app.routers.dashboard import router as dashboard_router
 from app.services.word_manager import (
     CategoryNotFoundError,
     word_manager,
@@ -50,6 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.include_router(dashboard_router)
 
 # Updated Room Model in main.py
 class GameRoom:

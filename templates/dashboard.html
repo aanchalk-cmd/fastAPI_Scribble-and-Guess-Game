@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scribble &amp; Guess — Admin Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" defer></script>
+    <script src="/static/js/dashboard.js" defer></script>
+</head>
+<body>
+    <div class="page">
+        <header class="topbar">
+            <div class="brand">
+                <div class="brand-mark" aria-hidden="true">✏️</div>
+                <div>
+                    <h1 class="brand-title">Scribble &amp; Guess</h1>
+                    <p class="brand-sub">Admin Dashboard</p>
+                </div>
+            </div>
+            <div class="topbar-actions">
+                <span id="last-updated" class="meta">Loading…</span>
+                <button type="button" id="btn-refresh" class="btn">Refresh</button>
+                <a class="btn btn-ghost" href="/">Back to game</a>
+            </div>
+        </header>
+
+        {% if auth_required_note %}
+        <div class="banner" role="note">
+            No authentication is configured yet. Restrict <code>/dashboard</code> and
+            <code>/api/dashboard/*</code> once admin auth exists.
+        </div>
+        {% endif %}
+
+        <section class="kpi-grid" aria-label="Key metrics">
+            <article class="kpi-card" data-kpi="total_players">
+                <div class="kpi-icon" aria-hidden="true">👥</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-players">—</p>
+                    <p class="kpi-label">Total Players</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="total_games">
+                <div class="kpi-icon" aria-hidden="true">🎮</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-games">—</p>
+                    <p class="kpi-label">Games Played</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="active_games">
+                <div class="kpi-icon kpi-icon-live" aria-hidden="true">●</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-active-games">—</p>
+                    <p class="kpi-label">Active Games</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="total_rooms">
+                <div class="kpi-icon" aria-hidden="true">🏠</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-rooms">—</p>
+                    <p class="kpi-label">Total Rooms</p>
+                </div>
+            </article>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>Game Activity</h2>
+                    <p class="panel-sub">Games started and completed over time (UTC)</p>
+                </div>
+                <div class="segmented" role="group" aria-label="Activity range">
+                    <button type="button" class="seg active" data-range="7d">7 days</button>
+                    <button type="button" class="seg" data-range="30d">30 days</button>
+                </div>
+            </div>
+            <div class="chart-wrap">
+                <canvas id="activity-chart" aria-label="Game activity chart"></canvas>
+                <p id="activity-empty" class="empty hidden">No data available</p>
+            </div>
+        </section>
+
+        <div class="split">
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Leaderboard</h2>
+                        <p class="panel-sub">Sorted by wins, then total score</p>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table" id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Player</th>
+                                <th>Games</th>
+                                <th>Wins</th>
+                                <th>Score</th>
+                                <th>Win %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <tr><td colspan="6" class="empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <div>
+                        <h2>Game Health</h2>
+                        <p class="panel-sub">Duration, players, completion signals</p>
+                    </div>
+                </div>
+                <div class="health-grid" id="health-grid">
+                    <div class="health-item">
+                        <p class="health-label">Avg duration</p>
+                        <p class="health-value" id="health-duration">—</p>
+                    </div>
+                    <div class="health-item">
+                        <p class="health-label">Avg players / game</p>
+                        <p class="health-value" id="health-players">—</p>
+                    </div>
+                    <div class="health-item">
+                        <p class="health-label">Completed games</p>
+                        <p class="health-value" id="health-completed">—</p>
+                    </div>
+                    <div class="health-item">
+                        <p class="health-label">Abandoned before start</p>
+                        <p class="health-value" id="health-abandoned">—</p>
+                    </div>
+                    <div class="health-item">
+                        <p class="health-label">Abandoned rate</p>
+                        <p class="health-value" id="health-abandoned-rate">—</p>
+                    </div>
+                </div>
+                <p class="note" id="health-note"></p>
+            </section>
+        </div>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>Peak Activity</h2>
+                    <p class="panel-sub">Player joins by weekday × hour (UTC)</p>
+                </div>
+            </div>
+            <div class="heatmap-wrap">
+                <div id="heatmap" class="heatmap" aria-label="Peak activity heatmap"></div>
+                <p id="heatmap-empty" class="empty hidden">No data available</p>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-head">
+                <div>
+                    <h2>Recent Games / Rooms</h2>
+                    <p class="panel-sub">Newest first</p>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table class="data-table" id="recent-table">
+                    <thead>
+                        <tr>
+                            <th>Room</th>
+                            <th>Host</th>
+                            <th>Players</th>
+                            <th>Status</th>
+                            <th>Created</th>
+                            <th>Started</th>
+                            <th>Ended</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recent-body">
+                        <tr><td colspan="8" class="empty">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</body>
+</html>

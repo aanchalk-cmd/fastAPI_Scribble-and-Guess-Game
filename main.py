@@ -516,7 +516,7 @@ class ConnectionManager:
         }
 
     def get_player_score(self, name: str):
-        score = r.get(f"score:{name}")
+        score = r.get(f"score:{self.room_id}:{name}")
         return int(score) if score else 0
     def get_round(self):
         round_no = r.get(f"round:{id(self)}")
@@ -588,7 +588,7 @@ class ConnectionManager:
     def set_player_score(self, name: str, points: int):
         current_score = self.get_player_score(name)
         new_score = current_score + points
-        r.set(f"score:{name}", new_score)
+        r.set(f"score:{self.room_id}:{name}", new_score)
 
         if not self.room or not self.room.db_id:
             return
@@ -855,8 +855,8 @@ class ConnectionManager:
                 "new_name": name
             })
         
-        if r.get(f"score:{name}") is None:
-            r.set(f"score:{name}", 0)
+        if r.get(f"score:{self.room_id}:{name}") is None:
+            r.set(f"score:{self.room_id}:{name}", 0)
 
         if guest_id and self.room:
             self.room.register_player_guest(name, guest_id)

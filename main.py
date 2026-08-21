@@ -61,7 +61,7 @@ class GameRoom:
         max_players: int,
         duration: int = 5,
         total_rounds: int = 3,
-        category: str = "pictionary",
+        category: str = "movies",
         db_id: Optional[int] = None,
     ):
         self.room_id = room_id
@@ -270,7 +270,7 @@ async def join(
     max_players: int = Form(6),
     duration: int = Form(5),
     rounds: int = Form(3),  # New: rounds selection
-    category: str = Form("pictionary"),  # Word category from words.json
+    category: str = Form("movies"),  # Word category from words.json
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
@@ -805,7 +805,7 @@ class ConnectionManager:
         """Return the word category selected for this room."""
         if self.room and getattr(self.room, "category", None):
             return self.room.category
-        return "pictionary"
+        return "movies"
 
     async def send_word_options_to_drawer(self, count: int = 3):
         """

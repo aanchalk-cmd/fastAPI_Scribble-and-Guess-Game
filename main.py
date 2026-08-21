@@ -488,6 +488,7 @@ class ConnectionManager:
             total_rounds = 3  # Default to 3 if invalid
         self.total_rounds = total_rounds
         self.current_round = 0
+        self.round_display_offset = 0
         self.game_complete = False  # True after all configured rounds finish
         self.drawer_queue = []  # Fair rotation queue
         self.drawer_queue_index = 0
@@ -528,6 +529,12 @@ class ConnectionManager:
 
     def reset_round(self):
         r.set(f"round:{id(self)}", 0)
+
+    def get_display_round(self):
+        return self.round_display_offset + self.current_round
+
+    def get_display_total_rounds(self):
+        return self.round_display_offset + self.total_rounds
 
     def initialize_drawer_queue(self, player_names: List[str]):
         """Initialize or rebuild the drawer rotation queue for fair rotation."""
@@ -694,8 +701,8 @@ class ConnectionManager:
             await ws.send_json({
                 "type": "init",
                 "role": role,
-                "round_number": self.current_round,
-                "total_rounds": self.total_rounds,
+                "round_number": self.get_display_round(),
+                "total_rounds": self.get_display_total_rounds(),
                 "movie_set": False,
                 "drawer_name": new_drawer_name,
                 "selection_active": True,
@@ -1282,8 +1289,8 @@ class ConnectionManager:
                         "message": self.game_state["winner_announcement"],
                         "reveal": self.game_state["revealed_movie"],
                         "is_final_round": is_final_round,
-                        "round_number": self.current_round,
-                        "total_rounds": self.total_rounds,
+                        "round_number": self.get_display_round(),
+                        "total_rounds": self.get_display_total_rounds(),
                     })
                     if is_final_round:
                         # Brief pause to show the reveal, then Quit / Continue UI
@@ -1371,8 +1378,8 @@ class ConnectionManager:
             await ws.send_json({
                 "type": "init",
                 "role": role,
-                "round_number": new_round,
-                "total_rounds": self.total_rounds,
+                "round_number": self.get_display_round(),
+                "total_rounds": self.get_display_total_rounds(),
                 "movie_set": False,
                 "drawer_name": new_drawer_name,
                 "selection_active": True,
@@ -1393,6 +1400,7 @@ class ConnectionManager:
             f"resetting rounds (was {self.current_round}/{self.total_rounds})"
         )
         self.game_complete = False
+        self.round_display_offset += self.total_rounds
         self.reset_round()
         self.current_round = 0
         self.cancel_selection_timer()
@@ -1419,7 +1427,7 @@ class ConnectionManager:
         await self.broadcast({
             "type": "game_continued",
             "message": f"Continuing! Starting another {self.total_rounds} round(s).",
-            "total_rounds": self.total_rounds,
+            "total_rounds": self.get_display_total_rounds(),
         })
         await self.restart_game()
 
@@ -1445,7 +1453,7 @@ class ConnectionManager:
         await self.broadcast({
             "type": "game_ended",
             "final_scores": final_scores,
-            "total_rounds": self.total_rounds,
+            "total_rounds": self.get_display_total_rounds(),
             "can_continue": True,
         })
 
@@ -1867,8 +1875,8 @@ async def websocket_endpoint(
     await websocket.send_json({
         "type": "init", 
         "role": role, 
-        "round_number": current_round,
-        "total_rounds": manager.total_rounds,
+        "round_number": manager.get_display_round(),
+        "total_rounds": manager.get_display_total_rounds(),
         "room_status": room.status,
         "host_name": room.host,
         "room_type": room.room_type,
@@ -1984,8 +1992,8 @@ async def websocket_endpoint(
                     "message": manager.game_state["winner_announcement"],
                     "reveal": manager.game_state["revealed_movie"],
                     "is_final_round": is_final_round,
-                    "round_number": manager.current_round,
-                    "total_rounds": manager.total_rounds,
+                    "round_number": manager.get_display_round(),
+                    "total_rounds": manager.get_display_total_rounds(),
                 })
                 # Last round finished — show Quit / Continue (no "Next Round")
                 if is_final_round:

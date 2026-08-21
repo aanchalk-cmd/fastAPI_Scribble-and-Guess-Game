@@ -6,13 +6,11 @@ import uuid
 import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
 
 from database import init_db
-from app.routers.dashboard import router as dashboard_router
 from app.services.word_manager import (
     CategoryNotFoundError,
     word_manager,
@@ -52,9 +50,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.include_router(dashboard_router)
 
 # Updated Room Model in main.py
 class GameRoom:
@@ -482,6 +477,7 @@ class ConnectionManager:
         self.draw_history: List[dict] = []
         self.round_duration = duration_mins * 60
         self.movie_history: List[str] = []
+        self.history_recorded_for_round = False
         
         # Room reference for vote kick operations
         self.room = room
@@ -520,7 +516,7 @@ class ConnectionManager:
         }
 
     def get_player_score(self, name: str):
-        score = r.get(f"score:{name}")
+        score = r.get(f"score:{self.room_id}:{name}")
         return int(score) if score else 0
     def get_round(self):
         round_no = r.get(f"round:{id(self)}")
@@ -592,7 +588,7 @@ class ConnectionManager:
     def set_player_score(self, name: str, points: int):
         current_score = self.get_player_score(name)
         new_score = current_score + points
-        r.set(f"score:{name}", new_score)
+        r.set(f"score:{self.room_id}:{name}", new_score)
 
         if not self.room or not self.room.db_id:
             return
@@ -612,6 +608,18 @@ class ConnectionManager:
         if self.current_db_round_id and movie:
             with get_db_session() as db:
                 set_round_word(db, self.current_db_round_id, movie)
+
+    async def record_current_movie_history(self):
+        movie = self.game_state.get("movie")
+        if not movie or self.history_recorded_for_round:
+            return
+
+        self.movie_history.append(movie)
+        self.history_recorded_for_round = True
+        await self.broadcast({
+            "type": "history_update",
+            "history": self.movie_history,
+        })
 
     def finish_current_round(self, winner_name: Optional[str] = None):
         if not self.current_db_round_id or not self.room:
@@ -847,8 +855,8 @@ class ConnectionManager:
                 "new_name": name
             })
         
-        if r.get(f"score:{name}") is None:
-            r.set(f"score:{name}", 0)
+        if r.get(f"score:{self.room_id}:{name}") is None:
+            r.set(f"score:{self.room_id}:{name}", 0)
 
         if guest_id and self.room:
             self.room.register_player_guest(name, guest_id)
@@ -1266,6 +1274,7 @@ class ConnectionManager:
                     self.game_state["is_round_active"] = False
                     self.game_state["winner_announcement"] = "⏰ Time's up!"
                     self.game_state["revealed_movie"] = self.game_state["movie"]
+                    await self.record_current_movie_history()
                     self.finish_current_round()
                     is_final_round = self.current_round >= self.total_rounds
                     await self.broadcast({
@@ -1299,12 +1308,7 @@ class ConnectionManager:
             await self.end_game()
             return
         
-        if self.game_state.get("movie"):
-            self.movie_history.append(self.game_state["movie"])
-        await self.broadcast({
-            "type": "history_update",
-            "history": self.movie_history
-        })
+        await self.record_current_movie_history()
 
         if self.current_db_round_id:
             self.finish_current_round()
@@ -1322,6 +1326,7 @@ class ConnectionManager:
             "movie": "", "display_name": "", "is_round_active": False,
             "winner_announcement": None, "revealed_movie": None
         })
+        self.history_recorded_for_round = False
         self.draw_history = []
         if not self.active_connections:
             print(f"[DEBUG-BACKEND] No active connections, returning")
@@ -1445,6 +1450,8 @@ class ConnectionManager:
         })
 
     async def handle_voluntary_leave(self, name: str):
+        await self.record_current_movie_history()
+
         if name in self.active_connections:
             ws = self.active_connections.pop(name)
             if id(ws) in self.ws_to_name:
@@ -1964,6 +1971,7 @@ async def websocket_endpoint(
                 if manager.game_state["drawer_name"]:
                     manager.set_player_score(manager.game_state["drawer_name"], 25)
 
+                await manager.record_current_movie_history()
                 manager.finish_current_round(username)
 
                 manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"

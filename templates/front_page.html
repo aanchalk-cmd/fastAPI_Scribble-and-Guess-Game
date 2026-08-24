@@ -509,6 +509,7 @@
     function prepareCreate(type) {
         document.getElementById('actionInput').value = 'create';
         document.getElementById('roomTypeInput').value = type;
+        document.getElementById('room-mode-buttons').style.display = 'flex';
         document.getElementById('join-section').style.display = 'none';
         document.getElementById('roomInput').required = false;
         document.getElementById('timer-selection').style.display = 'block';
@@ -533,6 +534,7 @@
     function toggleJoinUI(prefillCode) {
         document.getElementById('actionInput').value = 'join';
         document.getElementById('roomTypeInput').value = 'private';
+        document.getElementById('room-mode-buttons').style.display = 'flex';
         document.getElementById('join-section').style.display = 'block';
         document.getElementById('public-settings').style.display = 'none';
         document.getElementById('timer-selection').style.display = 'none';
@@ -591,9 +593,18 @@
     }
 
     function joinPublic(code) {
+        document.getElementById('actionInput').value = 'join';
+        document.getElementById('roomTypeInput').value = 'public';
         document.getElementById('roomInput').value = code;
-        toggleJoinUI();
-        document.getElementById('roomInput').focus();
+        document.getElementById('room-mode-buttons').style.display = 'none';
+        document.getElementById('join-section').style.display = 'none';
+        document.getElementById('public-settings').style.display = 'none';
+        document.getElementById('timer-selection').style.display = 'none';
+        document.getElementById('rounds-selection').style.display = 'none';
+        document.getElementById('category-selection').style.display = 'none';
+        document.getElementById('roomInput').required = false;
+        document.getElementById('submitBtn').innerText = 'Join Public Room';
+        document.querySelector('#gameForm input[name="name"]').focus();
     }
 
     // Purely cosmetic: highlight the selected mode in the segmented control.

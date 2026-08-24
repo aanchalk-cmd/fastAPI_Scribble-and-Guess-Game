@@ -811,6 +811,16 @@
         <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
     </div>
 
+    <div id="rejoin-wait-overlay" class="modal-card hidden" style="z-index: 10001; text-align: center;">
+        <h2>Opponent left</h2>
+        <p id="rejoin-wait-message">End the game or wait for another player to join.</p>
+        <div id="rejoin-wait-timer" class="meta-chip" style="display: inline-flex; margin: 8px 0 16px; color: var(--warning);">Waiting: <span id="rejoin-time-left">05:00</span></div>
+        <div class="vote-actions">
+            <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
+            <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait 5 Minutes</button>
+        </div>
+    </div>
+
     <div id="vote-kick-modal" class="modal-card hidden">
         <h2 id="vote-kick-question">Do you want to kick Player X?</h2>
         <div id="vote-kick-countdown">⏱️ <span id="vote-kick-timer">15</span>s</div>
@@ -940,7 +950,7 @@
         let ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
-        let roomCategory = "pictionary";
+        let roomCategory = "movies";
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -948,6 +958,8 @@
         let currentMaxPlayers = 6;  // Default, will be updated from init
         let currentRoomStatus = null;  // Will be updated from init
         let currentRoomType = "private";  // Will be updated from init
+        let rejoinInterval = null;
+        let rejoinTimeLeft = 0;
 
         // Global toast helper so copy handlers and other functions can show notifications
         function showToast(message) {
@@ -1042,6 +1054,7 @@
                 });
                 window.lastPlayerData = data.players; 
                 updatePlayerList(data.players);
+                if (data.players.length >= 2) stopRejoinWait();
                 
                 // Update lobby count and clear error if we're in LOBBY mode
                 if (currentRoomStatus === "LOBBY") {
@@ -1076,6 +1089,12 @@
             }
             if (data.type === "timer_update" && data.timer_type === "lobby") {
                 startLobbyTimer(data.time_left);
+            }
+            if (data.type === "player_left_waiting") {
+                showRejoinWait(data.time_left, data.message);
+            }
+            if (data.type === "timer_update" && data.timer_type === "rejoin") {
+                startRejoinTimer(data.time_left);
             }
             if (data.type === "new_drawer") {
                 const newDrawer = data.drawer_name;
@@ -1196,6 +1215,9 @@
                 }
                 if (data.room_type !== undefined) {
                     currentRoomType = data.room_type;
+                }
+                if (data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
+                    showRejoinWait(data.rejoin_time_left);
                 }
                 if (data.category) {
                     roomCategory = data.category;
@@ -1337,10 +1359,15 @@
                 showAnnouncement(data.message, data.reveal, data.is_final_round);
             }
             if (data.type === "game_ended") {
-                console.log("[DEBUG-FRONTEND] Game ended after all rounds. Showing Quit/Continue.");
+                console.log("[DEBUG-FRONTEND] Game ended.");
                 stopTimer();
                 stopSelectionTimer();
-                showFinalLeaderboard(data.final_scores, data.total_rounds);
+                stopRejoinWait();
+                if (data.can_continue === false) {
+                    showRoomEnded(data.reason || "The game has ended.");
+                } else {
+                    showFinalLeaderboard(data.final_scores, data.total_rounds);
+                }
             }
             if (data.type === "game_continued") {
                 console.log("[DEBUG-FRONTEND] Game continued for another series of rounds.");
@@ -1350,7 +1377,6 @@
                 if (data.total_rounds) {
                     totalRounds = data.total_rounds;
                 }
-                currentRound = 0;
                 showToast(data.message || "Continuing the game!");
             }
             if (data.type === "drawing" && myRole === "guesser") {
@@ -1412,6 +1438,41 @@
         }
         function stopLobbyTimer() {
             document.getElementById('lobby-timer-display').classList.add('hidden');
+        }
+        function showRejoinWait(seconds, message) {
+            document.getElementById('rejoin-wait-message').innerText = message || "End the game or wait for another player to join.";
+            document.getElementById('rejoin-wait-overlay').classList.remove('hidden');
+            startRejoinTimer(seconds || 300);
+        }
+        function startRejoinTimer(seconds) {
+            if (rejoinInterval) clearInterval(rejoinInterval);
+            rejoinTimeLeft = Math.max(0, seconds);
+            const timer = document.getElementById('rejoin-time-left');
+            const render = () => {
+                const mins = Math.floor(rejoinTimeLeft / 60);
+                const secs = rejoinTimeLeft % 60;
+                timer.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            };
+            render();
+            if (rejoinTimeLeft > 0) {
+                rejoinInterval = setInterval(() => {
+                    rejoinTimeLeft = Math.max(0, rejoinTimeLeft - 1);
+                    render();
+                    if (rejoinTimeLeft === 0) stopRejoinWait();
+                }, 1000);
+            }
+        }
+        function stopRejoinWait() {
+            if (rejoinInterval) clearInterval(rejoinInterval);
+            rejoinInterval = null;
+            const overlay = document.getElementById('rejoin-wait-overlay');
+            if (overlay) overlay.classList.add('hidden');
+        }
+        function waitForPlayer() {
+            ws.send(JSON.stringify({ type: "wait_for_player" }));
+        }
+        function endWaitingGame() {
+            ws.send(JSON.stringify({ type: "end_waiting" }));
         }
         function updateLobbyTimerDisplay() {
             const mins = Math.floor(lobbyTimeLeft / 60);
@@ -1524,6 +1585,21 @@
             const overlay = document.getElementById('final-leaderboard-overlay');
             if (modal) modal.remove();
             if (overlay) overlay.remove();
+        }
+
+        function showRoomEnded(message) {
+            closeFinalLeaderboard();
+            const modal = document.createElement('div');
+            modal.id = 'final-leaderboard-modal';
+            modal.className = 'modal-card';
+            modal.innerHTML = `<h1 class="lb-title">Game ended</h1><p class="lb-sub"></p><div class="lb-actions"><button onclick="quitGame()" class="btn btn-danger">Leave Room</button></div>`;
+            modal.querySelector('.lb-sub').innerText = message;
+            document.body.appendChild(modal);
+            const overlay = document.createElement('div');
+            overlay.id = 'final-leaderboard-overlay';
+            overlay.className = 'modal-overlay';
+            overlay.style.zIndex = '10000';
+            document.body.appendChild(overlay);
         }
 
         function showFinalLeaderboard(finalScores, totalRoundsCompleted) {

@@ -466,7 +466,7 @@
                         <label class="field-label" for="categorySelect">Word category</label>
                         <select name="category" id="categorySelect" class="name-input">
                             {% for cat in categories %}
-                            <option value="{{ cat }}" {% if cat == 'pictionary' %}selected{% endif %}>{{ cat|capitalize }}</option>
+                            <option value="{{ cat }}" {% if cat == 'movies' %}selected{% endif %}>{{ cat|capitalize }}</option>
                             {% endfor %}
                         </select>
                     </div>

@@ -116,7 +116,7 @@ class WordManager:
         with self._lock:
             return category in self._categories
 
-    def normalize_category(self, category: Optional[str], default: str = "pictionary") -> str:
+    def normalize_category(self, category: Optional[str], default: str = "movies") -> str:
         """
         Validate a category name; fall back to default (or first available) if invalid.
         """

@@ -77,6 +77,7 @@ class GameRoom:
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
         self.lobby_auto_start_deadline: Optional[float] = None
+        self.rejoin_wait_deadline: Optional[float] = None
         # Word category for this room (from words.json via WordManager)
         self.category = word_manager.normalize_category(category)
         # Validate: only 1, 3, or 5 rounds allowed
@@ -151,6 +152,8 @@ public_rooms: Dict[str, GameRoom] = {}
 lobby_connections: List[WebSocket] = [] 
 public_room_timers: Dict[str, asyncio.Task] = {}
 private_room_timers: Dict[str, asyncio.Task] = {}
+rejoin_wait_timers: Dict[str, asyncio.Task] = {}
+REJOIN_WAIT_SECONDS = 300
 
 LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
 
@@ -363,6 +366,10 @@ async def join(
                 status_code=303,
             )
 
+        if room.status == "ENDED":
+            print(f"[PLAYER_JOIN] Failed: room {room_code} has ended")
+            return RedirectResponse(url=f"/?error=ended&code={room_code}", status_code=303)
+
         # Capacity check for both private and public (including mid-game public joins)
         if room.is_full():
             print(f"[SKIP] Room already full")
@@ -376,6 +383,9 @@ async def join(
             print(f"[SKIP] Room already full")
             print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
             return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
+
+        # A rejoin immediately ends the vacancy wait, before the new socket connects.
+        cancel_rejoin_wait(room_code)
 
         with get_db_session() as db:
             db_room, player = join_room_record(db, room_code, name, guest_id)
@@ -429,7 +439,11 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
         print(f"[PLAYER_LEAVE] Remaining players before remove={len(room.players)}")
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
 
-        await manager.handle_voluntary_leave(username)
+        waiting_for_rejoin = room.game_started and room.status == "PLAYING" and len(room.players) == 2
+        await manager.handle_voluntary_leave(
+            username,
+            preserve_game=waiting_for_rejoin or room.status == "ENDED",
+        )
 
         player_db_id = room.get_player_db_id(username)
         if room.db_id and player_db_id:
@@ -443,9 +457,12 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
         log_wait_lobby_eligibility(room)
         log_room_state(room)
         
-        if not manager.active_connections:
+        if waiting_for_rejoin and manager.active_connections:
+            await start_rejoin_wait(room)
+        elif not manager.active_connections:
             print(f"[SKIP] Room destroyed")
             print(f"[WAIT_LOBBY] Removed room {room_id}")
+            cancel_rejoin_wait(room_id)
             cancel_private_room_timer(room_id)
             if room.db_id:
                 with get_db_session() as db:
@@ -897,7 +914,7 @@ class ConnectionManager:
         await self.broadcast({"type": "player_list", "players": self.get_player_data()})
         return role
 
-    async def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket, preserve_game: bool = False):
         ws_id = id(websocket)
         name = self.ws_to_name.get(ws_id)
         if name:
@@ -908,7 +925,7 @@ class ConnectionManager:
             is_drawer = (name == self.game_state["drawer_name"])
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
             if is_drawer:
-                if self.room and self.room.game_started and self.active_connections:
+                if self.room and self.room.game_started and self.active_connections and not preserve_game:
                     await self.reassign_drawer_after_removal()
                 return False
         
@@ -1457,7 +1474,7 @@ class ConnectionManager:
             "can_continue": True,
         })
 
-    async def handle_voluntary_leave(self, name: str):
+    async def handle_voluntary_leave(self, name: str, preserve_game: bool = False):
         await self.record_current_movie_history()
 
         if name in self.active_connections:
@@ -1475,7 +1492,7 @@ class ConnectionManager:
                     "name": name
                 })
                 
-                if self.active_connections:
+                if self.active_connections and not preserve_game:
                     await self.restart_game()
                 else:
                     self.game_state["drawer_assigned"] = False
@@ -1492,6 +1509,74 @@ def process_movie(movie: str, show_vowels: bool = True):
         return "".join(["_" if char.isalnum() else char for char in movie])
 
 rooms: Dict[str, GameRoom] = {}
+
+
+def cancel_rejoin_wait(room_id: str):
+    task = rejoin_wait_timers.pop(room_id, None)
+    if task and task is not asyncio.current_task():
+        task.cancel()
+    room = rooms.get(room_id)
+    if room:
+        room.rejoin_wait_deadline = None
+
+
+async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
+    cancel_rejoin_wait(room.room_id)
+    room.status = "ENDED"
+    room.manager.game_complete = True
+    room.manager.cancel_selection_timer()
+    if room.manager.round_timer_task:
+        room.manager.round_timer_task.cancel()
+        room.manager.round_timer_task = None
+    if room.db_id:
+        with get_db_session() as db:
+            end_room_record(db, room.db_id)
+    await room.manager.broadcast({
+        "type": "game_ended",
+        "final_scores": room.manager.get_player_data(),
+        "total_rounds": room.manager.get_display_total_rounds(),
+        "can_continue": False,
+        "reason": reason,
+    })
+    await broadcast_lobby_update()
+
+
+async def start_rejoin_wait(room: GameRoom):
+    """Keep a one-player running room open for one possible replacement player."""
+    cancel_rejoin_wait(room.room_id)
+    room.rejoin_wait_deadline = time.time() + REJOIN_WAIT_SECONDS
+
+    await room.manager.broadcast({
+        "type": "player_left_waiting",
+        "time_left": REJOIN_WAIT_SECONDS,
+        "message": "Your opponent left. End the game or wait 5 minutes for another player.",
+    })
+
+    async def wait_for_rejoin():
+        try:
+            while room.room_id in rooms and room.status == "PLAYING":
+                remaining = max(0, int(room.rejoin_wait_deadline - time.time()))
+                if len(room.players) >= 2:
+                    return
+                await room.manager.broadcast({
+                    "type": "timer_update",
+                    "timer_type": "rejoin",
+                    "time_left": remaining,
+                })
+                if remaining <= 0:
+                    # Re-check the authoritative in-memory count at expiry.
+                    if len(room.players) < 2:
+                        await end_room_after_rejoin_wait(
+                            room, "The 5-minute waiting period expired. The game has ended."
+                        )
+                    return
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            return
+        finally:
+            rejoin_wait_timers.pop(room.room_id, None)
+
+    rejoin_wait_timers[room.room_id] = asyncio.create_task(wait_for_rejoin())
 
 def persist_game_start(room: GameRoom):
     if room.db_id:
@@ -1850,10 +1935,20 @@ async def websocket_endpoint(
         await broadcast_lobby_update()
     elif room.room_type == "public" and room.is_full() and room.game_started:
         print(f"[GAME] Public room {room_id} is full again during RUNNING game — no restart")
+        if room.manager.game_state.get("drawer_name") not in room.manager.active_connections:
+            await room.manager.reassign_drawer_after_removal()
         print(f"[WAIT_LOBBY] Room full again")
         print(f"[WAIT_LOBBY] Removing from wait lobby")
         print(f"[WAIT_LOBBY] Removed room {room_id}")
         log_room_state(room)
+
+    if (
+        room.game_started
+        and len(room.players) >= 2
+        and room.manager.game_state.get("drawer_assigned")
+        and room.manager.game_state.get("drawer_name") not in room.manager.active_connections
+    ):
+        await room.manager.reassign_drawer_after_removal()
 
     if room.should_start_game() and not room.game_started:
         print(f"[GAME] Starting game in room {room_id} (should_start_game)")
@@ -1893,6 +1988,10 @@ async def websocket_endpoint(
         "revealed": manager.game_state["revealed_movie"],
         "time_left": current_time_left, 
         "lobby_time_left": get_lobby_time_left(room),
+        "rejoin_time_left": (
+            max(0, int(room.rejoin_wait_deadline - time.time()))
+            if room.rejoin_wait_deadline else None
+        ),
         "history_movies": manager.movie_history,
         "category": room.category,
         "categories": word_manager.get_categories(),
@@ -1940,6 +2039,12 @@ async def websocket_endpoint(
                         })
                 else:
                     print(f"[GAME] Non-host {username} tried to start game (host is {room.host})")
+            elif data["type"] == "wait_for_player":
+                if len(room.players) == 1 and room.status == "PLAYING":
+                    await start_rejoin_wait(room)
+            elif data["type"] == "end_waiting":
+                if len(room.players) == 1 and room.status == "PLAYING":
+                    await end_room_after_rejoin_wait(room, "The game has ended.")
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
             if data["type"] == "set_movie":
@@ -2088,8 +2193,14 @@ async def websocket_endpoint(
         print(f"[WEBSOCKET] {username} disconnected from room {room_id}")
         print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
 
+        # Preserve the active round when one of exactly two players leaves.
+        waiting_for_rejoin = room.game_started and len(room.players) == 2
+
         # Remove websocket connection
-        await manager.disconnect(websocket)
+        await manager.disconnect(
+            websocket,
+            preserve_game=waiting_for_rejoin or room.status == "ENDED",
+        )
 
         # Remove player from room player list
         if username in room.players:
@@ -2107,6 +2218,9 @@ async def websocket_endpoint(
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
         print(f"[PLAYER_LEAVE] Players list={room.players}")
         print(f"[PLAYER_LEAVE] Game started={room.game_started} status={room.status}")
+
+        if waiting_for_rejoin and room_id in rooms and manager.active_connections:
+            await start_rejoin_wait(room)
 
         # ==========================================
         # HOST TRANSFER LOGIC
@@ -2136,6 +2250,7 @@ async def websocket_endpoint(
             else:
                 print(f"[SKIP] Room destroyed")
                 print(f"[WAIT_LOBBY] Removed room {room_id}")
+                cancel_rejoin_wait(room_id)
 
                 if room.db_id:
                     with get_db_session() as db:
@@ -2149,6 +2264,15 @@ async def websocket_endpoint(
 
                 if room_id in public_rooms:
                     del public_rooms[room_id]
+
+        if room_id in rooms and not manager.active_connections:
+            cancel_rejoin_wait(room_id)
+            cancel_private_room_timer(room_id)
+            if room.db_id:
+                with get_db_session() as db:
+                    end_room_record(db, room.db_id)
+            del rooms[room_id]
+            public_rooms.pop(room_id, None)
 
         # Mid-game vacancy: running public rooms with open slots re-enter wait lobby
         if room_id in rooms:

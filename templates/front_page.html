@@ -593,18 +593,28 @@
     }
 
     function joinPublic(code) {
+        // Public lobby join: only ask for a name — hide modes, code, and create settings.
         document.getElementById('actionInput').value = 'join';
         document.getElementById('roomTypeInput').value = 'public';
         document.getElementById('roomInput').value = code;
+        document.getElementById('roomInput').required = false;
+
         document.getElementById('room-mode-buttons').style.display = 'none';
         document.getElementById('join-section').style.display = 'none';
         document.getElementById('public-settings').style.display = 'none';
         document.getElementById('timer-selection').style.display = 'none';
         document.getElementById('rounds-selection').style.display = 'none';
         document.getElementById('category-selection').style.display = 'none';
-        document.getElementById('roomInput').required = false;
-        document.getElementById('submitBtn').innerText = 'Join Public Room';
-        document.querySelector('#gameForm input[name="name"]').focus();
+
+        const sub = document.querySelector('.card-sub');
+        if (sub) sub.innerText = 'Enter your name to join this public room.';
+        document.getElementById('submitBtn').innerText = 'Join Room';
+
+        const nameInput = document.querySelector('#gameForm input[name="name"]');
+        if (nameInput) {
+            nameInput.focus();
+            nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
     }
 
     // Purely cosmetic: highlight the selected mode in the segmented control.
@@ -638,6 +648,9 @@
         }
         else if (error === "full") {
             errorBox.innerText = "⚠️ This room is full. Try another room.";
+        }
+        else if (error === "ended") {
+            errorBox.innerText = "⚠️ This room has ended. Create or join another room.";
         }
         else {
             errorBox.innerText = "Something went wrong.";

@@ -78,6 +78,7 @@ class GameRoom:
         self.game_started = False
         self.lobby_auto_start_deadline: Optional[float] = None
         self.rejoin_wait_deadline: Optional[float] = None
+        self.awaiting_rejoin_choice: bool = False
         # Word category for this room (from words.json via WordManager)
         self.category = word_manager.normalize_category(category)
         # Validate: only 1, 3, or 5 rounds allowed
@@ -385,7 +386,22 @@ async def join(
             return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
 
         # A rejoin immediately ends the vacancy wait, before the new socket connects.
+        had_rejoin_wait = (
+            room.awaiting_rejoin_choice
+            or room.rejoin_wait_deadline is not None
+            or room_code in rejoin_wait_timers
+        )
         cancel_rejoin_wait(room_code)
+        room.awaiting_rejoin_choice = False
+        if had_rejoin_wait:
+            try:
+                await room.manager.broadcast({
+                    "type": "rejoin_cancelled",
+                    "player_count": len(room.players),
+                    "message": "A player joined. Continuing the game.",
+                })
+            except Exception:
+                pass
 
         with get_db_session() as db:
             db_room, player = join_room_record(db, room_code, name, guest_id)
@@ -458,7 +474,7 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
         log_room_state(room)
         
         if waiting_for_rejoin and manager.active_connections:
-            await start_rejoin_wait(room)
+            await offer_rejoin_choice(room)
         elif not manager.active_connections:
             print(f"[SKIP] Room destroyed")
             print(f"[WAIT_LOBBY] Removed room {room_id}")
@@ -1407,17 +1423,26 @@ class ConnectionManager:
         # Drawer's turn begins — send three random words from the room category
         await self.send_word_options_to_drawer()
 
-    async def continue_game(self):
+    async def continue_game(self, category: Optional[str] = None):
         """
         After all configured rounds finish, start another series of the same
         number of rounds without kicking players or resetting scores.
+
+        Optional category (movies/characters) updates the room word pool for
+        the next series — intended to be set by the host.
         """
         print(
             f"[GAME] continue_game() room={self.room_id} "
-            f"resetting rounds (was {self.current_round}/{self.total_rounds})"
+            f"resetting rounds (was {self.current_round}/{self.total_rounds}) "
+            f"category_req={category}"
         )
         self.game_complete = False
         self.round_display_offset += self.total_rounds
+
+        if category and self.room:
+            self.room.category = word_manager.normalize_category(category)
+            print(f"[GAME] Category set to {self.room.category} for room {self.room_id}")
+
         self.reset_round()
         self.current_round = 0
         self.cancel_selection_timer()
@@ -1441,10 +1466,15 @@ class ConnectionManager:
         if not self.drawer_queue:
             self.initialize_drawer_queue(list(self.active_connections.keys()))
 
+        new_category = self.get_room_category()
         await self.broadcast({
             "type": "game_continued",
-            "message": f"Continuing! Starting another {self.total_rounds} round(s).",
+            "message": (
+                f"Continuing! Starting another {self.total_rounds} round(s) "
+                f"with category “{new_category}”."
+            ),
             "total_rounds": self.get_display_total_rounds(),
+            "category": new_category,
         })
         await self.restart_game()
 
@@ -1467,11 +1497,15 @@ class ConnectionManager:
         # Do not finalize/end the DB room here so players can choose Continue.
         # Stats/room end still happen when players leave via /leave.
 
+        host_name = self.room.host if self.room else None
         await self.broadcast({
             "type": "game_ended",
             "final_scores": final_scores,
             "total_rounds": self.get_display_total_rounds(),
             "can_continue": True,
+            "category": self.get_room_category(),
+            "categories": word_manager.get_categories(),
+            "host_name": host_name,
         })
 
     async def handle_voluntary_leave(self, name: str, preserve_game: bool = False):
@@ -1520,8 +1554,33 @@ def cancel_rejoin_wait(room_id: str):
         room.rejoin_wait_deadline = None
 
 
-async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
+async def offer_rejoin_choice(room: GameRoom):
+    """
+    After dropping to 1 player mid-game, ask the remaining player to
+    End Game or Wait 5 Minutes. Do not start the timer until they choose Wait.
+    """
     cancel_rejoin_wait(room.room_id)
+    room.awaiting_rejoin_choice = True
+    await room.manager.broadcast({
+        "type": "player_left_waiting",
+        "awaiting_choice": True,
+        "time_left": None,
+        "message": "Your opponent left. End the game or wait 5 minutes for another player.",
+    })
+    await broadcast_lobby_update()
+
+
+async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
+    # Race-safe: never end if a second player has already joined.
+    if room.room_id not in rooms:
+        return
+    if len(room.players) >= 2 and room.status == "PLAYING":
+        cancel_rejoin_wait(room.room_id)
+        room.awaiting_rejoin_choice = False
+        return
+
+    cancel_rejoin_wait(room.room_id)
+    room.awaiting_rejoin_choice = False
     room.status = "ENDED"
     room.manager.game_complete = True
     room.manager.cancel_selection_timer()
@@ -1542,21 +1601,35 @@ async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
 
 
 async def start_rejoin_wait(room: GameRoom):
-    """Keep a one-player running room open for one possible replacement player."""
+    """Start the 5-minute replacement wait after the remaining player chooses Wait."""
+    if room.room_id not in rooms or room.status != "PLAYING":
+        return
+    if len(room.players) >= 2:
+        room.awaiting_rejoin_choice = False
+        return
+
     cancel_rejoin_wait(room.room_id)
+    room.awaiting_rejoin_choice = False
     room.rejoin_wait_deadline = time.time() + REJOIN_WAIT_SECONDS
 
     await room.manager.broadcast({
         "type": "player_left_waiting",
+        "awaiting_choice": False,
         "time_left": REJOIN_WAIT_SECONDS,
-        "message": "Your opponent left. End the game or wait 5 minutes for another player.",
+        "message": "Waiting for another player to join…",
     })
+    await broadcast_lobby_update()
 
     async def wait_for_rejoin():
         try:
             while room.room_id in rooms and room.status == "PLAYING":
                 remaining = max(0, int(room.rejoin_wait_deadline - time.time()))
                 if len(room.players) >= 2:
+                    await room.manager.broadcast({
+                        "type": "rejoin_cancelled",
+                        "player_count": len(room.players),
+                        "message": "A player joined. Continuing the game.",
+                    })
                     return
                 await room.manager.broadcast({
                     "type": "timer_update",
@@ -1992,6 +2065,7 @@ async def websocket_endpoint(
             max(0, int(room.rejoin_wait_deadline - time.time()))
             if room.rejoin_wait_deadline else None
         ),
+        "awaiting_rejoin_choice": bool(room.awaiting_rejoin_choice),
         "history_movies": manager.movie_history,
         "category": room.category,
         "categories": word_manager.get_categories(),
@@ -2045,6 +2119,14 @@ async def websocket_endpoint(
             elif data["type"] == "end_waiting":
                 if len(room.players) == 1 and room.status == "PLAYING":
                     await end_room_after_rejoin_wait(room, "The game has ended.")
+            elif data["type"] == "continue_game":
+                print(f"[GAME] continue_game requested by {username} in room {room_id}")
+                requested_category = data.get("category")
+                # Only the host may change the word category for the next series.
+                if requested_category and username == room.host:
+                    await manager.continue_game(category=requested_category)
+                else:
+                    await manager.continue_game()
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
             if data["type"] == "set_movie":
@@ -2109,9 +2191,6 @@ async def websocket_endpoint(
                     await manager.end_game()
                 else:
                     await manager.restart_game()
-            elif data["type"] == "continue_game":
-                print(f"[GAME] continue_game requested by {username} in room {room_id}")
-                await manager.continue_game()
             elif data["type"] == "drawing":
                 manager.draw_history.append(data)
                 await manager.broadcast(data)
@@ -2220,7 +2299,7 @@ async def websocket_endpoint(
         print(f"[PLAYER_LEAVE] Game started={room.game_started} status={room.status}")
 
         if waiting_for_rejoin and room_id in rooms and manager.active_connections:
-            await start_rejoin_wait(room)
+            await offer_rejoin_choice(room)
 
         # ==========================================
         # HOST TRANSFER LOGIC

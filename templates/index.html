@@ -814,10 +814,13 @@
     <div id="rejoin-wait-overlay" class="modal-card hidden" style="z-index: 10001; text-align: center;">
         <h2>Opponent left</h2>
         <p id="rejoin-wait-message">End the game or wait for another player to join.</p>
-        <div id="rejoin-wait-timer" class="meta-chip" style="display: inline-flex; margin: 8px 0 16px; color: var(--warning);">Waiting: <span id="rejoin-time-left">05:00</span></div>
-        <div class="vote-actions">
+        <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none; margin: 8px 0 16px; color: var(--warning);">Waiting: <span id="rejoin-time-left">05:00</span></div>
+        <div id="rejoin-choice-actions" class="vote-actions">
             <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
             <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait 5 Minutes</button>
+        </div>
+        <div id="rejoin-waiting-actions" class="vote-actions hidden" style="display: none;">
+            <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
         </div>
     </div>
 
@@ -902,6 +905,10 @@
                     <div id="movie-reveal" class="hidden">The word was: <span id="revealed-name" style="color: var(--accent);"></span></div>
                     <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
                     <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
+                        <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
+                            <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
+                            <select id="host-end-category" class="name-input" style="width:100%;"></select>
+                        </div>
                         <button class="btn-restart" id="continue-game-btn" onclick="continueGame()">Continue Game</button>
                         <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
                     </div>
@@ -951,6 +958,8 @@
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
         let roomCategory = "movies";
+        let currentHostName = null;
+        let availableCategories = ["movies", "characters"];
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -1091,7 +1100,11 @@
                 startLobbyTimer(data.time_left);
             }
             if (data.type === "player_left_waiting") {
-                showRejoinWait(data.time_left, data.message);
+                showRejoinWait(data.time_left, data.message, data.awaiting_choice !== false);
+            }
+            if (data.type === "rejoin_cancelled") {
+                stopRejoinWait();
+                showToast(data.message || "A player joined. Continuing the game.");
             }
             if (data.type === "timer_update" && data.timer_type === "rejoin") {
                 startRejoinTimer(data.time_left);
@@ -1138,6 +1151,7 @@
                 console.log("[DEBUG-HOST] Host transferred to:", data.new_host);
 
                 showToast(`👑 ${data.new_host} is now the host!`);
+                currentHostName = data.new_host;
 
                 // If I became host
                 if (myName === data.new_host) {
@@ -1216,8 +1230,13 @@
                 if (data.room_type !== undefined) {
                     currentRoomType = data.room_type;
                 }
+                if (data.host_name) {
+                    currentHostName = data.host_name;
+                }
                 if (data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
-                    showRejoinWait(data.rejoin_time_left);
+                    showRejoinWait(data.rejoin_time_left, null, false);
+                } else if (data.awaiting_rejoin_choice) {
+                    showRejoinWait(null, null, true);
                 }
                 if (data.category) {
                     roomCategory = data.category;
@@ -1226,7 +1245,9 @@
                         catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
                     }
                 }
-                
+                if (Array.isArray(data.categories) && data.categories.length) {
+                    availableCategories = data.categories;
+                }
                 // Determine if we're in LOBBY or PLAYING state
                 // LOBBY: room_status is explicitly "LOBBY" OR not set and we're waiting
                 // PLAYING: room_status is explicitly "PLAYING" OR we have selection/game active
@@ -1264,11 +1285,13 @@
                     
                     if (myName === data.host_name) {
                         console.log(`[DEBUG-FRONTEND] Current player is HOST. Showing start button.`);
+                        currentHostName = data.host_name;
                         document.getElementById('host-controls').classList.remove('hidden');
                         document.getElementById('guest-waiting').classList.add('hidden');
                         document.getElementById('start-error').classList.add('hidden');
                     } else {
                         console.log(`[DEBUG-FRONTEND] Current player is GUEST. Waiting for host to start.`);
+                        currentHostName = data.host_name || currentHostName;
                         document.getElementById('host-controls').classList.add('hidden');
                         document.getElementById('guest-waiting').classList.remove('hidden');
                         document.getElementById('guest-waiting-text').innerText = `Waiting for ${data.host_name} to start...`;
@@ -1363,10 +1386,19 @@
                 stopTimer();
                 stopSelectionTimer();
                 stopRejoinWait();
+                if (data.host_name) currentHostName = data.host_name;
+                if (data.category) roomCategory = data.category;
+                if (Array.isArray(data.categories) && data.categories.length) {
+                    availableCategories = data.categories;
+                }
                 if (data.can_continue === false) {
                     showRoomEnded(data.reason || "The game has ended.");
                 } else {
-                    showFinalLeaderboard(data.final_scores, data.total_rounds);
+                    showFinalLeaderboard(data.final_scores, data.total_rounds, {
+                        category: data.category || roomCategory,
+                        categories: data.categories || availableCategories,
+                        hostName: data.host_name || currentHostName,
+                    });
                 }
             }
             if (data.type === "game_continued") {
@@ -1376,6 +1408,13 @@
                 hideEndGameActions();
                 if (data.total_rounds) {
                     totalRounds = data.total_rounds;
+                }
+                if (data.category) {
+                    roomCategory = data.category;
+                    const catLabel = document.getElementById('category-label');
+                    if (catLabel) {
+                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                    }
                 }
                 showToast(data.message || "Continuing the game!");
             }
@@ -1439,15 +1478,46 @@
         function stopLobbyTimer() {
             document.getElementById('lobby-timer-display').classList.add('hidden');
         }
-        function showRejoinWait(seconds, message) {
-            document.getElementById('rejoin-wait-message').innerText = message || "End the game or wait for another player to join.";
-            document.getElementById('rejoin-wait-overlay').classList.remove('hidden');
+        function showRejoinWait(seconds, message, awaitingChoice) {
+            const overlay = document.getElementById('rejoin-wait-overlay');
+            const timerBox = document.getElementById('rejoin-wait-timer');
+            const choiceActions = document.getElementById('rejoin-choice-actions');
+            const waitingActions = document.getElementById('rejoin-waiting-actions');
+            document.getElementById('rejoin-wait-message').innerText =
+                message || "End the game or wait for another player to join.";
+            overlay.classList.remove('hidden');
+
+            if (awaitingChoice) {
+                // Choice phase — no countdown yet
+                if (rejoinInterval) clearInterval(rejoinInterval);
+                rejoinInterval = null;
+                timerBox.classList.add('hidden');
+                timerBox.style.display = 'none';
+                choiceActions.classList.remove('hidden');
+                choiceActions.style.display = 'flex';
+                waitingActions.classList.add('hidden');
+                waitingActions.style.display = 'none';
+                return;
+            }
+
+            // Waiting phase — show countdown, keep End Game available
+            choiceActions.classList.add('hidden');
+            choiceActions.style.display = 'none';
+            waitingActions.classList.remove('hidden');
+            waitingActions.style.display = 'flex';
+            timerBox.classList.remove('hidden');
+            timerBox.style.display = 'inline-flex';
             startRejoinTimer(seconds || 300);
         }
         function startRejoinTimer(seconds) {
             if (rejoinInterval) clearInterval(rejoinInterval);
             rejoinTimeLeft = Math.max(0, seconds);
             const timer = document.getElementById('rejoin-time-left');
+            const timerBox = document.getElementById('rejoin-wait-timer');
+            if (timerBox) {
+                timerBox.classList.remove('hidden');
+                timerBox.style.display = 'inline-flex';
+            }
             const render = () => {
                 const mins = Math.floor(rejoinTimeLeft / 60);
                 const secs = rejoinTimeLeft % 60;
@@ -1458,7 +1528,11 @@
                 rejoinInterval = setInterval(() => {
                     rejoinTimeLeft = Math.max(0, rejoinTimeLeft - 1);
                     render();
-                    if (rejoinTimeLeft === 0) stopRejoinWait();
+                    if (rejoinTimeLeft === 0) {
+                        // Backend ends the room; keep overlay until game_ended arrives
+                        if (rejoinInterval) clearInterval(rejoinInterval);
+                        rejoinInterval = null;
+                    }
                 }, 1000);
             }
         }
@@ -1542,6 +1616,10 @@
         function showEndGameActions() {
             const endActions = document.getElementById('end-game-actions');
             const nextBtn = document.getElementById('next-round-btn');
+            const continueBtn = document.getElementById('continue-game-btn');
+            const hostWrap = document.getElementById('host-end-category-wrap');
+            const hostSel = document.getElementById('host-end-category');
+            const isHost = myName === currentHostName;
             if (nextBtn) {
                 nextBtn.classList.add('hidden');
                 nextBtn.style.display = 'none';
@@ -1549,6 +1627,24 @@
             if (endActions) {
                 endActions.classList.remove('hidden');
                 endActions.style.display = 'flex';
+            }
+            if (continueBtn) {
+                continueBtn.style.display = isHost ? '' : 'none';
+            }
+            if (hostWrap && hostSel) {
+                if (isHost) {
+                    hostWrap.classList.remove('hidden');
+                    hostWrap.style.display = 'block';
+                    const cats = availableCategories.length ? availableCategories : ["movies", "characters"];
+                    hostSel.innerHTML = cats.map((cat) => {
+                        const selected = cat === roomCategory ? " selected" : "";
+                        const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                        return `<option value="${cat}"${selected}>${label}</option>`;
+                    }).join("");
+                } else {
+                    hostWrap.classList.add('hidden');
+                    hostWrap.style.display = 'none';
+                }
             }
         }
 
@@ -1602,8 +1698,13 @@
             document.body.appendChild(overlay);
         }
 
-        function showFinalLeaderboard(finalScores, totalRoundsCompleted) {
+        function showFinalLeaderboard(finalScores, totalRoundsCompleted, options = {}) {
             closeFinalLeaderboard();
+
+            const categories = options.categories || availableCategories || ["movies", "characters"];
+            const category = options.category || roomCategory || "movies";
+            const hostName = options.hostName || currentHostName;
+            const isHost = myName === hostName;
 
             const modal = document.createElement('div');
             modal.id = 'final-leaderboard-modal';
@@ -1626,12 +1727,32 @@
                     </div>
                 `;
             });
+
+            const categoryOptions = categories.map((cat) => {
+                const selected = cat === category ? " selected" : "";
+                const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                return `<option value="${cat}"${selected}>${label}</option>`;
+            }).join("");
+
+            const hostCategoryBlock = isHost ? `
+                <div style="text-align:left; margin: 0 0 14px;">
+                    <label for="host-continue-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.02em;">
+                        Word category (host only)
+                    </label>
+                    <select id="host-continue-category" class="name-input" style="width:100%;">
+                        ${categoryOptions}
+                    </select>
+                </div>
+            ` : `
+                <p class="lb-sub" style="margin-top:0;">Waiting for host to continue, or leave the room.</p>
+            `;
             
             leaderboardHTML += `
                 </div>
-                <p class="lb-sub" style="margin-top: 0;">Play another ${totalRoundsCompleted} round(s), or leave the room.</p>
+                ${isHost ? `<p class="lb-sub" style="margin-top: 0;">Choose a category for the next series, then continue.</p>` : ""}
+                ${hostCategoryBlock}
                 <div class="lb-actions">
-                    <button onclick="continueGame()" class="btn btn-primary-success">Continue Game</button>
+                    ${isHost ? `<button onclick="continueGame()" class="btn btn-primary-success">Continue Game</button>` : ""}
                     <button onclick="quitGame()" class="btn btn-danger">Quit Game</button>
                 </div>
             `;
@@ -1650,11 +1771,21 @@
         }
 
         function continueGame() {
-            console.log("[DEBUG-FRONTEND] Continue game requested");
+            const categorySel =
+                document.getElementById("host-continue-category") ||
+                document.getElementById("host-end-category");
+            const nextCategory = (categorySel && categorySel.value)
+                ? categorySel.value
+                : roomCategory;
+            console.log("[DEBUG-FRONTEND] Continue game requested", { category: nextCategory });
             closeFinalLeaderboard();
             document.getElementById('congrats-area').style.display = "none";
             hideEndGameActions();
-            ws.send(JSON.stringify({ type: "continue_game" }));
+            const payload = { type: "continue_game" };
+            if (myName === currentHostName && nextCategory) {
+                payload.category = nextCategory;
+            }
+            ws.send(JSON.stringify(payload));
         }
 
         function quitGame() {

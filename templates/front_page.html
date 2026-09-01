@@ -505,6 +505,7 @@
     }
 
     document.getElementById('guestIdInput').value = getOrCreateGuestId();
+    prepareCreate('private');
 
     function prepareCreate(type) {
         document.getElementById('actionInput').value = 'create';

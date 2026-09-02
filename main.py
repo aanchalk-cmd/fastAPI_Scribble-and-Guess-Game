@@ -130,7 +130,7 @@ class GameRoom:
             self.players.remove(name)
 
     def should_start_game(self):
-        return self.room_type == "public" and self.is_full()
+        return self.is_full() and len(self.players) >= 2 and not self.game_started
     
     def transfer_host(self):
         """Transfers host role to another player. Returns new host name or None if no players left."""
@@ -2025,7 +2025,9 @@ async def websocket_endpoint(
 
     if room.should_start_game() and not room.game_started:
         print(f"[GAME] Starting game in room {room_id} (should_start_game)")
-        print(f"[GAME] Removing room from wait lobby because room is full")
+        print(f"[GAME] Room reached required player count; auto-starting immediately")
+        if room.room_type == "private":
+            cancel_private_room_timer(room_id)
         room.game_started = True
         room.status = "PLAYING"
         persist_game_start(room)

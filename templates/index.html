@@ -1233,10 +1233,19 @@
                 if (data.host_name) {
                     currentHostName = data.host_name;
                 }
-                if (data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
+                // Only show opponent-left UI when this client is truly alone.
+                // A page refresh must not flash End Game / Wait while the other
+                // player is still in the room.
+                const soloInPlayingRoom =
+                    currentRoomStatus === "PLAYING" &&
+                    typeof data.player_count === "number" &&
+                    data.player_count < 2;
+                if (soloInPlayingRoom && data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
                     showRejoinWait(data.rejoin_time_left, null, false);
-                } else if (data.awaiting_rejoin_choice) {
+                } else if (soloInPlayingRoom && data.awaiting_rejoin_choice) {
                     showRejoinWait(null, null, true);
+                } else {
+                    stopRejoinWait();
                 }
                 if (data.category) {
                     roomCategory = data.category;

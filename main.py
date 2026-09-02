@@ -155,8 +155,22 @@ public_room_timers: Dict[str, asyncio.Task] = {}
 private_room_timers: Dict[str, asyncio.Task] = {}
 rejoin_wait_timers: Dict[str, asyncio.Task] = {}
 REJOIN_WAIT_SECONDS = 300
+# Short window to treat a page refresh / brief WS drop as temporary, not a leave.
+reconnect_grace_timers: Dict[str, asyncio.Task] = {}
+RECONNECT_GRACE_SECONDS = 20
 
 LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
+
+
+def reconnect_grace_key(room_id: str, username: str) -> str:
+    return f"{room_id}:{username}"
+
+
+def cancel_reconnect_grace(room_id: str, username: str):
+    key = reconnect_grace_key(room_id, username)
+    task = reconnect_grace_timers.pop(key, None)
+    if task and not task.done() and task is not asyncio.current_task():
+        task.cancel()
 
 
 def is_wait_lobby_eligible(room: GameRoom) -> bool:
@@ -456,6 +470,7 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
 
         waiting_for_rejoin = room.game_started and room.status == "PLAYING" and len(room.players) == 2
+        cancel_reconnect_grace(room_id, username)
         await manager.handle_voluntary_leave(
             username,
             preserve_game=waiting_for_rejoin or room.status == "ENDED",
@@ -881,13 +896,39 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket, name: str, guest_id: Optional[str] = None):
         original_name = name
-        name = get_unique_name(name, self.active_connections.keys())
+        # Prefer restoring the exact name if this is a refresh reconnect.
+        if self.room and original_name in self.room.players:
+            name = original_name
+        else:
+            name = get_unique_name(name, self.active_connections.keys())
 
         await websocket.accept()
         ws_id = id(websocket)
         self.active_connections[name] = websocket
         self.ws_to_name[ws_id] = name
         print(f"[WEBSOCKET] Player {name} connected. Total connections: {len(self.active_connections)}")
+
+        if self.room:
+            cancel_reconnect_grace(self.room.room_id, name)
+            # Refresh reconnect: put the player back in the roster if grace already
+            # removed them, or if they were never removed.
+            if name not in self.room.players and not self.room.is_full():
+                self.room.players.append(name)
+                print(f"[RECONNECT] Restored {name} into room.players for {self.room.room_id}")
+
+            # If we falsely entered solo-wait because of a refresh, cancel it now.
+            if len(self.room.players) >= 2 and (
+                self.room.awaiting_rejoin_choice
+                or self.room.rejoin_wait_deadline is not None
+                or self.room.room_id in rejoin_wait_timers
+            ):
+                cancel_rejoin_wait(self.room.room_id)
+                self.room.awaiting_rejoin_choice = False
+                await self.broadcast({
+                    "type": "rejoin_cancelled",
+                    "player_count": len(self.room.players),
+                    "message": "Player reconnected. Continuing the game.",
+                })
 
         if name != original_name:
             await websocket.send_json({
@@ -930,23 +971,29 @@ class ConnectionManager:
         await self.broadcast({"type": "player_list", "players": self.get_player_data()})
         return role
 
-    async def disconnect(self, websocket: WebSocket, preserve_game: bool = False):
+    async def disconnect(self, websocket: WebSocket, preserve_game: bool = False, soft: bool = False):
+        """
+        soft=True  → temporary drop (refresh/network). Keep drawer queue / game state.
+        soft=False → permanent leave after grace expiry or explicit /leave handling.
+        """
         ws_id = id(websocket)
         name = self.ws_to_name.get(ws_id)
         if name:
-            if name in self.active_connections:
+            if name in self.active_connections and self.active_connections.get(name) is websocket:
                 del self.active_connections[name]
-            del self.ws_to_name[ws_id]
-            self.remove_from_drawer_queue(name)
+            if ws_id in self.ws_to_name:
+                del self.ws_to_name[ws_id]
+            if not soft:
+                self.remove_from_drawer_queue(name)
             is_drawer = (name == self.game_state["drawer_name"])
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
-            if is_drawer:
+            if is_drawer and not soft:
                 if self.room and self.room.game_started and self.active_connections and not preserve_game:
                     await self.reassign_drawer_after_removal()
                 return False
         
         # Cancel active vote kick if disconnected player was involved
-        if self.active_vote_kick:
+        if self.active_vote_kick and not soft:
             if name == self.active_vote_kick["target_player"] or name == self.active_vote_kick["initiator"]:
                 print(f"[DEBUG-VOTE] {name} disconnected during vote kick. Cancelling vote session.")
                 await self.cancel_vote_kick(reason="disconnect")
@@ -1552,6 +1599,104 @@ def cancel_rejoin_wait(room_id: str):
     room = rooms.get(room_id)
     if room:
         room.rejoin_wait_deadline = None
+
+
+async def finalize_player_disconnect(room: GameRoom, username: str):
+    """
+    Permanent removal after reconnect grace expires (or when we decide the
+    player is truly gone). This is what may trigger End Game / Wait 5 Minutes.
+    """
+    room_id = room.room_id
+    if room_id not in rooms:
+        return
+
+    # They already came back — do nothing.
+    if username in room.manager.active_connections:
+        print(f"[RECONNECT] Grace expired but {username} is already back in {room_id}")
+        return
+
+    was_in_players = username in room.players
+    players_before = len(room.players)
+    waiting_for_rejoin = (
+        room.game_started
+        and room.status == "PLAYING"
+        and players_before == 2
+        and was_in_players
+    )
+
+    if was_in_players:
+        room.players.remove(username)
+        print(f"[PLAYER_LEAVE] Grace expired — removed {username} from room {room_id}")
+        print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
+
+        if room.db_id:
+            player_db_id = room.get_player_db_id(username)
+            if player_db_id:
+                with get_db_session() as db:
+                    set_player_online(db, room.db_id, player_db_id, False)
+                    leave_room_record(db, room.db_id, player_db_id)
+
+        # Permanent leave: drop from drawer rotation; reassign if needed
+        room.manager.remove_from_drawer_queue(username)
+        if (
+            room.game_started
+            and room.manager.game_state.get("drawer_name") == username
+            and room.manager.active_connections
+        ):
+            await room.manager.reassign_drawer_after_removal()
+
+        await room.manager.broadcast({
+            "type": "player_list",
+            "players": room.manager.get_player_data(),
+        })
+
+    if waiting_for_rejoin and room.manager.active_connections and len(room.players) == 1:
+        await offer_rejoin_choice(room)
+    elif room_id in rooms and not room.manager.active_connections and not room.players:
+        cancel_rejoin_wait(room_id)
+        cancel_private_room_timer(room_id)
+        if room.db_id:
+            with get_db_session() as db:
+                end_room_record(db, room.db_id)
+        rooms.pop(room_id, None)
+        public_rooms.pop(room_id, None)
+        await broadcast_lobby_update()
+    elif room_id in rooms:
+        # Host transfer if host left before game start
+        if username == room.host and not room.game_started and room.players:
+            new_host = room.players[0]
+            room.host = new_host
+            old_host_id = room.get_player_db_id(username)
+            new_host_id = room.get_player_db_id(new_host)
+            if room.db_id and old_host_id and new_host_id:
+                with get_db_session() as db:
+                    record_host_transfer(db, room.db_id, old_host_id, new_host_id)
+            await room.manager.broadcast({
+                "type": "host_transferred",
+                "new_host": new_host,
+            })
+        log_wait_lobby_eligibility(room)
+        await broadcast_lobby_update()
+
+
+def schedule_reconnect_grace(room: GameRoom, username: str):
+    """Wait briefly for a refresh/reconnect before treating disconnect as a leave."""
+    room_id = room.room_id
+    cancel_reconnect_grace(room_id, username)
+
+    async def _grace():
+        try:
+            await asyncio.sleep(RECONNECT_GRACE_SECONDS)
+            await finalize_player_disconnect(room, username)
+        except asyncio.CancelledError:
+            print(f"[RECONNECT] Grace cancelled for {username} in {room_id} (reconnected)")
+        finally:
+            reconnect_grace_timers.pop(reconnect_grace_key(room_id, username), None)
+
+    reconnect_grace_timers[reconnect_grace_key(room_id, username)] = asyncio.create_task(_grace())
+    print(
+        f"[RECONNECT] Started {RECONNECT_GRACE_SECONDS}s grace for {username} in {room_id}"
+    )
 
 
 async def offer_rejoin_choice(room: GameRoom):
@@ -2272,135 +2417,30 @@ async def websocket_endpoint(
                     })
     except WebSocketDisconnect:
         print(f"[WEBSOCKET] {username} disconnected from room {room_id}")
-        print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
+        print(f"[RECONNECT] Treating as temporary disconnect (refresh/network); starting grace period")
 
-        # Preserve the active round when one of exactly two players leaves.
-        waiting_for_rejoin = room.game_started and len(room.players) == 2
-
-        # Remove websocket connection
+        # Soft disconnect: keep them in room.players so a refresh does NOT look
+        # like "opponent left". Permanent leave happens only after grace expires
+        # or via explicit /leave.
         await manager.disconnect(
             websocket,
-            preserve_game=waiting_for_rejoin or room.status == "ENDED",
+            preserve_game=True,
+            soft=True,
         )
 
-        # Remove player from room player list
-        if username in room.players:
-            room.players.remove(username)
-            print(f"[PLAYER_LEAVE] Removed {username} from room.players")
-
-            if room.db_id:
-                player_db_id = room.get_player_db_id(username)
-                if player_db_id:
-                    with get_db_session() as db:
-                        set_player_online(db, room.db_id, player_db_id, False)
-                        leave_room_record(db, room.db_id, player_db_id)
-
-        print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
-        print(f"[PLAYER_LEAVE] Max players={room.max_players}")
-        print(f"[PLAYER_LEAVE] Players list={room.players}")
-        print(f"[PLAYER_LEAVE] Game started={room.game_started} status={room.status}")
-
-        if waiting_for_rejoin and room_id in rooms and manager.active_connections:
-            await offer_rejoin_choice(room)
-
-        # ==========================================
-        # HOST TRANSFER LOGIC
-        # ==========================================
-        if username == room.host and not room.game_started:
-            print(f"[ROOM] Host left before game started")
-
-            # Transfer host if players remain
-            if room.players:
-                new_host = room.players[0]
-                room.host = new_host
-
-                print(f"[ROOM] New host assigned: {new_host}")
-
-                old_host_id = room.get_player_db_id(username)
-                new_host_id = room.get_player_db_id(new_host)
-                if room.db_id and old_host_id and new_host_id:
-                    with get_db_session() as db:
-                        record_host_transfer(db, room.db_id, old_host_id, new_host_id)
-
-                # Broadcast new host to everyone
-                await manager.broadcast({
-                    "type": "host_transferred",
-                    "new_host": new_host
-                })
-
-            else:
-                print(f"[SKIP] Room destroyed")
-                print(f"[WAIT_LOBBY] Removed room {room_id}")
-                cancel_rejoin_wait(room_id)
-
-                if room.db_id:
-                    with get_db_session() as db:
-                        end_room_record(db, room.db_id)
-
-                # Delete room completely
-                cancel_private_room_timer(room_id)
-
-                if room_id in rooms:
-                    del rooms[room_id]
-
-                if room_id in public_rooms:
-                    del public_rooms[room_id]
-
-        if room_id in rooms and not manager.active_connections:
-            cancel_rejoin_wait(room_id)
-            cancel_private_room_timer(room_id)
-            if room.db_id:
+        if room.db_id:
+            player_db_id = room.get_player_db_id(username)
+            if player_db_id:
                 with get_db_session() as db:
-                    end_room_record(db, room.db_id)
-            del rooms[room_id]
-            public_rooms.pop(room_id, None)
+                    set_player_online(db, room.db_id, player_db_id, False)
 
-        # Mid-game vacancy: running public rooms with open slots re-enter wait lobby
+        if room_id in rooms and username:
+            schedule_reconnect_grace(room, username)
+
         if room_id in rooms:
             log_wait_lobby_eligibility(room)
             log_room_state(room)
+            await broadcast_lobby_update()
 
-        # ==========================================
-        # RESTART AUTO-DISCARD TIMER
-        # ==========================================
-        if (
-            room_id in rooms
-            and room.room_type == "public"
-            and not room.game_started
-        ):
-            # If only one player remains, restart timer
-            if len(room.players) == 1:
-
-                if room_id not in public_room_timers:
-
-                    print(
-                        f"[AUTO-DISCARD] Only one player left in room {room_id}. Restarting timer."
-                    )
-
-                    task = asyncio.create_task(start_public_room_timer(room_id))
-                    public_room_timers[room_id] = task
-
-            # Cancel timer if room recovered
-            elif len(room.players) >= 2:
-
-                if room_id in public_room_timers:
-
-                    print(
-                        f"[AUTO-DISCARD] Room recovered with multiple players. Cancelling timer: {room_id}"
-                    )
-
-                    public_room_timers[room_id].cancel()
-                    del public_room_timers[room_id]
-
-        # Update public lobby instantly (re-adds running public rooms with vacant slots)
-        await broadcast_lobby_update()
-
-        # Send updated player list
-        if room_id in rooms:
-            await manager.broadcast({
-                "type": "player_list",
-                "players": manager.get_player_data()
-            })
-
-        print(f"[PLAYER_LEAVE] Disconnect handling completed for {username} in {room_id}")
+        print(f"[RECONNECT] Soft disconnect handling completed for {username} in {room_id}")
         

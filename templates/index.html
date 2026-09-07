@@ -811,7 +811,7 @@
         <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
     </div>
 
-    <div id="rejoin-wait-overlay" class="modal-card hidden" style="z-index: 10001; text-align: center;">
+    <div id="rejoin-wait-overlay" class="modal-card hidden" style="z-index: 10050; text-align: center;">
         <h2>Opponent left</h2>
         <p id="rejoin-wait-message">End the game or wait for another player to join.</p>
         <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none; margin: 8px 0 16px; color: var(--warning);">Waiting: <span id="rejoin-time-left">05:00</span></div>
@@ -1100,11 +1100,35 @@
                 startLobbyTimer(data.time_left);
             }
             if (data.type === "player_left_waiting") {
-                showRejoinWait(data.time_left, data.message, data.awaiting_choice !== false);
+                // Close Game Over / continue UI so End Game | Wait is visible
+                // when the other player quits after rounds complete.
+                closeFinalLeaderboard();
+                const congrats = document.getElementById('congrats-area');
+                if (congrats) congrats.style.display = "none";
+                hideEndGameActions();
+                showRejoinWait(
+                    data.time_left,
+                    data.message || "Your opponent left. End the game or wait 5 minutes for another player.",
+                    data.awaiting_choice !== false
+                );
             }
             if (data.type === "rejoin_cancelled") {
                 stopRejoinWait();
-                showToast(data.message || "A player joined. Continuing the game.");
+                closeFinalLeaderboard();
+                const congrats = document.getElementById('congrats-area');
+                if (congrats) congrats.style.display = "none";
+                hideEndGameActions();
+                const reveal = document.getElementById('movie-reveal');
+                if (reveal) reveal.classList.add('hidden');
+                // Clear stale letter boxes / canvas from the finished round
+                const movieDisplay = document.getElementById('movie-display');
+                if (movieDisplay) movieDisplay.innerHTML = "";
+                try {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                } catch (e) {}
+                document.getElementById('game-area')?.classList.add('hidden');
+                document.getElementById('setup-area')?.classList.remove('hidden');
+                showToast(data.message || "A player joined. Starting a new round!");
             }
             if (data.type === "timer_update" && data.timer_type === "rejoin") {
                 startRejoinTimer(data.time_left);
@@ -1488,6 +1512,8 @@
             document.getElementById('lobby-timer-display').classList.add('hidden');
         }
         function showRejoinWait(seconds, message, awaitingChoice) {
+            // Ensure Game Over modal cannot cover this prompt
+            closeFinalLeaderboard();
             const overlay = document.getElementById('rejoin-wait-overlay');
             const timerBox = document.getElementById('rejoin-wait-timer');
             const choiceActions = document.getElementById('rejoin-choice-actions');
@@ -1495,6 +1521,16 @@
             document.getElementById('rejoin-wait-message').innerText =
                 message || "End the game or wait for another player to join.";
             overlay.classList.remove('hidden');
+
+            let backdrop = document.getElementById('rejoin-wait-backdrop');
+            if (!backdrop) {
+                backdrop = document.createElement('div');
+                backdrop.id = 'rejoin-wait-backdrop';
+                backdrop.className = 'modal-overlay';
+                backdrop.style.zIndex = '10040';
+                document.body.appendChild(backdrop);
+            }
+            backdrop.classList.remove('hidden');
 
             if (awaitingChoice) {
                 // Choice phase — no countdown yet
@@ -1550,6 +1586,8 @@
             rejoinInterval = null;
             const overlay = document.getElementById('rejoin-wait-overlay');
             if (overlay) overlay.classList.add('hidden');
+            const backdrop = document.getElementById('rejoin-wait-backdrop');
+            if (backdrop) backdrop.classList.add('hidden');
         }
         function waitForPlayer() {
             ws.send(JSON.stringify({ type: "wait_for_player" }));

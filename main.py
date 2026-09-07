@@ -2206,7 +2206,8 @@ async def websocket_endpoint(
         "history": manager.draw_history,
         "winner_msg": manager.game_state["winner_announcement"], 
         "revealed": manager.game_state["revealed_movie"],
-        "time_left": current_time_left, 
+        "is_round_active": manager.game_state["is_round_active"],
+        "time_left": current_time_left if manager.game_state["is_round_active"] else 0,
         "lobby_time_left": get_lobby_time_left(room),
         "rejoin_time_left": (
             max(0, int(room.rejoin_wait_deadline - time.time()))
@@ -2308,6 +2309,8 @@ async def websocket_endpoint(
                 if manager.round_timer_task:
                     manager.round_timer_task.cancel()
                     manager.round_timer_task = None
+                r.delete(f"round_end_time:{id(manager)}")
+                r.delete("round_end_time")
 
                 manager.set_player_score(username, 50) 
                 if manager.game_state["drawer_name"]:

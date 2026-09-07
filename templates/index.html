@@ -1353,7 +1353,7 @@
                         draw(step.x, step.y, step.tool, step.color);
                     });
                 }
-                if (data.time_left > 0 && data.movie_set) {
+                if (data.is_round_active && data.time_left > 0 && data.movie_set) {
                     startTimer(data.time_left);
                 }
                 if (data.winner_msg) showAnnouncement(data.winner_msg, data.revealed);

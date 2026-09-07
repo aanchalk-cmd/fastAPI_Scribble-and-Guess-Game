@@ -571,6 +571,8 @@ class ConnectionManager:
         self.vote_kick_timeout = 15  # seconds
         self.active_vote_kick_db_id: Optional[int] = None
         self.current_db_round_id: Optional[int] = None
+        # Cached word choices for the current selection phase (survive drawer refresh)
+        self.last_word_options: List[str] = []
 
         self.game_state = {
             "movie": "",
@@ -728,6 +730,7 @@ class ConnectionManager:
             self.selection_timer_task = None
         self.game_state["selection_active"] = False
         self.game_state["selection_end_time"] = None
+        self.last_word_options = []
         r.delete(f"selection_end_time:{id(self)}")
         r.delete(f"selection_drawer:{id(self)}")
 
@@ -877,10 +880,12 @@ class ConnectionManager:
             return self.room.category
         return "movies"
 
-    async def send_word_options_to_drawer(self, count: int = 3):
+    async def send_word_options_to_drawer(self, count: int = 3, reuse_cached: bool = False):
         """
         Fetch `count` random words from the room category and send them
         only to the current drawer (not broadcast to guessers).
+
+        reuse_cached=True keeps the same options (used after a page refresh).
         """
         drawer_name = self.game_state.get("drawer_name")
         if not drawer_name or drawer_name not in self.active_connections:
@@ -888,13 +893,17 @@ class ConnectionManager:
             return
 
         category = self.get_room_category()
-        try:
-            options = word_manager.get_random_words(category, count=count)
-        except CategoryNotFoundError as e:
-            print(f"[WORD_MANAGER] {e}")
-            options = word_manager.get_random_words(
-                word_manager.normalize_category(None), count=count
-            )
+        if reuse_cached and self.last_word_options:
+            options = list(self.last_word_options)
+        else:
+            try:
+                options = word_manager.get_random_words(category, count=count)
+            except CategoryNotFoundError as e:
+                print(f"[WORD_MANAGER] {e}")
+                options = word_manager.get_random_words(
+                    word_manager.normalize_category(None), count=count
+                )
+            self.last_word_options = list(options)
 
         print(
             f"[WORD_MANAGER] Sending {len(options)} options to drawer={drawer_name} "
@@ -2313,7 +2322,16 @@ async def websocket_endpoint(
         f"selection_active={manager.game_state.get('selection_active', False)} "
         f"drawer={manager.game_state.get('drawer_name')} "
         f"category={room.category} resumed={resumed_after_rejoin}"
-    )    
+    )
+    # Drawer refresh mid-selection: re-send word choices (same set if cached)
+    if (
+        not resumed_after_rejoin
+        and manager.game_state.get("selection_active")
+        and not manager.game_state.get("movie")
+        and username == manager.game_state.get("drawer_name")
+    ):
+        await manager.send_word_options_to_drawer(count=3, reuse_cached=True)
+
     try:
         while True:
             data = await websocket.receive_json()
@@ -2450,6 +2468,7 @@ async def websocket_endpoint(
                             options = word_manager.get_random_words(
                                 manager.get_room_category(), count=3
                             )
+                        manager.last_word_options = list(options)
                         await websocket.send_json({
                             "type": "movie_options",
                             "options": options,

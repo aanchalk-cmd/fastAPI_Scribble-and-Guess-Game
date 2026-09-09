@@ -1,0 +1,53 @@
+name: Deploy Scribble to Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Deploy latest code
+        shell: bash
+        run: |
+          set -e
+
+          PROJECT_DIR="/home/hardik/projects/fastAPI_Scribble-and-Guess-Game"
+
+          echo "======================================"
+          echo "Starting Scribble deployment"
+          echo "======================================"
+
+          cd "$PROJECT_DIR"
+
+          echo "Fetching latest code..."
+          git fetch origin main
+
+          echo "Updating working tree..."
+          git reset --hard origin/main
+
+          echo "Activating virtual environment..."
+          source .venv/bin/activate
+
+          echo "Installing dependencies..."
+          python -m pip install -r requirements.txt
+
+          echo "Restarting FastAPI service..."
+          sudo -n systemctl restart scribble.service
+
+          echo "Waiting for application..."
+          sleep 5
+
+          echo "Checking service..."
+          sudo -n systemctl is-active --quiet scribble.service
+
+          echo "Checking HTTP endpoint..."
+          curl --fail --silent --show-error \
+            http://127.0.0.1:8000 > /dev/null
+
+          echo "======================================"
+          echo "Deployment successful!"
+          echo "======================================"

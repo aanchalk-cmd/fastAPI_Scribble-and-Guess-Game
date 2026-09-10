@@ -1024,6 +1024,14 @@
                 console.debug('[COPY-DEBUG] No room code available for invite link');
             }
         }
+
+        // After "CREATE & COPY LINK" from lobby — auto-copy invite once on /game
+        try {
+            if (sessionStorage.getItem("movie_guess_copy_invite") === "1") {
+                sessionStorage.removeItem("movie_guess_copy_invite");
+                setTimeout(() => copyInviteLink(), 400);
+            }
+        } catch (e) { /* ignore */ }
         
         console.log(`[DEBUG-FRONTEND] WebSocket connecting to /ws`);
         ws.onmessage = (event) => {

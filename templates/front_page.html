@@ -2,741 +2,175 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scribble &amp; Guess — Play</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <title>Movie Guess — Play</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <style>
-        /* ---------- design tokens ---------- */
-        :root {
-            --bg: #0b1120;
-            --bg-2: #0f172a;
-            --surface: #1e293b;
-            --card: #1e293b;
-            --line: #334155;
-            --line-soft: rgba(148, 163, 184, 0.16);
-            --primary: #6366f1;
-            --primary-hover: #818cf8;
-            --accent: #f43f5e;
-            --success: #22c55e;
-            --warning: #f59e0b;
-            --draw-blue: #3b82f6;
-            --text: #e6ecf8;
-            --text-main: #e6ecf8;
-            --text-dim: #93a3bd;
-            --radius: 14px;
-            --radius-lg: 22px;
-            --shadow-lg: 0 24px 60px -24px rgba(2, 6, 23, 0.9);
-        }
-
-        *, *::before, *::after { box-sizing: border-box; }
-
-        html, body { margin: 0; padding: 0; }
-
-        body {
-            min-height: 100vh;
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            overflow-x: hidden;
-        }
-
-        /* soft ambient background glow */
-        body::before {
-            content: "";
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            z-index: 0;
-            background:
-                radial-gradient(900px 520px at 12% -12%, rgba(99, 102, 241, 0.22), transparent 62%),
-                radial-gradient(820px 480px at 106% 6%, rgba(244, 63, 94, 0.16), transparent 60%),
-                radial-gradient(760px 520px at 50% 115%, rgba(34, 197, 94, 0.10), transparent 62%);
-        }
-
-        .page {
-            position: relative;
-            z-index: 1;
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 36px 20px 64px;
-        }
-
-        /* ---------- brand ---------- */
-        .brand {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 26px;
-        }
-        .brand-mark {
-            width: 54px;
-            height: 54px;
-            flex-shrink: 0;
-            border-radius: 17px;
-            display: grid;
-            place-items: center;
-            font-size: 1.6rem;
-            background: linear-gradient(135deg, var(--primary), #a855f7);
-            box-shadow: 0 14px 32px -12px rgba(99, 102, 241, 0.9);
-        }
-        .brand h1 {
-            margin: 0;
-            font-size: 1.65rem;
-            font-weight: 800;
-            letter-spacing: -0.025em;
-        }
-        .brand-sub {
-            margin: 3px 0 0;
-            color: var(--text-dim);
-            font-size: 0.9rem;
-        }
-
-        /* ---------- layout ---------- */
-        .layout {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 20px;
-            align-items: start;
-        }
-        .card {
-            background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
-            border: 1px solid var(--line-soft);
-            border-radius: var(--radius-lg);
-            padding: 24px;
-            box-shadow: var(--shadow-lg);
-        }
-        .card-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin-bottom: 18px;
-        }
-        .card-title {
-            margin: 0;
-            font-size: 1.02rem;
-            font-weight: 700;
-        }
-        .card-sub {
-            margin: 4px 0 0;
-            color: var(--text-dim);
-            font-size: 0.82rem;
-        }
-
-        /* ---------- inputs ---------- */
-        .name-input {
-            width: 100%;
-            padding: 14px 16px;
-            font-family: inherit;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text);
-            background: rgba(15, 23, 42, 0.85);
-            border: 1px solid var(--line);
-            border-radius: var(--radius);
-            outline: none;
-            transition: border-color 0.18s, box-shadow 0.18s;
-        }
-        .name-input::placeholder { color: #64748b; font-weight: 500; }
-        .name-input:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.18);
-        }
-        select.name-input {
-            appearance: none;
-            cursor: pointer;
-            padding-right: 42px;
-            background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2393a3bd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 15px center;
-        }
-        #roomInput { text-transform: uppercase; letter-spacing: 0.22em; text-align: center; }
-
-        /* ---------- segmented mode switch ---------- */
-        .segmented {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 6px;
-            padding: 6px;
-            margin: 16px 0 20px;
-            background: rgba(15, 23, 42, 0.7);
-            border: 1px solid var(--line-soft);
-            border-radius: 16px;
-        }
-        .mode-btn {
-            padding: 11px 6px;
-            border: 1px solid transparent;
-            border-radius: 11px;
-            background: transparent;
-            color: var(--text-dim);
-            font: inherit;
-            font-weight: 700;
-            font-size: 0.82rem;
-            cursor: pointer;
-            transition: all 0.18s ease;
-        }
-        .mode-btn:hover { color: var(--text); background: rgba(148, 163, 184, 0.10); }
-        .mode-btn.is-active {
-            background: var(--primary);
-            border-color: var(--primary);
-            color: #fff;
-            box-shadow: 0 10px 22px -12px rgba(99, 102, 241, 0.95);
-        }
-
-        /* ---------- form fields ---------- */
-        .field { margin-bottom: 18px; }
-        .field-label {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            margin-bottom: 10px;
-            font-size: 0.76rem;
-            font-weight: 700;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.07em;
-        }
-        .field-value {
-            color: var(--primary);
-            font-weight: 800;
-            font-size: 0.9rem;
-            text-transform: none;
-            letter-spacing: 0;
-        }
-        .range {
-            width: 100%;
-            height: 6px;
-            cursor: pointer;
-            accent-color: var(--primary);
-        } 
-        .rounds-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-        }
-        .rounds-btn {
-            padding: 12px 8px;
-            border: 2px solid var(--line);
-            background: var(--bg-2);
-            color: var(--text-main);
-            border-radius: 12px;
-            cursor: pointer;
-            font: inherit;
-            font-weight: 700;
-            font-size: 0.88rem;
-            transition: all 0.18s ease;
-        }
-        .rounds-btn:hover { transform: translateY(-2px); border-color: var(--primary); }
-        .active-rounds {
-            background-color: var(--primary) !important;
-            border-color: var(--primary) !important;
-            color: #fff !important;
-            box-shadow: 0 12px 24px -14px rgba(99, 102, 241, 0.95);
-        }
-
-        /* ---------- primary button ---------- */
-        .start-btn {
-            width: 100%;
-            padding: 15px 24px;
-            font: inherit;
-            font-size: 0.98rem;
-            font-weight: 800;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            color: #fff;
-            background: linear-gradient(135deg, var(--primary), #8b5cf6);
-            border: none;
-            border-radius: var(--radius);
-            cursor: pointer;
-            transition: transform 0.18s ease, filter 0.18s ease;
-            box-shadow: 0 16px 32px -16px rgba(99, 102, 241, 0.95);
-        }
-        .start-btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
-        .start-btn:active { transform: translateY(0); }
-        #button-container { display: flex; flex-direction: column; gap: 10px; }
-
-        /* ---------- error banner ---------- */
-        #error-box {
-            background: rgba(244, 63, 94, 0.12);
-            border: 1px solid rgba(244, 63, 94, 0.35);
-            color: #fda4af;
-            padding: 12px 14px;
-            border-radius: 12px;
-            margin-bottom: 16px;
-            font-size: 0.86rem;
-            font-weight: 600;
-        }
-
-        /* ---------- public lobby ---------- */
-        .live-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--success);
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
-            animation: pulse 1.8s ease-in-out infinite;
-        }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-
-        #room-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            max-height: 560px;
-            overflow-y: auto;
-            padding-right: 4px;
-        }
-        #room-list::-webkit-scrollbar { width: 6px; }
-        #room-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
-
-        .room-card {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 14px;
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--line-soft);
-            border-radius: 16px;
-            transition: transform 0.18s ease, border-color 0.18s ease;
-        }
-        .room-card:hover { transform: translateY(-2px); border-color: rgba(99, 102, 241, 0.5); }
-        .room-main { flex: 1; min-width: 0; }
-        .room-top {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-bottom: 8px;
-        }
-        .room-code {
-            font-weight: 800;
-            font-size: 0.98rem;
-            letter-spacing: 0.09em;
-            color: var(--text);
-        }
-        .chip {
-            font-size: 0.7rem;
-            font-weight: 700;
-            padding: 3px 9px;
-            border-radius: 999px;
-            white-space: nowrap;
-            border: 1px solid transparent;
-        }
-        .chip-open { background: rgba(34, 197, 94, 0.14); color: #4ade80; border-color: rgba(34, 197, 94, 0.35); }
-        .chip-live { background: rgba(245, 158, 11, 0.14); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); }
-        .chip-full { background: rgba(244, 63, 94, 0.14); color: #fb7185; border-color: rgba(244, 63, 94, 0.35); }
-        .room-meta {
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-            font-size: 0.79rem;
-            color: var(--text-dim);
-            margin-bottom: 8px;
-        }
-        .room-meta strong { color: var(--text); font-weight: 600; }
-        .bar {
-            height: 6px;
-            border-radius: 999px;
-            background: rgba(148, 163, 184, 0.18);
-            overflow: hidden;
-        }
-        .bar > span {
-            display: block;
-            height: 100%;
-            border-radius: 999px;
-            background: linear-gradient(90deg, var(--draw-blue), var(--success));
-            transition: width 0.25s ease;
-        }
-        .join-btn {
-            padding: 11px 16px;
-            border: none;
-            border-radius: 12px;
-            background: linear-gradient(135deg, var(--draw-blue), var(--primary));
-            color: #fff;
-            font: inherit;
-            font-weight: 700;
-            font-size: 0.86rem;
-            white-space: nowrap;
-            cursor: pointer;
-            transition: transform 0.18s ease, filter 0.18s ease;
-        }
-        .join-btn:hover:not(:disabled) { transform: translateX(2px); filter: brightness(1.1); }
-        .join-btn:disabled { opacity: 0.4; cursor: not-allowed; background: var(--line); }
-
-        .empty-state {
-            text-align: center;
-            color: var(--text-dim);
-            padding: 30px 12px;
-            font-size: 0.88rem;
-        }
-
-        /* ---------- responsive ---------- */
-        @media (max-width: 900px) {
-            .layout { grid-template-columns: 1fr; }
-            .page { padding: 24px 16px 48px; }
-        }
-        @media (max-width: 480px) {
-            .card { padding: 20px 16px; }
-            .brand h1 { font-size: 1.35rem; }
-            .brand-mark { width: 46px; height: 46px; font-size: 1.35rem; }
-            .mode-btn { font-size: 0.74rem; padding: 10px 4px; }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/lobby.css">
 </head>
-<body>
-    <div class="page">
-        <header class="brand">
-            <div class="brand-mark">✏️</div>
-            <div>
-                <h1>Scribble &amp; Guess</h1>
-                <p class="brand-sub">Draw it, guess it, outscore everyone.</p>
-            </div>
-        </header>
-
-        <div class="layout">
-            <!-- ======== create / join ======== -->
-            <section class="card">
-                <div class="card-head">
-                    <div>
-                        <h2 class="card-title">Start playing</h2>
-                        <p class="card-sub">Create a room or join one with a code.</p>
-                    </div>
-                </div>
-
-                <div id="error-box" style="display:none;"></div>
-
-                <form action="/join" method="POST" id="gameForm">
-                    <input type="text" name="name" class="name-input" placeholder="Enter your name" required>
-
-                    <input type="hidden" name="action" id="actionInput" value="create">
-                    <input type="hidden" name="room_type" id="roomTypeInput" value="private">
-                    <input type="hidden" name="max_players" id="maxPlayersInput" value="10">
-                    <input type="hidden" name="rounds" id="roundsInput" value="3">
-                    <input type="hidden" name="guest_id" id="guestIdInput" value="">
-
-                    <div id="room-mode-buttons" class="segmented">
-                        <button type="button" class="mode-btn is-active" onclick="prepareCreate('private')">🔒 Private</button>
-                        <button type="button" class="mode-btn" onclick="prepareCreate('public')">🌐 Public</button>
-                        <button type="button" class="mode-btn" onclick="toggleJoinUI()">🔑 Join</button>
-                    </div>
-
-                    <div id="join-section" class="field" style="display: none;">
-                        <label class="field-label" for="roomInput">Room code</label>
-                        <input type="text" name="room_code" id="roomInput" class="name-input" placeholder="ABC123" maxlength="6">
-                    </div>
-
-                    <div id="public-settings" class="field" style="display: none;">
-                        <label class="field-label" for="maxPlayers">
-                            Max players
-                            <span class="field-value" id="max-players-display">10</span>
-                        </label>
-                        <input type="range" id="maxPlayers" class="range" min="2" max="10" value="10"
-                            oninput="setMaxPlayers(this.value)">
-                    </div>
-
-                    <div id="timer-selection" class="field">
-                        <label class="field-label" for="duration">
-                            Round duration
-                            <span class="field-value"><span id="duration-val">5</span> min</span>
-                        </label>
-                        <input type="range" name="duration" id="duration" class="range" min="1" max="10" value="5"
-                            oninput="document.getElementById('duration-val').innerText = this.value">
-                    </div>
-
-                    <div id="rounds-selection" class="field">
-                        <label class="field-label">
-                            Number of rounds
-                            <span class="field-value" id="rounds-val">3</span>
-                        </label>
-                        <div class="rounds-grid">
-                            <button type="button" class="rounds-btn" onclick="selectRounds(1)" data-rounds="1">1 Round</button>
-                            <button type="button" class="rounds-btn active-rounds" onclick="selectRounds(3)" data-rounds="3">3 Rounds</button>
-                            <button type="button" class="rounds-btn" onclick="selectRounds(5)" data-rounds="5">5 Rounds</button>
-                        </div>
-                        <input type="hidden" name="rounds" id="rounds" value="3">
-                    </div>
-
-                    <!-- Word category for the room (WordManager / words.json) -->
-                    <div id="category-selection" class="field">
-                        <label class="field-label" for="categorySelect">Word category</label>
-                        <select name="category" id="categorySelect" class="name-input">
-                            {% for cat in categories %}
-                            <option value="{{ cat }}" {% if cat == 'movies' %}selected{% endif %}>{{ cat|capitalize }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div id="button-container">
-                        <button type="submit" id="submitBtn" class="start-btn">Create Private Room</button>
-                    </div>
-                </form>
-            </section>
-
-            <!-- ======== public lobby ======== -->
-            <aside class="card" id="public-lobby">
-                <div class="card-head">
-                    <div>
-                        <h2 class="card-title">🌐 Public rooms</h2>
-                        <p class="card-sub">Jump into a game that already has space.</p>
-                    </div>
-                    <span class="live-dot" title="Live"></span>
-                </div>
-                <div id="room-list">
-                    <p class="empty-state">Looking for active games...</p>
-                </div>
-            </aside>
-        </div>
+<body class="lobby-body">
+    <!-- Design assets (provided) -->
+    <div class="decor decor-clap" aria-hidden="true">
+        <img src="/static/img/lobby/clapper.png" alt="">
+    </div>
+    <div class="decor decor-ticket" aria-hidden="true">
+        <img src="/static/img/lobby/ticket.png" alt="">
+    </div>
+    <div class="decor decor-soda" aria-hidden="true">
+        <img src="/static/img/lobby/soda.png" alt="">
+    </div>
+    <div class="decor decor-reel" aria-hidden="true">
+        <img src="/static/img/lobby/reel.png" alt="">
+    </div>
+    <div class="decor decor-popcorn" aria-hidden="true">
+        <img src="/static/img/lobby/popcorn.png" alt="">
+    </div>
+    <div class="decor decor-camera" aria-hidden="true">
+        <img src="/static/img/lobby/camera.png" alt="">
     </div>
 
-<script>
-    function getOrCreateGuestId() {
-        let guestId = localStorage.getItem('scribble_guest_id');
-        if (!guestId) {
-            guestId = crypto.randomUUID();
-            localStorage.setItem('scribble_guest_id', guestId);
-        }
-        document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
-        return guestId;
-    }
+    <div
+        class="lobby-shell"
+        id="lobby-app"
+        data-categories="{{ categories_json | safe }}"
+    >
+        <header class="lobby-top">
+            <h1 class="brand-title" id="brand-title">Movie Guess</h1>
+            <button type="button" class="top-btn" id="top-nav-btn" data-action="public">PUBLIC ROOMS</button>
+        </header>
 
-    document.getElementById('guestIdInput').value = getOrCreateGuestId();
-    prepareCreate('private');
+        <div id="error-banner" class="error-banner" role="alert"></div>
 
-    function prepareCreate(type) {
-        document.getElementById('actionInput').value = 'create';
-        document.getElementById('roomTypeInput').value = type;
-        document.getElementById('room-mode-buttons').style.display = 'flex';
-        document.getElementById('join-section').style.display = 'none';
-        document.getElementById('roomInput').required = false;
-        document.getElementById('timer-selection').style.display = 'block';
-        document.getElementById('rounds-selection').style.display = 'block';
-        document.getElementById('category-selection').style.display = 'block';
-        document.getElementById('public-settings').style.display = 'block';
+        <!-- SCREEN 1: Create / Have a code -->
+        <section class="screen is-active" id="screen-create" aria-label="Create room">
+            <div class="film-card">
+                <div class="film-inner">
+                    <div class="mode-tabs" role="tablist">
+                        <button type="button" class="mode-tab is-active" data-tab="create" role="tab">CREATE ROOM</button>
+                        <button type="button" class="mode-tab" data-tab="code" role="tab">I HAVE A CODE</button>
+                    </div>
 
-        const maxPlayersSlider = document.getElementById('maxPlayers');
-        const savedValue = document.getElementById('maxPlayersInput').value || '10';
-        if (maxPlayersSlider) {
-            maxPlayersSlider.value = savedValue;
-            setMaxPlayers(savedValue);
-        }
-
-        if (type === 'public') {
-            document.getElementById('submitBtn').innerText = 'Create Public Room';
-        } else {
-            document.getElementById('submitBtn').innerText = 'Create Private Room';
-        }
-    }
-
-    function toggleJoinUI(prefillCode) {
-        document.getElementById('actionInput').value = 'join';
-        document.getElementById('roomTypeInput').value = 'private';
-        document.getElementById('room-mode-buttons').style.display = 'flex';
-        document.getElementById('join-section').style.display = 'block';
-        document.getElementById('public-settings').style.display = 'none';
-        document.getElementById('timer-selection').style.display = 'none';
-        document.getElementById('rounds-selection').style.display = 'none';
-        document.getElementById('category-selection').style.display = 'none';
-        document.getElementById('submitBtn').innerText = 'Join Room';
-        document.getElementById('roomInput').required = true;
-        if (prefillCode) {
-            document.getElementById('roomInput').value = prefillCode;
-        }
-    }
-
-    function setMaxPlayers(value) {
-        const parsedValue = Number(value) || 10;
-        document.getElementById('max-players-display').innerText = parsedValue;
-        document.getElementById('maxPlayersInput').value = parsedValue;
-        const slider = document.getElementById('maxPlayers');
-        if (slider) {
-            slider.value = parsedValue;
-        }
-    }
-
-    function setRounds(value) {
-        document.getElementById('rounds-val').innerText = value;
-        document.getElementById('roundsInput').value = value;
-    }
-
-    function selectRounds(rounds) {
-        // Validate that only 1, 3, or 5 are allowed
-        if (![1, 3, 5].includes(rounds)) {
-            console.error(`Invalid rounds selection: ${rounds}. Only 1, 3, or 5 are allowed.`);
-            return;
-        }
-        
-        // Update hidden input
-        document.getElementById('rounds').value = rounds;
-        document.getElementById('roundsInput').value = rounds;
-        
-        // Update display
-        document.getElementById('rounds-val').innerText = rounds;
-        
-        // Update button styling
-        document.querySelectorAll('.rounds-btn').forEach(btn => {
-            if (parseInt(btn.getAttribute('data-rounds')) === rounds) {
-                btn.classList.add('active-rounds');
-                btn.style.borderColor = 'var(--primary)';
-                btn.style.backgroundColor = 'var(--primary)';
-                btn.style.color = 'white';
-            } else {
-                btn.classList.remove('active-rounds');
-                btn.style.borderColor = '#334155';
-                btn.style.backgroundColor = '#0f172a';
-                btn.style.color = 'var(--text-main)';
-            }
-        });
-    }
-
-    function joinPublic(code) {
-        // Public lobby join: only ask for a name — hide modes, code, and create settings.
-        document.getElementById('actionInput').value = 'join';
-        document.getElementById('roomTypeInput').value = 'public';
-        document.getElementById('roomInput').value = code;
-        document.getElementById('roomInput').required = false;
-
-        document.getElementById('room-mode-buttons').style.display = 'none';
-        document.getElementById('join-section').style.display = 'none';
-        document.getElementById('public-settings').style.display = 'none';
-        document.getElementById('timer-selection').style.display = 'none';
-        document.getElementById('rounds-selection').style.display = 'none';
-        document.getElementById('category-selection').style.display = 'none';
-
-        const sub = document.querySelector('.card-sub');
-        if (sub) sub.innerText = 'Enter your name to join this public room.';
-        document.getElementById('submitBtn').innerText = 'Join Room';
-
-        const nameInput = document.querySelector('#gameForm input[name="name"]');
-        if (nameInput) {
-            nameInput.focus();
-            nameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-    }
-
-    // Purely cosmetic: highlight the selected mode in the segmented control.
-    document.getElementById('room-mode-buttons').addEventListener('click', (event) => {
-        const clicked = event.target.closest('.mode-btn');
-        if (!clicked) return;
-        document.querySelectorAll('#room-mode-buttons .mode-btn').forEach(btn => {
-            btn.classList.toggle('is-active', btn === clicked);
-        });
-    });
-
-    const params = new URLSearchParams(window.location.search);
-    const error = params.get("error");
-    const inviteCode = params.get("invite");
-
-    if (error) {
-        const errorBox = document.getElementById("error-box");
-        errorBox.style.display = "block";
-
-        if (error === "name_taken") {
-            errorBox.innerText = "⚠️ Username already exists in this room. Try another name.";
-        } 
-        else if (error === "not_found") {
-            errorBox.innerText = "❌ Room not found. Check your code.";
-        } 
-        else if (error === "missing_code") {
-            errorBox.innerText = "⚠️ Please enter a room code.";
-        }
-        else if (error === "banned") {
-            errorBox.innerText = "🚫 You have been banned from this room and cannot rejoin.";
-        }
-        else if (error === "full") {
-            errorBox.innerText = "⚠️ This room is full. Try another room.";
-        }
-        else if (error === "ended") {
-            errorBox.innerText = "⚠️ This room has ended. Create or join another room.";
-        }
-        else {
-            errorBox.innerText = "Something went wrong.";
-        }
-    }
-    
-    if (inviteCode) {
-        try {
-            // Decode the obscured code back to normal
-            const decodedCode = atob(inviteCode); 
-            
-            document.getElementById('actionInput').value = 'join';
-            document.getElementById('join-section').style.display = 'block';
-            document.getElementById('roomInput').value = decodedCode.toUpperCase();
-            document.getElementById('roomInput').required = true;
-            document.getElementById('submitBtn').innerText = 'Join Room';
-            document.getElementById('public-settings').style.display = 'none';
-            document.getElementById('timer-selection').style.display = 'none';
-            document.getElementById('category-selection').style.display = 'none';
-            document.getElementById('rounds-selection').style.display = 'none';
-        } catch (e) {
-            // If someone tampers with the URL and breaks the encoding, show an error
-            const errorBox = document.getElementById("error-box");
-            errorBox.style.display = "block";
-            errorBox.innerText = "Invalid or corrupted invite link.";
-        }
-    }
-    const lobbyProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const lobbyWs = new WebSocket(`${lobbyProtocol}://${window.location.host}/ws/lobby`);
-    
-    lobbyWs.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === "lobby_update") {
-            const list = document.getElementById('room-list');
-            list.innerHTML = "";
-            if (data.rooms.length === 0) {
-                list.innerHTML = "<p class='empty-state'>No public rooms available right now. Create one!</p>";
-            } else {
-                data.rooms.forEach(room => {
-                    const row = document.createElement('div');
-                    const inProgress = room.in_progress || room.status === "PLAYING";
-                    const isFull = room.count >= room.max;
-                    const availableSlots = room.available_slots != null
-                        ? room.available_slots
-                        : Math.max(0, room.max - room.count);
-                    let statusLabel = "Waiting";
-                    let statusClass = "chip-open";
-                    if (isFull) {
-                        statusLabel = "Full";
-                        statusClass = "chip-full";
-                    } else if (inProgress) {
-                        statusLabel = `In progress · ${availableSlots} slot${availableSlots === 1 ? "" : "s"}`;
-                        statusClass = "chip-live";
-                    }
-                    const progressPercent = Math.round((room.count / room.max) * 100);
-                    row.innerHTML = `
-                        <div class="room-card">
-                            <div class="room-main">
-                                <div class="room-top">
-                                    <span class="room-code">${room.room_id}</span>
-                                    <span class="chip ${statusClass}">${statusLabel}</span>
-                                </div>
-                                <div class="room-meta">
-                                    <span>Host <strong>${room.host}</strong></span>
-                                    <span><strong>${room.count}/${room.max}</strong> players</span>
-                                </div>
-                                <div class="bar"><span style="width: ${progressPercent}%;"></span></div>
-                            </div>
-                            <button onclick="joinPublic('${room.room_id}')" class="join-btn" ${isFull ? "disabled" : ""}>Join →</button>
+                    <div id="create-pane" class="stack">
+                        <div>
+                            <span class="field-label">CATEGORY</span>
+                            <div class="pill-row" id="category-pills"></div>
                         </div>
-                    `;
-                    list.appendChild(row);
-                });
-            }
-        }
-    };
 
-    lobbyWs.onerror = (event) => {
-        console.error("[DEBUG] Lobby WebSocket error:", event);
-    };
+                        <div>
+                            <span class="field-label">NUMBER OF ROUND</span>
+                            <div class="pill-row" id="rounds-pills"></div>
+                        </div>
 
-    lobbyWs.onclose = () => {
-        console.log("[DEBUG] Lobby WebSocket disconnected");
-    };
+                        <div>
+                            <div class="field-row">
+                                <span class="field-label">TIME DURATION</span>
+                                <span class="field-value" id="duration-val">5 MIN</span>
+                            </div>
+                            <input
+                                class="mg-slider"
+                                id="duration-slider"
+                                type="range"
+                                min="1"
+                                max="10"
+                                value="5"
+                                aria-label="Time duration in minutes"
+                            >
+                        </div>
 
-</script>
+                        <div class="toggle-row">
+                            <label class="toggle">
+                                <input type="checkbox" id="public-toggle">
+                                <span class="toggle-ui"></span>
+                            </label>
+                            <span class="toggle-label">PUBLIC ROOM</span>
+                        </div>
+
+                        <div id="max-players-wrap">
+                            <div class="field-row">
+                                <span class="field-label">MAX PLAYER</span>
+                                <span class="field-value" id="max-players-val">4</span>
+                            </div>
+                            <input
+                                class="mg-slider"
+                                id="max-players-slider"
+                                type="range"
+                                min="2"
+                                max="10"
+                                value="4"
+                                aria-label="Max players"
+                            >
+                        </div>
+
+                        <button type="button" class="btn-primary" id="create-copy-btn">CREATE &amp; COPY LINK</button>
+                    </div>
+
+                    <div id="code-pane" class="stack hidden">
+                        <div>
+                            <span class="field-label">ROOM CODE</span>
+                            <input
+                                class="code-input"
+                                id="have-code-input"
+                                type="text"
+                                maxlength="6"
+                                placeholder="ABC123"
+                                autocomplete="off"
+                                spellcheck="false"
+                            >
+                        </div>
+                        <button type="button" class="btn-primary" id="have-code-continue">CONTINUE</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 2: Public rooms -->
+        <section class="screen" id="screen-public" aria-label="Public rooms">
+            <div class="film-card public-card">
+                <div class="film-inner">
+                    <h2 class="public-title">PUBLIC ROOMS</h2>
+                    <div class="room-list" id="room-list">
+                        <p class="empty-state">Looking for active games...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SCREEN 3: Name -->
+        <section class="screen name-screen" id="screen-name" aria-label="Enter name">
+            <div class="film-card">
+                <div class="film-inner">
+                    <div>
+                        <label class="field-label" id="name-screen-label" for="player-name">NAME</label>
+                        <input
+                            class="name-input"
+                            id="player-name"
+                            type="text"
+                            maxlength="24"
+                            placeholder="ENTER YOUR NAME"
+                            autocomplete="nickname"
+                            required
+                        >
+                    </div>
+                    <button type="submit" form="join-form" class="btn-primary" id="name-submit-btn">ENTER ROOM</button>
+                </div>
+            </div>
+        </section>
+
+        <form action="/join" method="POST" id="join-form" class="hidden" aria-hidden="true">
+            <input type="hidden" name="name" id="field-name" value="">
+            <input type="hidden" name="action" id="field-action" value="create">
+            <input type="hidden" name="room_type" id="field-room-type" value="private">
+            <input type="hidden" name="max_players" id="field-max-players" value="4">
+            <input type="hidden" name="rounds" id="field-rounds" value="3">
+            <input type="hidden" name="duration" id="field-duration" value="5">
+            <input type="hidden" name="category" id="field-category" value="movies">
+            <input type="hidden" name="room_code" id="field-room-code" value="">
+            <input type="hidden" name="guest_id" id="field-guest-id" value="">
+        </form>
+    </div>
+
+    <script src="/static/js/lobby.js" defer></script>
 </body>
 </html>

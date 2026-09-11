@@ -1185,6 +1185,10 @@
                 appendChatMessage(data);
                 return;
             }
+            if (data.type === "chat_history") {
+                loadChatHistory(data.messages || []);
+                return;
+            }
             if (data.type === "player_list") {
                 console.log(`[DEBUG-FRONTEND] player_list update: ${data.players.length} players, room_status=${currentRoomStatus}`);
                 data.players.forEach(p => {
@@ -2263,6 +2267,15 @@
             while (box.children.length > 200) {
                 box.removeChild(box.firstChild);
             }
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function loadChatHistory(messages) {
+            const box = document.getElementById("chat-messages");
+            if (!box) return;
+            box.innerHTML = "";
+            if (!Array.isArray(messages) || !messages.length) return;
+            messages.forEach((msg) => appendChatMessage(msg));
             box.scrollTop = box.scrollHeight;
         }
 

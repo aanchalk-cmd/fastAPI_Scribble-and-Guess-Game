@@ -3,6 +3,7 @@ import asyncio
 import time
 import string
 import uuid
+import json
 import fakeredis
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
 from fastapi.templating import Jinja2Templates
@@ -178,6 +179,20 @@ def cancel_reconnect_grace(room_id: str, username: str) -> bool:
 
 
 CHAT_MAX_LENGTH = 200
+CHAT_HISTORY_LIMIT = 100
+
+
+def chat_redis_key(room_id: str) -> str:
+    return f"chat:{room_id}"
+
+
+def clear_room_chat_history(room_id: Optional[str]):
+    if not room_id:
+        return
+    try:
+        r.delete(chat_redis_key(room_id))
+    except Exception as e:
+        print(f"[CHAT] Failed to clear history for {room_id}: {e}")
 
 
 def is_wait_lobby_eligible(room: GameRoom) -> bool:
@@ -529,6 +544,7 @@ async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
             del rooms[room_id]
             if room_id in public_rooms:
                 del public_rooms[room_id]
+            clear_room_chat_history(room_id)
             await broadcast_lobby_update()
         else:
             # Running public rooms with a free slot reappear in wait lobby via broadcast
@@ -950,6 +966,7 @@ class ConnectionManager:
         Room-scoped chat fanout via this manager's active_connections only.
         Player identity must come from the connection/cookie — never trust a
         client-supplied username for non-system messages.
+        Messages are stored in Redis so refresh/reconnect can restore history.
         """
         text = (message or "").strip()
         if not text:
@@ -966,7 +983,74 @@ class ConnectionManager:
         }
         if self.room:
             payload["room_id"] = self.room.room_id
+            self.store_chat_message(payload)
         await self.broadcast(payload)
+
+    def store_chat_message(self, payload: dict):
+        """Append one chat payload to this room's Redis list (capped)."""
+        room_id = None
+        if self.room:
+            room_id = self.room.room_id
+        elif self.room_id:
+            room_id = self.room_id
+        if not room_id:
+            return
+        try:
+            key = chat_redis_key(room_id)
+            # Store without the event type noise for history replay
+            stored = {
+                "username": payload.get("username"),
+                "message": payload.get("message"),
+                "timestamp": payload.get("timestamp"),
+                "system": bool(payload.get("system")),
+                "room_id": room_id,
+            }
+            r.rpush(key, json.dumps(stored))
+            r.ltrim(key, -CHAT_HISTORY_LIMIT, -1)
+        except Exception as e:
+            print(f"[CHAT] Failed to store message for {room_id}: {e}")
+
+    def get_chat_history(self) -> List[dict]:
+        """Load recent chat messages for this room from Redis."""
+        room_id = None
+        if self.room:
+            room_id = self.room.room_id
+        elif self.room_id:
+            room_id = self.room_id
+        if not room_id:
+            return []
+        try:
+            raw_items = r.lrange(chat_redis_key(room_id), 0, -1) or []
+            messages = []
+            for raw in raw_items:
+                try:
+                    item = json.loads(raw)
+                    if isinstance(item, dict) and item.get("message"):
+                        messages.append({
+                            "type": "chat_message",
+                            "username": item.get("username") or "Unknown",
+                            "message": item.get("message"),
+                            "timestamp": item.get("timestamp") or int(time.time()),
+                            "system": bool(item.get("system")),
+                            "room_id": room_id,
+                        })
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    continue
+            return messages
+        except Exception as e:
+            print(f"[CHAT] Failed to load history for {room_id}: {e}")
+            return []
+
+    async def send_chat_history(self, websocket: WebSocket):
+        """Send stored room chat to one reconnecting/joining socket."""
+        history = self.get_chat_history()
+        try:
+            await websocket.send_json({
+                "type": "chat_history",
+                "messages": history,
+            })
+        except Exception as e:
+            print(f"[CHAT] Failed to send history: {e}")
 
     async def connect(self, websocket: WebSocket, name: str, guest_id: Optional[str] = None):
         original_name = name
@@ -1752,6 +1836,7 @@ async def finalize_player_disconnect(room: GameRoom, username: str):
                 end_room_record(db, room.db_id)
         rooms.pop(room_id, None)
         public_rooms.pop(room_id, None)
+        clear_room_chat_history(room_id)
         await broadcast_lobby_update()
     elif room_id in rooms:
         # Host transfer if host left before game start
@@ -2078,6 +2163,8 @@ async def cleanup_public_room(room_id: str):
     if room_id in public_rooms:
         del public_rooms[room_id]
 
+    clear_room_chat_history(room_id)
+
     print(f"[AUTO-DISCARD] Public room deleted successfully: {room_id}")
 
     # Update lobby
@@ -2283,12 +2370,6 @@ async def websocket_endpoint(
     role = await manager.connect(websocket, username, validated_guest_id)
     print(f"[WEBSOCKET] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
 
-    if not is_reconnect:
-        await manager.broadcast_chat_message(
-            f"{username} joined the room",
-            system=True,
-        )
-
     # After a vacancy wait, start a clean new round once 2+ players are connected.
     resumed_after_rejoin = False
     if (
@@ -2387,6 +2468,13 @@ async def websocket_endpoint(
             "category": room.category,
             "categories": word_manager.get_categories(),
         })
+    # Restore Redis-backed chat after init (before "joined" so no duplicate)
+    await manager.send_chat_history(websocket)
+    if not is_reconnect:
+        await manager.broadcast_chat_message(
+            f"{username} joined the room",
+            system=True,
+        )
     print(
         f"[WEBSOCKET] Sent init to {username}: status={room.status} "
         f"movie_set={bool(manager.game_state['movie'])} "

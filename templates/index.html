@@ -132,9 +132,12 @@
             border-right: 1px solid var(--line-soft);
             padding: 18px 16px;
             text-align: left;
-            overflow-y: auto;
+            overflow: hidden;
             min-height: 0;
             transition: transform 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         #sidebar.open-mobile { transform: translateX(0); }
         .sidebar-title {
@@ -152,8 +155,15 @@
             border: 1px solid rgba(59, 130, 246, 0.28);
             font-size: 0.85rem;
             color: var(--text-dim);
+            flex-shrink: 0;
         }
         .sidebar-status #sidebar-drawer { color: var(--text-main); font-weight: 700; }
+        #player-list {
+            flex: 0 1 auto;
+            max-height: 34%;
+            overflow-y: auto;
+            min-height: 0;
+        }
         .player-item {
             display: flex;
             justify-content: space-between;
@@ -192,6 +202,93 @@
             color: #fb7185 !important;
         }
         .kick-btn:hover { background: var(--accent) !important; color: #fff !important; }
+
+        /* ---------- room chat (sidebar) ---------- */
+        #room-chat {
+            flex: 1 1 auto;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.55);
+            overflow: hidden;
+        }
+        #room-chat .sidebar-title {
+            margin: 0;
+            padding: 10px 12px 8px;
+            border-bottom: 1px solid var(--line-soft);
+            flex-shrink: 0;
+        }
+        #chat-messages {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            min-height: 0;
+        }
+        .chat-msg {
+            font-size: 0.8rem;
+            line-height: 1.35;
+            word-break: break-word;
+        }
+        .chat-msg .chat-meta {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 2px;
+        }
+        .chat-msg .chat-user {
+            font-weight: 800;
+            color: var(--draw-blue);
+            font-size: 0.74rem;
+        }
+        .chat-msg .chat-time {
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            flex-shrink: 0;
+        }
+        .chat-msg .chat-text { color: var(--text-main); }
+        .chat-msg.is-me .chat-user { color: var(--success); }
+        .chat-msg.is-system {
+            text-align: center;
+            color: var(--text-dim);
+            font-style: italic;
+            font-size: 0.74rem;
+            padding: 4px 2px;
+        }
+        .chat-msg.is-system .chat-text {
+            color: var(--warning);
+            font-weight: 600;
+            font-style: normal;
+        }
+        #chat-form {
+            display: flex;
+            gap: 6px;
+            padding: 8px;
+            border-top: 1px solid var(--line-soft);
+            flex-shrink: 0;
+        }
+        #chat-input {
+            flex: 1;
+            min-width: 0;
+            padding: 9px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            background: var(--bg-2, #0f172a);
+            color: var(--text-main);
+            font: inherit;
+            font-size: 16px; /* avoid iOS zoom */
+            outline: none;
+        }
+        #chat-input:focus { border-color: var(--primary); }
+        #chat-send {
+            padding: 9px 12px;
+            min-height: 40px;
+            flex-shrink: 0;
+        }
 
         /* ---------- content ---------- */
         #content {
@@ -483,6 +580,7 @@
             touch-action: manipulation;
             transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         }
+        #sidebar-toggle { display: none; }
         .btn:hover, .btn-restart:hover, #sidebar-toggle:hover {
             background: rgba(148, 163, 184, 0.16);
             border-color: rgba(148, 163, 184, 0.4);
@@ -747,30 +845,41 @@
 
         /* ---------- responsive ---------- */
         @media (max-width: 1024px) {
-            .main-container { flex-direction: column; }
-            #sidebar {
-                width: 100%;
-                border-right: none;
-                border-top: 1px solid var(--line-soft);
-                max-height: 240px;
-            }
             #content { padding: 14px; }
             #canvas { max-height: 45vh; }
             .toolbar { gap: 6px; padding: 9px; }
             .btn, .btn-restart { font-size: 0.86rem; }
+            #sidebar-toggle { display: inline-flex; }
+            #sidebar {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: min(86vw, 320px);
+                max-width: 320px;
+                height: 100%;
+                height: 100dvh;
+                max-height: none;
+                padding-top: calc(18px + env(safe-area-inset-top, 0px));
+                padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+                transform: translateX(-105%);
+                z-index: 200;
+                box-shadow: 12px 0 40px -20px rgba(2, 6, 23, 0.9);
+                border-right: 1px solid var(--line-soft);
+            }
+            #sidebar.open-mobile { transform: translateX(0); }
+            #sidebar.hidden-mobile { transform: translateX(-105%); }
+            #player-list { max-height: 28%; }
+            #room-chat { min-height: 200px; }
         }
         @media (max-width: 768px) {
             header { padding: 10px 12px; }
             #sidebar-toggle { display: inline-flex; }
             #sidebar {
-                position: fixed;
-                left: 0;
                 top: 58px;
+                height: calc(100% - 58px);
+                height: calc(100dvh - 58px);
                 width: 78%;
                 max-width: 300px;
-                height: calc(100% - 58px);
-                transform: translateX(-105%);
-                z-index: 200;
             }
             #sidebar.open-mobile { transform: translateX(0); }
             #sidebar.hidden-mobile { transform: translateX(-105%); }
@@ -845,8 +954,23 @@
             <div class="sidebar-status">
                 Drawer: <span id="sidebar-drawer">Waiting...</span>
             </div>
-            <div class="sidebar-title" style="margin-top: 18px;">Leaderboard</div>
+            <div class="sidebar-title" style="margin-top: 4px; margin-bottom: 8px;">Leaderboard</div>
             <div id="player-list"></div>
+
+            <div id="room-chat" aria-label="Room chat">
+                <div class="sidebar-title">Room Chat</div>
+                <div id="chat-messages" role="log" aria-live="polite"></div>
+                <form id="chat-form" autocomplete="off">
+                    <input
+                        id="chat-input"
+                        type="text"
+                        maxlength="200"
+                        placeholder="Type a message..."
+                        aria-label="Chat message"
+                    >
+                    <button type="submit" id="chat-send" class="btn">Send</button>
+                </form>
+            </div>
         </div>
 
         <div id="content">
@@ -1055,6 +1179,10 @@
                     errorDiv.classList.remove('hidden');
                 }
                 showToast("⚠️ " + data.message);
+                return;
+            }
+            if (data.type === "chat_message") {
+                appendChatMessage(data);
                 return;
             }
             if (data.type === "player_list") {
@@ -2085,6 +2213,100 @@
                 window.location.href = "/leave";
             }
         }
+
+        // ============= ROOM CHAT =============
+        const CHAT_MAX_LENGTH = 200;
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
+        }
+
+        function formatChatTime(ts) {
+            try {
+                const d = ts ? new Date(Number(ts) * 1000) : new Date();
+                if (Number.isNaN(d.getTime())) return "";
+                return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            } catch (_) {
+                return "";
+            }
+        }
+
+        function appendChatMessage(data) {
+            const box = document.getElementById("chat-messages");
+            if (!box) return;
+            const isSystem = !!data.system;
+            const row = document.createElement("div");
+            row.className = "chat-msg" + (isSystem ? " is-system" : "") +
+                (!isSystem && data.username === myName ? " is-me" : "");
+
+            const text = escapeHtml(data.message || "");
+            if (isSystem) {
+                row.innerHTML = `<span class="chat-text">${text}</span>`;
+            } else {
+                const user = escapeHtml(data.username || "Unknown");
+                const time = escapeHtml(formatChatTime(data.timestamp));
+                row.innerHTML = `
+                    <div class="chat-meta">
+                        <span class="chat-user">${user}</span>
+                        <span class="chat-time">${time}</span>
+                    </div>
+                    <div class="chat-text">${text}</div>
+                `;
+            }
+            box.appendChild(row);
+            // Cap DOM size for rapid spam
+            while (box.children.length > 200) {
+                box.removeChild(box.firstChild);
+            }
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function sendChatMessage(event) {
+            if (event) event.preventDefault();
+            const input = document.getElementById("chat-input");
+            if (!input) return;
+            const text = (input.value || "").trim();
+            if (!text) return;
+            if (text.length > CHAT_MAX_LENGTH) {
+                showToast(`Message too long (max ${CHAT_MAX_LENGTH})`);
+                return;
+            }
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                showToast("Chat unavailable — reconnecting…");
+                return;
+            }
+            try {
+                // Do not send room_id/username — server uses cookie identity
+                ws.send(JSON.stringify({
+                    type: "chat_message",
+                    message: text,
+                }));
+                input.value = "";
+                input.focus();
+            } catch (err) {
+                console.debug("[CHAT] send failed", err);
+                showToast("Failed to send message");
+            }
+        }
+
+        (function initRoomChat() {
+            const form = document.getElementById("chat-form");
+            const input = document.getElementById("chat-input");
+            if (form) form.addEventListener("submit", sendChatMessage);
+            if (input) {
+                input.addEventListener("keydown", (e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        sendChatMessage();
+                    }
+                });
+            }
+        })();
         
         // ============= VOTE KICK FUNCTIONALITY =============
         let currentVoteKickTarget = null;

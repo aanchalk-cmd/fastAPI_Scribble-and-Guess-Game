@@ -167,11 +167,17 @@ def reconnect_grace_key(room_id: str, username: str) -> str:
     return f"{room_id}:{username}"
 
 
-def cancel_reconnect_grace(room_id: str, username: str):
+def cancel_reconnect_grace(room_id: str, username: str) -> bool:
+    """Cancel pending reconnect grace. Returns True if an active grace was cancelled."""
     key = reconnect_grace_key(room_id, username)
     task = reconnect_grace_timers.pop(key, None)
     if task and not task.done() and task is not asyncio.current_task():
         task.cancel()
+        return True
+    return False
+
+
+CHAT_MAX_LENGTH = 200
 
 
 def is_wait_lobby_eligible(room: GameRoom) -> bool:
@@ -787,6 +793,10 @@ class ConnectionManager:
             "drawer_name": new_drawer_name,
             "message": f"Drawer changed. New drawer: {new_drawer_name}.",
         })
+        await self.broadcast_chat_message(
+            f"{new_drawer_name} is now drawing",
+            system=True,
+        )
 
         # Auto-send 3 word options to the new drawer from the room category
         await self.send_word_options_to_drawer()
@@ -824,6 +834,10 @@ class ConnectionManager:
             "drawer_name": new_drawer,
             "message": f"⏱️ Time's up for {old_drawer}. New drawer: {new_drawer}."
         })
+        await self.broadcast_chat_message(
+            f"{new_drawer} is now drawing",
+            system=True,
+        )
 
         await self.broadcast({
             "type": "player_list",
@@ -924,6 +938,35 @@ class ConnectionManager:
         players = [{"name": name, "score": self.get_player_score(name)} 
                    for name in self.active_connections.keys()]
         return sorted(players, key=lambda x: x['score'], reverse=True)
+
+    async def broadcast_chat_message(
+        self,
+        message: str,
+        *,
+        username: Optional[str] = None,
+        system: bool = False,
+    ):
+        """
+        Room-scoped chat fanout via this manager's active_connections only.
+        Player identity must come from the connection/cookie — never trust a
+        client-supplied username for non-system messages.
+        """
+        text = (message or "").strip()
+        if not text:
+            return
+        if len(text) > CHAT_MAX_LENGTH:
+            text = text[:CHAT_MAX_LENGTH]
+
+        payload = {
+            "type": "chat_message",
+            "username": "System" if system else (username or "Unknown"),
+            "message": text,
+            "timestamp": int(time.time()),
+            "system": bool(system),
+        }
+        if self.room:
+            payload["room_id"] = self.room.room_id
+        await self.broadcast(payload)
 
     async def connect(self, websocket: WebSocket, name: str, guest_id: Optional[str] = None):
         original_name = name
@@ -1405,6 +1448,10 @@ class ConnectionManager:
                         "round_number": self.get_display_round(),
                         "total_rounds": self.get_display_total_rounds(),
                     })
+                    await self.broadcast_chat_message(
+                        "Round ended — time's up!",
+                        system=True,
+                    )
                     if is_final_round:
                         # Brief pause to show the reveal, then Quit / Continue UI
                         await asyncio.sleep(2)
@@ -1502,6 +1549,10 @@ class ConnectionManager:
 
         # Drawer's turn begins — send three random words from the room category
         await self.send_word_options_to_drawer()
+        await self.broadcast_chat_message(
+            f"Round {self.get_display_round()} started — {new_drawer_name} is now drawing",
+            system=True,
+        )
 
     async def continue_game(self, category: Optional[str] = None):
         """
@@ -1613,6 +1664,10 @@ class ConnectionManager:
                     self.game_state["drawer_name"] = None
             
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
+            await self.broadcast_chat_message(
+                f"{name} left the room",
+                system=True,
+            )
 manager = ConnectionManager()
 
 def process_movie(movie: str, show_vowels: bool = True):
@@ -1682,6 +1737,10 @@ async def finalize_player_disconnect(room: GameRoom, username: str):
             "type": "player_list",
             "players": room.manager.get_player_data(),
         })
+        await room.manager.broadcast_chat_message(
+            f"{username} left the room",
+            system=True,
+        )
 
     if waiting_for_rejoin and room.manager.active_connections and len(room.players) == 1:
         await offer_rejoin_choice(room)
@@ -2215,8 +2274,20 @@ async def websocket_endpoint(
     print(f"[WEBSOCKET] Connecting: {username} to room {room_id} (guest={validated_guest_id})")
     print(f"[WEBSOCKET] Room status={room.status} game_started={room.game_started} players={len(room.players)}/{room.max_players}")
 
+    # Detect refresh reconnect so we don't spam "joined" system chat
+    is_reconnect = bool(
+        reconnect_grace_timers.get(reconnect_grace_key(room_id, username))
+        and not reconnect_grace_timers[reconnect_grace_key(room_id, username)].done()
+    )
+
     role = await manager.connect(websocket, username, validated_guest_id)
     print(f"[WEBSOCKET] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
+
+    if not is_reconnect:
+        await manager.broadcast_chat_message(
+            f"{username} joined the room",
+            system=True,
+        )
 
     # After a vacancy wait, start a clean new round once 2+ players are connected.
     resumed_after_rejoin = False
@@ -2335,6 +2406,8 @@ async def websocket_endpoint(
     try:
         while True:
             data = await websocket.receive_json()
+            if not isinstance(data, dict) or "type" not in data:
+                continue
             if data["type"] == "start_game":
                 print(f"[GAME] start_game event from {username} in room {room_id}. Is host? {username == room.host}")
                 if username == room.host:
@@ -2439,9 +2512,51 @@ async def websocket_endpoint(
                     "round_number": manager.get_display_round(),
                     "total_rounds": manager.get_display_total_rounds(),
                 })
+                await manager.broadcast_chat_message(
+                    f"{username} guessed correctly!",
+                    system=True,
+                )
                 # Last round finished — show Quit / Continue (no "Next Round")
                 if is_final_round:
                     await manager.end_game()
+            elif data["type"] == "chat_message":
+                # Room chat only — never treated as a guess.
+                # Trust cookie/connection identity; ignore client room_id/username.
+                if (
+                    not username
+                    or username not in manager.active_connections
+                    or username not in room.players
+                ):
+                    try:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Cannot send chat message.",
+                        })
+                    except Exception:
+                        pass
+                else:
+                    raw = data.get("message")
+                    if raw is None:
+                        raw = data.get("text") or data.get("content") or ""
+                    if not isinstance(raw, str):
+                        raw = ""
+                    text = raw.strip()
+                    if not text:
+                        pass
+                    elif len(text) > CHAT_MAX_LENGTH:
+                        try:
+                            await websocket.send_json({
+                                "type": "error",
+                                "message": f"Chat message too long (max {CHAT_MAX_LENGTH} characters).",
+                            })
+                        except Exception:
+                            pass
+                    else:
+                        await manager.broadcast_chat_message(
+                            text,
+                            username=username,
+                            system=False,
+                        )
             elif data["type"] == "restart":
                 # Ignore mid-click "next round" once the series is already complete
                 if manager.current_round >= manager.total_rounds or manager.game_complete:

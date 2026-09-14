@@ -3,16 +3,14 @@ import asyncio
 import time
 import string
 import uuid
-import json
 import fakeredis
-from pathlib import Path
-
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
+from pathlib import Path
 
 from database import init_db
 from app.services.word_manager import (
@@ -46,11 +44,8 @@ from db_helpers import (
 app = FastAPI()
 r = fakeredis.FakeRedis(decode_responses=True)
 templates = Jinja2Templates(directory="templates")
-app.mount(
-    "/static",
-    StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
-    name="static",
-)
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.add_middleware(
     CORSMiddleware,
@@ -1907,7 +1902,6 @@ async def get(request: Request):
         {
             "request": request,
             "categories": word_manager.get_categories(),
-            "categories_json": json.dumps(word_manager.get_categories()),
         },
     )
 

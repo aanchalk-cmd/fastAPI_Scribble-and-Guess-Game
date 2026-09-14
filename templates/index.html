@@ -1025,7 +1025,7 @@
             }
         }
 
-        // After "CREATE & COPY LINK" from lobby — auto-copy invite once on /game
+        // Create & Copy Link from lobby: copy invite once we land in the room
         try {
             if (sessionStorage.getItem("movie_guess_copy_invite") === "1") {
                 sessionStorage.removeItem("movie_guess_copy_invite");

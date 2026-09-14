@@ -81,30 +81,12 @@ class WordManager:
                 print(f"[WORD_MANAGER]   {name}: {len(words)} words")
 
     def get_categories(self) -> List[str]:
-        """Return sorted list of available category names (includes virtual `mix`)."""
+        """Return sorted list of available category names."""
         with self._lock:
-            names = set(self._categories.keys())
-            if "movies" in names and "characters" in names:
-                names.add("mix")
-            return sorted(names)
+            return sorted(self._categories.keys())
 
     def _require_category(self, category: str) -> List[str]:
         with self._lock:
-            if category == "mix":
-                movies = self._categories.get("movies") or []
-                characters = self._categories.get("characters") or []
-                if not movies and not characters:
-                    raise CategoryNotFoundError(category, self.get_categories())
-                # Merge without mutating stored pools
-                seen = set()
-                pooled: List[str] = []
-                for word in movies + characters:
-                    key = word.lower()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    pooled.append(word)
-                return pooled
             if category not in self._categories:
                 raise CategoryNotFoundError(category, self.get_categories())
             # Return a shallow copy so callers cannot mutate the pool
@@ -132,20 +114,16 @@ class WordManager:
 
     def has_category(self, category: str) -> bool:
         with self._lock:
-            if category == "mix":
-                return "movies" in self._categories and "characters" in self._categories
             return category in self._categories
 
     def normalize_category(self, category: Optional[str], default: str = "movies") -> str:
         """
         Validate a category name; fall back to default (or first available) if invalid.
         """
-        if category:
-            category = str(category).strip().lower()
         with self._lock:
-            if category and self.has_category(category):
+            if category and category in self._categories:
                 return category
-            if default in self._categories or (default == "mix" and self.has_category("mix")):
+            if default in self._categories:
                 return default
             if self._categories:
                 return next(iter(self._categories.keys()))

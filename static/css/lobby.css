@@ -9,7 +9,9 @@
     --mg-grey: #d9d9d9;
     --mg-grey-2: #c8c8c8;
     --font-display: "Nunito", system-ui, -apple-system, sans-serif;
-    --card-w: min(380px, calc(100vw - 36px));
+    /* Larger film strip box (user request: increase height + width) */
+    --card-w: min(520px, calc(100vw - 48px));
+    --card-min-h: min(720px, calc(100dvh - 120px));
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
@@ -31,15 +33,10 @@ body.lobby-body {
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
     background-color: #fff;
-    background-image: url("/static/img/lobby/decor-frame.png");
+    background-image: url("/static/img/lobby/frame.png");
     background-repeat: no-repeat;
-    background-position: center top;
-    background-size: min(1280px, 100vw) auto;
-}
-
-/* On large screens the full frame art is enough — hide duplicate props */
-@media (min-width: 900px) {
-    .decor { display: none; }
+    background-position: center center;
+    background-size: cover;
 }
 
 .lobby-shell {
@@ -48,29 +45,30 @@ body.lobby-body {
     min-height: 100vh;
     min-height: 100dvh;
     padding:
-        calc(20px + var(--safe-top))
-        16px
-        calc(28px + var(--safe-bottom));
+        calc(18px + var(--safe-top))
+        20px
+        calc(24px + var(--safe-bottom));
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: flex-start;
 }
 
-/* ---------- header: title centered, PUBLIC ROOMS top-right ---------- */
+/* ---------- header ---------- */
 .lobby-top {
     position: relative;
-    width: min(1100px, 100%);
-    min-height: 56px;
+    width: min(1200px, 100%);
+    min-height: 64px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 10px;
+    margin-bottom: 18px;
 }
 
 .brand-title {
     margin: 0;
     font-weight: 900;
-    font-size: clamp(1.85rem, 4.2vw, 2.55rem);
+    font-size: clamp(2rem, 4.5vw, 2.85rem);
     letter-spacing: -0.03em;
     line-height: 1;
     color: var(--mg-ink);
@@ -88,25 +86,26 @@ body.lobby-body {
     color: var(--mg-ink);
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     letter-spacing: 0.06em;
-    padding: 12px 18px;
+    padding: 13px 20px;
     cursor: pointer;
-    min-height: 42px;
+    min-height: 44px;
     touch-action: manipulation;
     box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+    z-index: 3;
 }
 
 .top-btn:active { filter: brightness(0.97); }
 
-/* ---------- real design assets around the card ---------- */
+/* Extra prop images (frame already has side art on desktop) */
 .decor {
     position: fixed;
     z-index: 0;
     pointer-events: none;
     user-select: none;
-    /* assets exported on black — screen removes black over white page */
-    mix-blend-mode: screen;
+    display: none;
+    mix-blend-mode: multiply;
 }
 
 .decor img {
@@ -127,7 +126,9 @@ body.lobby-body {
 .screen {
     display: none;
     width: 100%;
+    flex: 1;
     justify-content: center;
+    align-items: center;
     position: relative;
     z-index: 2;
 }
@@ -135,44 +136,75 @@ body.lobby-body {
 
 .film-card {
     width: var(--card-w);
+    min-height: var(--card-min-h);
     background: var(--mg-card);
     color: #fff;
-    border-radius: 10px;
+    border-radius: 14px;
     position: relative;
-    padding: 26px 20px 22px;
-    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.22);
+    padding: 34px 28px 30px;
+    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 /* film sprocket borders — white squares on black strip */
 .film-card::before,
 .film-card::after {
+    margin: 8px;
     content: "";
     position: absolute;
     left: 0;
     right: 0;
-    height: 16px;
+    height: 18px;
     background:
         repeating-linear-gradient(
             90deg,
-            #fff 0 11px,
-            var(--mg-card) 11px 18px
+            #fff 0 12px,
+            var(--mg-card) 12px 20px
         );
 }
 .film-card::before { top: 0; }
 .film-card::after { bottom: 0; }
 
 .film-inner {
-    padding: 10px 2px 8px;
+    padding: 14px 6px 10px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    flex: 1;
+}
+
+#create-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    flex: 1;
+}
+
+#create-pane .btn-primary,
+#code-pane .btn-primary {
+    margin-top: auto;
+}
+
+#code-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    flex: 1;
+}
 
 .field-label {
     display: block;
-    margin: 0 0 8px;
+    margin: 0 0 10px;
     font-weight: 900;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     letter-spacing: 0.08em;
     color: #fff;
     text-transform: uppercase;
@@ -183,14 +215,14 @@ body.lobby-body {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
 
 .field-row .field-label { margin: 0; }
 
 .field-value {
     font-weight: 900;
-    font-size: 0.9rem;
+    font-size: 0.98rem;
     color: var(--mg-yellow);
     letter-spacing: 0.04em;
 }
@@ -199,20 +231,20 @@ body.lobby-body {
 .mode-tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-bottom: 18px;
+    gap: 12px;
+    margin-bottom: 8px;
 }
 
 .mode-tab {
     border: none;
     border-radius: 999px;
-    padding: 13px 8px;
+    padding: 15px 10px;
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.72rem;
+    font-size: 0.8rem;
     letter-spacing: 0.05em;
     cursor: pointer;
-    min-height: 46px;
+    min-height: 52px;
     touch-action: manipulation;
     background: var(--mg-grey);
     color: var(--mg-ink);
@@ -228,18 +260,18 @@ body.lobby-body {
 .pill-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 10px;
     align-items: center;
 }
 
 .pill {
     border: none;
     border-radius: 999px;
-    padding: 9px 16px;
-    min-height: 38px;
+    padding: 11px 18px;
+    min-height: 42px;
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     letter-spacing: 0.05em;
     background: #fff;
     color: var(--mg-ink);
@@ -251,13 +283,13 @@ body.lobby-body {
 .pill.is-active { background: var(--mg-yellow); }
 
 .pill-round {
-    width: 42px;
-    height: 42px;
-    min-height: 42px;
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
     padding: 0;
     display: inline-grid;
     place-items: center;
-    font-size: 0.95rem;
+    font-size: 1.05rem;
 }
 
 /* sliders — popcorn thumb from design asset */
@@ -265,7 +297,7 @@ body.lobby-body {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
-    height: 8px;
+    height: 10px;
     border-radius: 999px;
     background: linear-gradient(90deg, var(--mg-yellow) 0%, #2a2a2a 100%);
     outline: none;
@@ -274,8 +306,8 @@ body.lobby-body {
 .mg-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 36px;
-    height: 44px;
+    width: 42px;
+    height: 50px;
     border: none;
     background: url("/static/img/lobby/popcorn-thumb.png") center / contain no-repeat;
     background-color: transparent;
@@ -284,8 +316,8 @@ body.lobby-body {
 }
 
 .mg-slider::-moz-range-thumb {
-    width: 36px;
-    height: 44px;
+    width: 42px;
+    height: 50px;
     border: none;
     border-radius: 0;
     background: url("/static/img/lobby/popcorn-thumb.png") center / contain no-repeat;
@@ -297,13 +329,13 @@ body.lobby-body {
 .toggle-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
 }
 
 .toggle {
     position: relative;
-    width: 50px;
-    height: 28px;
+    width: 54px;
+    height: 30px;
     flex-shrink: 0;
 }
 
@@ -318,7 +350,7 @@ body.lobby-body {
     position: absolute;
     inset: 0;
     background: #3a3a3a;
-    border-radius: 7px;
+    border-radius: 8px;
     cursor: pointer;
     transition: background 0.15s ease;
 }
@@ -328,22 +360,22 @@ body.lobby-body {
     position: absolute;
     top: 3px;
     left: 3px;
-    width: 22px;
-    height: 22px;
-    border-radius: 5px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
     background: #9a9a9a;
     transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .toggle input:checked + .toggle-ui { background: #2f2f2f; }
 .toggle input:checked + .toggle-ui::after {
-    transform: translateX(20px);
+    transform: translateX(22px);
     background: var(--mg-yellow);
 }
 
 .toggle-label {
     font-weight: 900;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
 }
@@ -351,19 +383,19 @@ body.lobby-body {
 .btn-primary {
     width: 100%;
     border: none;
-    border-radius: 14px;
+    border-radius: 16px;
     background: var(--mg-red);
     color: #fff;
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.92rem;
+    font-size: 1rem;
     letter-spacing: 0.05em;
-    padding: 15px 16px;
-    min-height: 52px;
+    padding: 17px 18px;
+    min-height: 58px;
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
-    margin-top: 4px;
+    margin-top: 8px;
 }
 
 .btn-primary:active:not(:disabled) { filter: brightness(0.95); }
@@ -373,13 +405,13 @@ body.lobby-body {
 .code-input {
     width: 100%;
     border: none;
-    border-radius: 12px;
+    border-radius: 14px;
     background: #fff;
     color: var(--mg-ink);
     font-family: var(--font-display);
     font-weight: 800;
     font-size: 16px;
-    padding: 14px 16px;
+    padding: 16px 18px;
     outline: none;
 }
 
@@ -415,9 +447,9 @@ body.lobby-body {
 .error-banner.is-visible { display: block; }
 
 .public-title {
-    margin: 0 0 12px;
+    margin: 0 0 16px;
     font-weight: 900;
-    font-size: 1.05rem;
+    font-size: 1.15rem;
     letter-spacing: 0.08em;
     text-align: center;
     text-transform: uppercase;
@@ -426,7 +458,9 @@ body.lobby-body {
 .room-list {
     display: flex;
     flex-direction: column;
-    max-height: min(58vh, 480px);
+    flex: 1;
+    max-height: none;
+    min-height: 360px;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -436,14 +470,14 @@ body.lobby-body {
     grid-template-columns: 1fr auto;
     gap: 12px;
     align-items: center;
-    padding: 14px 2px;
+    padding: 16px 2px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 .room-row:last-child { border-bottom: none; }
 
 .room-id {
     font-weight: 900;
-    font-size: 1.05rem;
+    font-size: 1.12rem;
     letter-spacing: 0.04em;
 }
 
@@ -451,12 +485,18 @@ body.lobby-body {
     margin-top: 4px;
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    align-items: center;
+    gap: 0;
     color: var(--mg-yellow);
     font-weight: 800;
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+}
+.room-meta span + span::before {
+    content: "|";
+    margin: 0 8px;
+    opacity: 0.7;
 }
 
 .join-btn {
@@ -466,10 +506,10 @@ body.lobby-body {
     color: var(--mg-ink);
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     letter-spacing: 0.04em;
-    padding: 12px 16px;
-    min-height: 42px;
+    padding: 13px 18px;
+    min-height: 46px;
     cursor: pointer;
     touch-action: manipulation;
 }
@@ -478,31 +518,39 @@ body.lobby-body {
 .empty-state {
     text-align: center;
     color: rgba(255, 255, 255, 0.65);
-    padding: 28px 8px;
-    font-size: 0.9rem;
+    padding: 40px 8px;
+    font-size: 0.95rem;
     font-weight: 700;
 }
 
 .name-screen .film-inner {
-    min-height: 220px;
+    min-height: 280px;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 18px;
+    gap: 22px;
 }
 
 .hidden { display: none !important; }
 
-@media (max-width: 899px) {
-    body.lobby-body {
-        background-image: none;
+/* Desktop: keep side art from frame; room for wider card */
+@media (min-width: 1100px) {
+    :root {
+        --card-w: min(560px, 42vw);
+        --card-min-h: min(760px, calc(100dvh - 110px));
     }
 }
 
-@media (max-width: 960px) {
-    .decor-clap { width: 120px; left: -20px; }
-    .decor-reel { width: 110px; right: -18px; }
-    .decor-ticket, .decor-soda, .decor-popcorn, .decor-camera { opacity: 0.9; }
+@media (max-width: 900px) {
+    body.lobby-body {
+        background-image: none;
+        background-color: #fff;
+    }
+    .decor { display: block; }
+    :root {
+        --card-w: min(480px, calc(100vw - 40px));
+        --card-min-h: min(680px, calc(100dvh - 110px));
+    }
 }
 
 @media (max-width: 720px) {
@@ -518,11 +566,21 @@ body.lobby-body {
         min-height: 38px;
     }
     .brand-title { font-size: 1.55rem; padding: 0 96px 0 0; text-align: left; width: 100%; }
-    .lobby-top { justify-content: flex-start; }
+    .lobby-top { justify-content: flex-start; margin-bottom: 12px; }
+    :root {
+        --card-w: calc(100vw - 28px);
+        --card-min-h: min(640px, calc(100dvh - 100px));
+    }
+    .film-card { padding: 28px 18px 24px; border-radius: 12px; }
+    .stack, #create-pane { gap: 18px; }
 }
 
 @media (max-width: 420px) {
     .decor { display: none !important; }
     .brand-title { padding-right: 108px; font-size: 1.4rem; }
-    .mode-tab { font-size: 0.62rem; }
+    .mode-tab { font-size: 0.68rem; min-height: 48px; }
+    :root {
+        --card-min-h: auto;
+    }
+    .film-card { min-height: auto; }
 }

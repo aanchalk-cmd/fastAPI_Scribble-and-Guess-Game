@@ -95,6 +95,7 @@
             pendingAction: state.pendingAction,
             copyLink: state.copyLink,
             name: state.name,
+            cameFromPublic: !!state.cameFromPublic,
         };
         try {
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
@@ -118,6 +119,7 @@
                 pendingAction: draft.pendingAction || "create",
                 copyLink: !!draft.copyLink,
                 name: draft.name || "",
+                cameFromPublic: !!draft.cameFromPublic,
             });
         } catch (_) { /* ignore */ }
     }
@@ -158,8 +160,19 @@
         render();
     }
 
+    function resolveCategoryForSubmit() {
+        if (state.category === "mix") {
+            const pool = ["movies", "characters"].filter((c) => categories.includes(c));
+            if (pool.length) {
+                return pool[Math.floor(Math.random() * pool.length)];
+            }
+        }
+        if (categories.includes(state.category)) return state.category;
+        return categories.includes("movies") ? "movies" : (categories[0] || "movies");
+    }
+
     function renderCategoryPills() {
-        // Design shows Movies + Characters only on create screen
+        // Design: Movies, Characters, Mix (Mix = random of available real categories)
         const preferred = ["movies", "characters"];
         const ordered = preferred.filter((c) => categories.includes(c));
         const list = ordered.length ? ordered : categories.slice(0, 2);
@@ -176,6 +189,18 @@
             });
             els.categoryRow.appendChild(btn);
         });
+        if (list.length >= 2) {
+            const mixBtn = document.createElement("button");
+            mixBtn.type = "button";
+            mixBtn.className = "pill" + (state.category === "mix" ? " is-active" : "");
+            mixBtn.textContent = "MIX";
+            mixBtn.addEventListener("click", () => {
+                state.category = "mix";
+                saveDraft();
+                render();
+            });
+            els.categoryRow.appendChild(mixBtn);
+        }
     }
 
     function renderRounds() {
@@ -281,7 +306,7 @@
         els.fields.maxPlayers.value = String(state.maxPlayers);
         els.fields.rounds.value = String(state.rounds);
         els.fields.duration.value = String(state.duration);
-        els.fields.category.value = state.category;
+        els.fields.category.value = resolveCategoryForSubmit();
         els.fields.roomCode.value = (state.roomCode || "").toUpperCase().trim();
 
         if (state.pendingAction === "create") {

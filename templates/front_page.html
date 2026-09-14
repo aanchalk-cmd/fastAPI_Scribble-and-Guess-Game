@@ -4,37 +4,17 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#ffffff">
-    <title>Movie Guess — Play</title>
+    <title>Movie Guess</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/lobby.css">
 </head>
 <body class="lobby-body">
-    <!-- Design assets (provided) -->
-    <div class="decor decor-clap" aria-hidden="true">
-        <img src="/static/img/lobby/clapper.png" alt="">
-    </div>
-    <div class="decor decor-ticket" aria-hidden="true">
-        <img src="/static/img/lobby/ticket.png" alt="">
-    </div>
-    <div class="decor decor-soda" aria-hidden="true">
-        <img src="/static/img/lobby/soda.png" alt="">
-    </div>
-    <div class="decor decor-reel" aria-hidden="true">
-        <img src="/static/img/lobby/reel.png" alt="">
-    </div>
-    <div class="decor decor-popcorn" aria-hidden="true">
-        <img src="/static/img/lobby/popcorn.png" alt="">
-    </div>
-    <div class="decor decor-camera" aria-hidden="true">
-        <img src="/static/img/lobby/camera.png" alt="">
-    </div>
-
     <div
-        class="lobby-shell"
         id="lobby-app"
-        data-categories="{{ categories_json | safe }}"
+        class="lobby-shell"
+        data-categories='{{ categories | tojson }}'
     >
         <header class="lobby-top">
             <h1 class="brand-title" id="brand-title">Movie Guess</h1>
@@ -43,35 +23,43 @@
 
         <div id="error-banner" class="error-banner" role="alert"></div>
 
-        <!-- SCREEN 1: Create / Have a code -->
-        <section class="screen is-active" id="screen-create" aria-label="Create room">
+        <!-- Decorative cinema props (hidden / reduced on small screens via CSS) -->
+        <div class="decor decor-clap" aria-hidden="true"><img src="/static/img/lobby/clap.png" alt=""></div>
+        <div class="decor decor-ticket" aria-hidden="true"><img src="/static/img/lobby/ticket.png" alt=""></div>
+        <div class="decor decor-soda" aria-hidden="true"><img src="/static/img/lobby/soda.png" alt=""></div>
+        <div class="decor decor-reel" aria-hidden="true"><img src="/static/img/lobby/reel.png" alt=""></div>
+        <div class="decor decor-popcorn" aria-hidden="true"><img src="/static/img/lobby/popcorn.png" alt=""></div>
+        <div class="decor decor-camera" aria-hidden="true"><img src="/static/img/lobby/camera.png" alt=""></div>
+
+        <!-- ===== Screen 1: Create / Have a code ===== -->
+        <section id="screen-create" class="screen is-active" aria-label="Create room">
             <div class="film-card">
-                <div class="film-inner">
+                <div class="film-inner stack">
                     <div class="mode-tabs" role="tablist">
                         <button type="button" class="mode-tab is-active" data-tab="create" role="tab">CREATE ROOM</button>
                         <button type="button" class="mode-tab" data-tab="code" role="tab">I HAVE A CODE</button>
                     </div>
 
-                    <div id="create-pane" class="stack">
+                    <div id="create-pane">
                         <div>
-                            <span class="field-label">CATEGORY</span>
-                            <div class="pill-row" id="category-pills"></div>
+                            <span class="field-label">Category</span>
+                            <div id="category-pills" class="pill-row"></div>
                         </div>
 
                         <div>
-                            <span class="field-label">NUMBER OF ROUND</span>
-                            <div class="pill-row" id="rounds-pills"></div>
+                            <span class="field-label">Number of Round</span>
+                            <div id="rounds-pills" class="pill-row"></div>
                         </div>
 
                         <div>
                             <div class="field-row">
-                                <span class="field-label">TIME DURATION</span>
+                                <span class="field-label">Time Duration</span>
                                 <span class="field-value" id="duration-val">5 MIN</span>
                             </div>
                             <input
-                                class="mg-slider"
-                                id="duration-slider"
                                 type="range"
+                                id="duration-slider"
+                                class="mg-slider"
                                 min="1"
                                 max="10"
                                 value="5"
@@ -84,91 +72,87 @@
                                 <input type="checkbox" id="public-toggle">
                                 <span class="toggle-ui"></span>
                             </label>
-                            <span class="toggle-label">PUBLIC ROOM</span>
+                            <span class="toggle-label">Public Room</span>
                         </div>
 
                         <div id="max-players-wrap">
                             <div class="field-row">
-                                <span class="field-label">MAX PLAYER</span>
+                                <span class="field-label">Max Player</span>
                                 <span class="field-value" id="max-players-val">4</span>
                             </div>
                             <input
-                                class="mg-slider"
-                                id="max-players-slider"
                                 type="range"
+                                id="max-players-slider"
+                                class="mg-slider"
                                 min="2"
                                 max="10"
                                 value="4"
-                                aria-label="Max players"
+                                aria-label="Maximum players"
                             >
                         </div>
 
                         <button type="button" class="btn-primary" id="create-copy-btn">CREATE &amp; COPY LINK</button>
                     </div>
 
-                    <div id="code-pane" class="stack hidden">
-                        <div>
-                            <span class="field-label">ROOM CODE</span>
-                            <input
-                                class="code-input"
-                                id="have-code-input"
-                                type="text"
-                                maxlength="6"
-                                placeholder="ABC123"
-                                autocomplete="off"
-                                spellcheck="false"
-                            >
-                        </div>
+                    <div id="code-pane" class="hidden">
+                        <label class="field-label" for="have-code-input">Room Code</label>
+                        <input
+                            type="text"
+                            id="have-code-input"
+                            class="code-input"
+                            maxlength="6"
+                            placeholder="ABC123"
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
                         <button type="button" class="btn-primary" id="have-code-continue">CONTINUE</button>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- SCREEN 2: Public rooms -->
-        <section class="screen" id="screen-public" aria-label="Public rooms">
-            <div class="film-card public-card">
+        <!-- ===== Screen 2: Public rooms ===== -->
+        <section id="screen-public" class="screen" aria-label="Public rooms">
+            <div class="film-card">
                 <div class="film-inner">
-                    <h2 class="public-title">PUBLIC ROOMS</h2>
-                    <div class="room-list" id="room-list">
+                    <h2 class="public-title">Public Rooms</h2>
+                    <div id="room-list" class="room-list">
                         <p class="empty-state">Looking for active games...</p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- SCREEN 3: Name -->
-        <section class="screen name-screen" id="screen-name" aria-label="Enter name">
+        <!-- ===== Screen 3: Enter name ===== -->
+        <section id="screen-name" class="screen name-screen" aria-label="Enter name">
             <div class="film-card">
-                <div class="film-inner">
+                <form id="join-form" class="film-inner" action="/join" method="POST">
+                    <input type="hidden" name="name" id="field-name" value="">
+                    <input type="hidden" name="action" id="field-action" value="create">
+                    <input type="hidden" name="room_type" id="field-room-type" value="private">
+                    <input type="hidden" name="max_players" id="field-max-players" value="4">
+                    <input type="hidden" name="rounds" id="field-rounds" value="3">
+                    <input type="hidden" name="duration" id="field-duration" value="5">
+                    <input type="hidden" name="category" id="field-category" value="movies">
+                    <input type="hidden" name="room_code" id="field-room-code" value="">
+                    <input type="hidden" name="guest_id" id="field-guest-id" value="">
+
                     <div>
-                        <label class="field-label" id="name-screen-label" for="player-name">NAME</label>
+                        <label class="field-label" id="name-screen-label" for="player-name">Name</label>
                         <input
-                            class="name-input"
-                            id="player-name"
                             type="text"
-                            maxlength="24"
+                            id="player-name"
+                            class="name-input"
                             placeholder="ENTER YOUR NAME"
+                            maxlength="24"
                             autocomplete="nickname"
                             required
                         >
                     </div>
-                    <button type="submit" form="join-form" class="btn-primary" id="name-submit-btn">ENTER ROOM</button>
-                </div>
+                    <button type="submit" class="btn-primary" id="name-submit-btn">ENTER ROOM</button>
+                </form>
             </div>
         </section>
-
-        <form action="/join" method="POST" id="join-form" class="hidden" aria-hidden="true">
-            <input type="hidden" name="name" id="field-name" value="">
-            <input type="hidden" name="action" id="field-action" value="create">
-            <input type="hidden" name="room_type" id="field-room-type" value="private">
-            <input type="hidden" name="max_players" id="field-max-players" value="4">
-            <input type="hidden" name="rounds" id="field-rounds" value="3">
-            <input type="hidden" name="duration" id="field-duration" value="5">
-            <input type="hidden" name="category" id="field-category" value="movies">
-            <input type="hidden" name="room_code" id="field-room-code" value="">
-            <input type="hidden" name="guest_id" id="field-guest-id" value="">
-        </form>
     </div>
 
     <script src="/static/js/lobby.js" defer></script>

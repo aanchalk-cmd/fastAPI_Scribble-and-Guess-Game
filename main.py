@@ -282,7 +282,7 @@ def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
 
 @app.post("/join")
 async def join(
-    name: str = Form(...),
+    name: str = Form(..., min_length=1, max_length=10),
     room_code: str = Form(None),
     action: str = Form(...),
     room_type: str = Form("private"),  

@@ -411,7 +411,8 @@
                 <div id="error-box" style="display:none;"></div>
 
                 <form action="/join" method="POST" id="gameForm">
-                    <input type="text" name="name" class="name-input" placeholder="Enter your name" required>
+                    <input type="text" name="name" class="name-input" placeholder="Enter your name" required minlength="1" aria-describedby="name-error">
+                    <div id="name-error" class="field-error" role="alert" aria-live="polite" hidden>Only 10 characters are allowed.</div>
 
                     <input type="hidden" name="action" id="actionInput" value="create">
                     <input type="hidden" name="room_type" id="roomTypeInput" value="private">
@@ -506,6 +507,25 @@
 
     document.getElementById('guestIdInput').value = getOrCreateGuestId();
     prepareCreate('private');
+
+    const gameForm = document.getElementById('gameForm');
+    const nameInput = gameForm.querySelector('input[name="name"]');
+    const nameError = document.getElementById('name-error');
+
+    nameInput.addEventListener('input', () => {
+        const tooLong = nameInput.value.length > 10;
+        nameError.hidden = !tooLong;
+        nameInput.setCustomValidity(tooLong ? 'Only 10 characters are allowed.' : '');
+    });
+
+    gameForm.addEventListener('submit', (event) => {
+        if (nameInput.value.length > 10) {
+            event.preventDefault();
+            nameError.hidden = false;
+            nameInput.setCustomValidity('Only 10 characters are allowed.');
+            nameInput.reportValidity();
+        }
+    });
 
     function prepareCreate(type) {
         document.getElementById('actionInput').value = 'create';

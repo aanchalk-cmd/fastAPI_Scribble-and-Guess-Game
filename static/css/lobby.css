@@ -14,6 +14,10 @@
     --card-min-h: min(720px, calc(100dvh - 120px));
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
+    /* Hard white offset + press travel (brutalist 3D) */
+    --btn-pop-x: 5px;
+    --btn-pop-y: 5px;
+    --btn-pop-color: #ffffff;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -132,7 +136,7 @@ body.lobby-body {
     position: absolute;
     right: 0;
     top: 50%;
-    transform: translateY(-50%);
+    z-index: 3;
     border: none;
     border-radius: 999px;
     background: var(--mg-yellow);
@@ -145,11 +149,17 @@ body.lobby-body {
     cursor: pointer;
     min-height: 44px;
     touch-action: manipulation;
-    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
-    z-index: 3;
+    /* On white page, black pop so the offset stays visible */
+    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 #111111;
+    transform: translateY(-50%);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 
-.top-btn:active { filter: brightness(0.97); }
+.top-btn:hover { filter: brightness(1.02); }
+.top-btn:active {
+    transform: translateY(-50%) translate(var(--btn-pop-x), var(--btn-pop-y));
+    box-shadow: 0 0 0 #111111;
+}
 
 /* ---------- screens ---------- */
 .screen {
@@ -167,14 +177,15 @@ body.lobby-body {
     width: 100%;
     max-width: var(--card-w);
     min-height: var(--card-min-h);
-    height: 80%;
+    height: 90%;
     background: var(--mg-card);
     color: #fff;
     border-radius: 14px;
     position: relative;
-    padding: 34px 28px 30px;
+    padding: 34px 32px 36px 28px;
     box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
-    overflow: hidden;
+    /* allow white button offset to show past the card edge */
+    overflow: visible;
     display: flex;
     flex-direction: column;
 }
@@ -182,24 +193,25 @@ body.lobby-body {
 /* film sprocket borders — white squares on black strip */
 .film-card::before,
 .film-card::after {
-    margin: 8px;
     content: "";
     position: absolute;
     left: 0;
     right: 0;
     height: 18px;
+    border-radius: inherit;
     background:
         repeating-linear-gradient(
             90deg,
             #fff 0 12px,
             var(--mg-card) 12px 20px
         );
+    pointer-events: none;
 }
-.film-card::before { top: 0; }
-.film-card::after { bottom: 0; }
+.film-card::before { top: 0; border-radius: 14px 14px 0 0; }
+.film-card::after { bottom: 0; border-radius: 0 0 14px 14px; }
 
 .film-inner {
-    padding: 14px 6px 10px;
+    padding: 14px 10px 16px 2px;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -208,7 +220,7 @@ body.lobby-body {
 .stack {
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 26px;
     flex: 1;
 }
 
@@ -250,33 +262,50 @@ body.lobby-body {
     letter-spacing: 0.04em;
 }
 
-/* tabs */
+/* tabs — single grey outer pill, two inner segments (design) */
 .mode-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 8px;
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    padding: 6px;
+    background: var(--mg-grey);
+    border-radius: 999px;
+}
+
+.pill-row {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 10px;
+    align-items: stretch;
+    width: 100%;
 }
 
 .mode-tab {
+    flex: 1;
     border: none;
     border-radius: 999px;
-    padding: 15px 10px;
+    padding: 16px 12px;
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.8rem;
-    letter-spacing: 0.05em;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
     cursor: pointer;
-    min-height: 52px;
+    min-height: 56px;
     touch-action: manipulation;
-    background: var(--mg-grey);
+    background: transparent;
     color: var(--mg-ink);
     text-transform: uppercase;
+    transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
+}
+
+.mode-tab:active:not(:disabled) {
+    transform: scale(0.98);
 }
 
 .mode-tab.is-active {
     background: var(--mg-red);
     color: #fff;
+    box-shadow: none;
 }
 
 /* Design: "I HAVE A CODE" active tab is yellow */
@@ -318,45 +347,53 @@ body.lobby-body {
     touch-action: manipulation;
     text-transform: uppercase;
     margin-top: 8px;
+    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
 
-.btn-yellow:active:not(:disabled) { filter: brightness(0.97); }
-.btn-yellow:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* pills / round circles */
-.pill-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    align-items: center;
+.btn-yellow:active:not(:disabled) {
+    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
+    box-shadow: 0 0 0 var(--btn-pop-color);
 }
+.btn-yellow:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 
+/* pills — flat wide chips (design: no white pop on selectors) */
 .pill {
+    flex: 1;
     border: none;
     border-radius: 999px;
-    padding: 11px 18px;
-    min-height: 42px;
+    padding: 14px 16px;
+    min-height: 50px;
     font-family: var(--font-display);
     font-weight: 900;
-    font-size: 0.78rem;
-    letter-spacing: 0.05em;
+    font-size: 0.82rem;
+    letter-spacing: 0.04em;
     background: #fff;
     color: var(--mg-ink);
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
+    transition: background 0.12s ease, transform 0.08s ease;
+}
+
+.pill:active {
+    transform: scale(0.97);
 }
 
 .pill.is-active { background: var(--mg-yellow); }
 
 .pill-round {
-    width: 48px;
-    height: 48px;
-    min-height: 48px;
+    flex: 1;
+    max-width: 72px;
+    min-width: 52px;
+    width: auto;
+    height: auto;
+    min-height: 50px;
+    aspect-ratio: 1;
     padding: 0;
     display: inline-grid;
     place-items: center;
-    font-size: 1.05rem;
+    font-size: 1.1rem;
 }
 
 /* sliders — popcorn thumb from design asset */
@@ -463,10 +500,16 @@ body.lobby-body {
     touch-action: manipulation;
     text-transform: uppercase;
     margin-top: 8px;
+    /* White hard offset — looks like a border popping out bottom-right */
+    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
 
-.btn-primary:active:not(:disabled) { filter: brightness(0.95); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary:active:not(:disabled) {
+    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
+    box-shadow: 0 0 0 var(--btn-pop-color);
+}
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 
 .name-input,
 .code-input {
@@ -579,8 +622,14 @@ body.lobby-body {
     min-height: 46px;
     cursor: pointer;
     touch-action: manipulation;
+    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
-.join-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.join-btn:active:not(:disabled) {
+    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
+    box-shadow: 0 0 0 var(--btn-pop-color);
+}
+.join-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 
 .empty-state {
     text-align: center;

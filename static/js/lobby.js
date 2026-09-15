@@ -6,6 +6,7 @@
 (function () {
     const STORAGE_KEY = "movie_guess_lobby_draft";
     const COPY_FLAG = "movie_guess_copy_invite";
+    const NAME_MAX = 10;
 
     const root = document.getElementById("lobby-app");
     if (!root) return;
@@ -44,6 +45,14 @@
         nameInput: document.getElementById("player-name"),
         nameTitle: document.getElementById("name-screen-label"),
         nameSubmit: document.getElementById("name-submit-btn"),
+        nameCount: document.getElementById("player-name-count"),
+        joinNameCount: document.getElementById("join-name-count"),
+        nameFieldError: document.getElementById("name-field-error"),
+        publicJoinHeader: document.getElementById("public-join-header"),
+        joinRoomId: document.getElementById("join-room-id"),
+        joinRoomMeta: document.getElementById("join-room-meta"),
+        copyJoinCode: document.getElementById("copy-join-code"),
+        nameScreen: document.getElementById("screen-name"),
         form: document.getElementById("join-form"),
         fields: {
             name: document.getElementById("field-name"),
@@ -71,8 +80,24 @@
         copyLink: false,
         name: "",
         cameFromPublic: false,
+        selectedRoom: null,
         rooms: [],
     };
+
+    function clampName(value) {
+        return String(value || "").slice(0, NAME_MAX);
+    }
+
+    function updateCharCount(input, countEl) {
+        if (!input || !countEl) return;
+        const len = (input.value || "").length;
+        countEl.textContent = `${len}/${NAME_MAX}`;
+    }
+
+    function setNameFieldError(visible) {
+        if (!els.nameFieldError) return;
+        els.nameFieldError.classList.toggle("hidden", !visible);
+    }
 
     function getOrCreateGuestId() {
         let guestId = localStorage.getItem("scribble_guest_id");
@@ -96,8 +121,9 @@
             roomCode: state.roomCode,
             pendingAction: state.pendingAction,
             copyLink: state.copyLink,
-            name: state.name,
+            name: clampName(state.name),
             cameFromPublic: !!state.cameFromPublic,
+            selectedRoom: state.selectedRoom,
         };
         try {
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
@@ -120,9 +146,10 @@
                 roomCode: draft.roomCode || "",
                 pendingAction: draft.pendingAction || "create",
                 copyLink: !!draft.copyLink,
-                name: draft.name || "",
-                cameFromPublic: !!draft.cameFromPublic,
-            });
+            name: clampName(draft.name || ""),
+            cameFromPublic: !!draft.cameFromPublic,
+            selectedRoom: draft.selectedRoom || null,
+        });
         } catch (_) { /* ignore */ }
     }
 
@@ -255,6 +282,14 @@
                 state.copyLink = false;
                 state.createTab = "code";
                 state.cameFromPublic = true;
+                state.selectedRoom = {
+                    room_id: room.room_id,
+                    count: room.count,
+                    max: room.max,
+                    category: room.category || "movies",
+                    rounds: room.rounds || 3,
+                };
+                setNameFieldError(false);
                 setScreen("name");
             });
             row.appendChild(join);
@@ -281,20 +316,50 @@
         if (els.roomCodeInput) {
             els.roomCodeInput.value = state.roomCode;
         }
+        state.name = clampName(state.name);
         if (els.nameInput) {
             els.nameInput.value = state.name;
+            els.nameInput.maxLength = NAME_MAX;
+            updateCharCount(els.nameInput, els.nameCount);
         }
         if (els.joinNameInput) {
             els.joinNameInput.value = state.name;
+            els.joinNameInput.maxLength = NAME_MAX;
+            updateCharCount(els.joinNameInput, els.joinNameCount);
         }
 
-        // Name-only screen: create flow → CREATE & ENTER; public/invite join → ENTER ROOM
-        if (state.pendingAction === "join") {
-            els.nameTitle.textContent = "NAME";
+        const publicJoin = state.cameFromPublic && state.pendingAction === "join";
+        if (els.publicJoinHeader) {
+            els.publicJoinHeader.classList.toggle("hidden", !publicJoin);
+        }
+        if (els.nameScreen) {
+            els.nameScreen.classList.toggle("is-public-join", publicJoin);
+        }
+        if (publicJoin && state.selectedRoom) {
+            const room = state.selectedRoom;
+            if (els.joinRoomId) els.joinRoomId.textContent = room.room_id;
+            if (els.joinRoomMeta) {
+                els.joinRoomMeta.innerHTML = `
+                    <span>👤 ${room.count}/${room.max}</span>
+                    <span>${(room.category || "movies").toUpperCase()}</span>
+                    <span>${room.rounds || 3} ROUNDS</span>
+                `;
+            }
+        }
+
+        els.nameTitle.textContent = "NAME";
+        if (publicJoin) {
+            els.nameSubmit.textContent = "JOIN ROOM";
+            els.nameSubmit.classList.add("btn-yellow");
+            els.nameSubmit.classList.remove("btn-primary");
+        } else if (state.pendingAction === "join") {
             els.nameSubmit.textContent = "ENTER ROOM";
+            els.nameSubmit.classList.add("btn-primary");
+            els.nameSubmit.classList.remove("btn-yellow");
         } else {
-            els.nameTitle.textContent = "NAME";
             els.nameSubmit.textContent = "CREATE & ENTER";
+            els.nameSubmit.classList.add("btn-primary");
+            els.nameSubmit.classList.remove("btn-yellow");
         }
 
         renderCategoryPills();
@@ -303,7 +368,7 @@
     }
 
     function syncForm(nameOverride, codeOverride) {
-        const name = (nameOverride != null ? nameOverride : (els.nameInput.value || "")).trim();
+        const name = clampName(nameOverride != null ? nameOverride : (els.nameInput.value || "")).trim();
         const code = (codeOverride != null ? codeOverride : state.roomCode || "").toUpperCase().trim();
         state.name = name;
         state.roomCode = code;
@@ -340,11 +405,13 @@
         state.copyLink = true;
         state.roomCode = "";
         state.cameFromPublic = false;
+        state.selectedRoom = null;
+        setNameFieldError(false);
         setScreen("name");
     }
 
     function submitJoinWithCode() {
-        const name = (els.joinNameInput.value || "").trim();
+        const name = clampName(els.joinNameInput.value || "").trim();
         const code = (els.roomCodeInput.value || "").trim().toUpperCase();
         if (!name) {
             showError("Please enter your name.");
@@ -360,6 +427,7 @@
         state.pendingAction = "join";
         state.copyLink = false;
         state.cameFromPublic = false;
+        state.selectedRoom = null;
         state.name = name;
         state.roomCode = code;
         syncForm(name, code);
@@ -368,12 +436,14 @@
 
     function submitName(event) {
         event.preventDefault();
-        const name = (els.nameInput.value || "").trim();
+        const name = clampName(els.nameInput.value || "").trim();
         if (!name) {
-            showError("Please enter your name.");
+            setNameFieldError(true);
+            showError("");
             els.nameInput.focus();
             return;
         }
+        setNameFieldError(false);
         if (state.pendingAction === "join" && !(state.roomCode || "").trim()) {
             showError("Missing room code.");
             setScreen("create");
@@ -502,14 +572,31 @@
     });
 
     els.joinNameInput.addEventListener("input", () => {
+        els.joinNameInput.value = clampName(els.joinNameInput.value);
         state.name = els.joinNameInput.value;
+        updateCharCount(els.joinNameInput, els.joinNameCount);
         saveDraft();
     });
 
     els.nameInput.addEventListener("input", () => {
+        els.nameInput.value = clampName(els.nameInput.value);
         state.name = els.nameInput.value;
+        updateCharCount(els.nameInput, els.nameCount);
+        if (els.nameInput.value.trim()) setNameFieldError(false);
         saveDraft();
     });
+
+    if (els.copyJoinCode) {
+        els.copyJoinCode.addEventListener("click", () => {
+            const code = state.roomCode || (state.selectedRoom && state.selectedRoom.room_id) || "";
+            if (!code) return;
+            navigator.clipboard.writeText(code).then(() => {
+                showError("");
+                els.copyJoinCode.textContent = "✓";
+                setTimeout(() => { els.copyJoinCode.textContent = "⧉"; }, 1200);
+            }).catch(() => {});
+        });
+    }
 
     document.getElementById("create-copy-btn").addEventListener("click", goCreateWithCopy);
     els.joinRoomBtn.addEventListener("click", submitJoinWithCode);

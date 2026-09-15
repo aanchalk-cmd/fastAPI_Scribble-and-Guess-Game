@@ -98,13 +98,16 @@
                             <div id="code-pane" class="hidden code-pane">
                                 <div class="code-pane-fields">
                                     <div>
-                                        <label class="field-label" for="join-name-input">Name</label>
+                                        <div class="field-row">
+                                            <label class="field-label" for="join-name-input">Name</label>
+                                            <span class="char-count" id="join-name-count" aria-live="polite">0/10</span>
+                                        </div>
                                         <input
                                             type="text"
                                             id="join-name-input"
                                             class="name-input"
                                             placeholder="ENTER YOUR NAME"
-                                            maxlength="24"
+                                            maxlength="10"
                                             autocomplete="nickname"
                                         >
                                     </div>
@@ -139,7 +142,7 @@
                     </div>
                 </section>
 
-                <!-- ===== Screen 3: Enter name ===== -->
+                <!-- ===== Screen 3: Enter name (create) / public join ===== -->
                 <section id="screen-name" class="screen name-screen" aria-label="Enter name">
                     <div class="film-card">
                         <form id="join-form" class="film-inner" action="/join" method="POST">
@@ -153,17 +156,30 @@
                             <input type="hidden" name="room_code" id="field-room-code" value="">
                             <input type="hidden" name="guest_id" id="field-guest-id" value="">
 
-                            <div>
-                                <label class="field-label" id="name-screen-label" for="player-name">Name</label>
+                            <div id="public-join-header" class="public-join-header hidden">
+                                <div class="join-code-row">
+                                    <span id="join-room-id" class="join-room-id">------</span>
+                                    <button type="button" class="copy-code-btn" id="copy-join-code" title="Copy room code" aria-label="Copy room code">⧉</button>
+                                </div>
+                                <div id="join-room-meta" class="join-room-meta"></div>
+                                <hr class="join-divider">
+                            </div>
+
+                            <div class="name-field-block">
+                                <div class="field-row">
+                                    <label class="field-label" id="name-screen-label" for="player-name">Name</label>
+                                    <span class="char-count" id="player-name-count" aria-live="polite">0/10</span>
+                                </div>
                                 <input
                                     type="text"
                                     id="player-name"
                                     class="name-input"
                                     placeholder="ENTER YOUR NAME"
-                                    maxlength="24"
+                                    maxlength="10"
                                     autocomplete="nickname"
                                     required
                                 >
+                                <p id="name-field-error" class="field-error hidden">PLEASE ENTER YOUR NAME</p>
                             </div>
                             <button type="submit" class="btn-primary" id="name-submit-btn">CREATE &amp; ENTER</button>
                         </form>

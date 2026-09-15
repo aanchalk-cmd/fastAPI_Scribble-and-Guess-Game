@@ -590,17 +590,93 @@ body.lobby-body {
     font-weight: 700;
 }
 
+.char-count {
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+}
+
+.field-error {
+    margin: 8px 0 0;
+    color: #ff4d4f;
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.public-join-header {
+    margin-bottom: 8px;
+}
+
+.join-code-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.join-room-id {
+    font-weight: 900;
+    font-size: 1.35rem;
+    letter-spacing: 0.06em;
+}
+
+.copy-code-btn {
+    border: none;
+    background: transparent;
+    color: var(--mg-yellow);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+    touch-action: manipulation;
+}
+
+.join-room-meta {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    color: var(--mg-yellow);
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.join-room-meta span + span::before {
+    content: "|";
+    margin: 0 8px;
+    opacity: 0.7;
+}
+
+.join-divider {
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.22);
+    margin: 16px 0 18px;
+}
+
+.name-field-block {
+    width: 100%;
+}
+
+.name-screen.is-public-join #name-submit-btn.btn-yellow {
+    background: var(--mg-yellow);
+    color: var(--mg-ink);
+}
+
 .name-screen .film-inner {
     min-height: 280px;
     display: flex;
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
-    gap: 22px;
+    gap: 18px;
     padding-top: 18px;
 }
 
-.name-screen .btn-primary {
+.name-screen #name-submit-btn {
     margin-top: 4px;
 }
 

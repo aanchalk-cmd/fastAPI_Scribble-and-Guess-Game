@@ -38,6 +38,8 @@
         maxPlayers: document.getElementById("max-players-slider"),
         maxPlayersVal: document.getElementById("max-players-val"),
         roomCodeInput: document.getElementById("have-code-input"),
+        joinNameInput: document.getElementById("join-name-input"),
+        joinRoomBtn: document.getElementById("join-room-btn"),
         roomList: document.getElementById("room-list"),
         nameInput: document.getElementById("player-name"),
         nameTitle: document.getElementById("name-screen-label"),
@@ -282,13 +284,17 @@
         if (els.nameInput) {
             els.nameInput.value = state.name;
         }
+        if (els.joinNameInput) {
+            els.joinNameInput.value = state.name;
+        }
 
+        // Name-only screen: create flow → CREATE & ENTER; public/invite join → ENTER ROOM
         if (state.pendingAction === "join") {
             els.nameTitle.textContent = "NAME";
             els.nameSubmit.textContent = "ENTER ROOM";
         } else {
             els.nameTitle.textContent = "NAME";
-            els.nameSubmit.textContent = state.copyLink ? "CREATE & ENTER" : "ENTER ROOM";
+            els.nameSubmit.textContent = "CREATE & ENTER";
         }
 
         renderCategoryPills();
@@ -296,26 +302,37 @@
         if (state.screen === "public") renderRooms();
     }
 
-    function syncForm() {
-        const name = (els.nameInput.value || "").trim();
+    function syncForm(nameOverride, codeOverride) {
+        const name = (nameOverride != null ? nameOverride : (els.nameInput.value || "")).trim();
+        const code = (codeOverride != null ? codeOverride : state.roomCode || "").toUpperCase().trim();
         state.name = name;
+        state.roomCode = code;
         els.fields.name.value = name;
         els.fields.guestId.value = getOrCreateGuestId();
         els.fields.action.value = state.pendingAction;
-        els.fields.roomType.value = state.publicRoom ? "public" : "private";
         els.fields.maxPlayers.value = String(state.maxPlayers);
         els.fields.rounds.value = String(state.rounds);
         els.fields.duration.value = String(state.duration);
         els.fields.category.value = resolveCategoryForSubmit();
-        els.fields.roomCode.value = (state.roomCode || "").toUpperCase().trim();
+        els.fields.roomCode.value = code;
 
         if (state.pendingAction === "create") {
-            // Private create still uses room_type private
             els.fields.roomType.value = state.publicRoom ? "public" : "private";
         } else {
-            // Join: room_type is ignored by backend for lookup, but keep public if known
-            els.fields.roomType.value = "public";
+            els.fields.roomType.value = state.cameFromPublic ? "public" : "private";
         }
+    }
+
+    function finishSubmit() {
+        if (state.pendingAction === "create" && state.copyLink) {
+            try {
+                sessionStorage.setItem(COPY_FLAG, "1");
+            } catch (_) { /* ignore */ }
+        }
+        try {
+            sessionStorage.removeItem(STORAGE_KEY);
+        } catch (_) { /* ignore */ }
+        els.form.submit();
     }
 
     function goCreateWithCopy() {
@@ -326,18 +343,27 @@
         setScreen("name");
     }
 
-    function goHaveCodeContinue() {
+    function submitJoinWithCode() {
+        const name = (els.joinNameInput.value || "").trim();
         const code = (els.roomCodeInput.value || "").trim().toUpperCase();
+        if (!name) {
+            showError("Please enter your name.");
+            els.joinNameInput.focus();
+            return;
+        }
         if (!code) {
             showError("Please enter a room code.");
+            els.roomCodeInput.focus();
             return;
         }
         showError("");
-        state.roomCode = code;
         state.pendingAction = "join";
         state.copyLink = false;
         state.cameFromPublic = false;
-        setScreen("name");
+        state.name = name;
+        state.roomCode = code;
+        syncForm(name, code);
+        finishSubmit();
     }
 
     function submitName(event) {
@@ -356,17 +382,8 @@
         }
         showError("");
         state.name = name;
-        syncForm();
-        if (state.pendingAction === "create" && state.copyLink) {
-            try {
-                sessionStorage.setItem(COPY_FLAG, "1");
-            } catch (_) { /* ignore */ }
-        }
-        // Clear draft after successful submit intent so refresh on /game won't reopen name screen oddly
-        try {
-            sessionStorage.removeItem(STORAGE_KEY);
-        } catch (_) { /* ignore */ }
-        els.form.submit();
+        syncForm(name, state.roomCode);
+        finishSubmit();
     }
 
     function parseQuery() {
@@ -387,8 +404,15 @@
             if (error === "not_found" || error === "missing_code") {
                 state.screen = "create";
                 state.createTab = "code";
+                state.pendingAction = "join";
             } else if (error === "name_taken" || error === "banned" || error === "full") {
-                state.screen = "name";
+                // Prefer code tab (name + code) when rejoining with a code
+                if (state.roomCode) {
+                    state.screen = "create";
+                    state.createTab = "code";
+                } else {
+                    state.screen = "name";
+                }
                 state.pendingAction = "join";
             }
         }
@@ -399,7 +423,8 @@
                 state.roomCode = decoded;
                 state.pendingAction = "join";
                 state.copyLink = false;
-                state.screen = "name";
+                // Design: join with code is name + code on the same tab
+                state.screen = "create";
                 state.createTab = "code";
             } catch (_) {
                 showError("Invalid or corrupted invite link.");
@@ -427,7 +452,6 @@
                 }
             };
             ws.onclose = () => {
-                // Soft reconnect — refresh-friendly, does not touch game sockets
                 setTimeout(connect, retryMs);
                 retryMs = Math.min(retryMs * 1.5, 8000);
             };
@@ -477,13 +501,18 @@
         saveDraft();
     });
 
+    els.joinNameInput.addEventListener("input", () => {
+        state.name = els.joinNameInput.value;
+        saveDraft();
+    });
+
     els.nameInput.addEventListener("input", () => {
         state.name = els.nameInput.value;
         saveDraft();
     });
 
     document.getElementById("create-copy-btn").addEventListener("click", goCreateWithCopy);
-    document.getElementById("have-code-continue").addEventListener("click", goHaveCodeContinue);
+    els.joinRoomBtn.addEventListener("click", submitJoinWithCode);
     els.form.addEventListener("submit", submitName);
 
     // Boot

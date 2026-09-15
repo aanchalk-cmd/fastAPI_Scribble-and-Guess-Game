@@ -33,10 +33,6 @@ body.lobby-body {
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
     background-color: #fff;
-    background-image: url("/static/img/lobby/frame.png");
-    background-repeat: no-repeat;
-    background-position: center center;
-    background-size: cover;
 }
 
 .lobby-shell {
@@ -45,13 +41,70 @@ body.lobby-body {
     min-height: 100vh;
     min-height: 100dvh;
     padding:
-        calc(18px + var(--safe-top))
-        20px
-        calc(24px + var(--safe-bottom));
+        calc(14px + var(--safe-top))
+        12px
+        calc(16px + var(--safe-bottom));
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
+}
+
+/* Stage: left props | film card | right props — keeps all 6 images in view */
+.lobby-stage {
+    width: 100%;
+    max-width: 1280px;
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(96px, 168px) minmax(0, var(--card-w)) minmax(96px, 168px);
+    justify-content: center;
+    align-items: stretch;
+    gap: 18px 28px;
+    min-height: 0;
+}
+
+.lobby-main {
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    min-width: 0;
+    width: 100%;
+}
+
+.decor-rail {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0 12px;
+    min-height: 0;
+    height: 100%;
+    max-height: var(--card-min-h);
+    align-self: center;
+    pointer-events: none;
+    user-select: none;
+}
+
+.decor-img {
+    display: block;
+    width: 100%;
+    max-width: 150px;
+    height: auto;
+    max-height: 28%;
+    object-fit: contain;
+    /* PNGs exported on black — drop black over white page */
+    mix-blend-mode: screen;
+}
+
+.decor-img-ticket,
+.decor-img-popcorn {
+    max-width: 130px;
+}
+
+.decor-img-soda,
+.decor-img-camera {
+    max-width: 140px;
+    max-height: 26%;
 }
 
 /* ---------- header ---------- */
@@ -98,45 +151,23 @@ body.lobby-body {
 
 .top-btn:active { filter: brightness(0.97); }
 
-/* Extra prop images (frame already has side art on desktop) */
-.decor {
-    position: fixed;
-    z-index: 0;
-    pointer-events: none;
-    user-select: none;
-    display: none;
-    mix-blend-mode: multiply;
-}
-
-.decor img {
-    display: block;
-    width: 100%;
-    height: auto;
-    object-fit: contain;
-}
-
-.decor-clap { top: 48px; left: -8px; width: min(160px, 22vw); }
-.decor-ticket { top: 38%; left: 10px; width: min(130px, 18vw); }
-.decor-soda { bottom: 18px; left: 18px; width: min(120px, 18vw); }
-.decor-reel { top: 36px; right: -6px; width: min(150px, 20vw); }
-.decor-popcorn { top: 36%; right: 8px; width: min(135px, 18vw); }
-.decor-camera { bottom: 10px; right: 6px; width: min(160px, 22vw); }
-
 /* ---------- screens ---------- */
 .screen {
     display: none;
     width: 100%;
     flex: 1;
     justify-content: center;
-    align-items: center;
+    align-items: stretch;
     position: relative;
     z-index: 2;
 }
 .screen.is-active { display: flex; }
 
 .film-card {
-    width: var(--card-w);
+    width: 100%;
+    max-width: var(--card-w);
     min-height: var(--card-min-h);
+    height: 80%;
     background: var(--mg-card);
     color: #fff;
     border-radius: 14px;
@@ -188,16 +219,8 @@ body.lobby-body {
     flex: 1;
 }
 
-#create-pane .btn-primary,
-#code-pane .btn-primary {
+#create-pane .btn-primary {
     margin-top: auto;
-}
-
-#code-pane {
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-    flex: 1;
 }
 
 .field-label {
@@ -256,6 +279,50 @@ body.lobby-body {
     color: #fff;
 }
 
+/* Design: "I HAVE A CODE" active tab is yellow */
+.mode-tab.is-active[data-tab="code"] {
+    background: var(--mg-yellow);
+    color: var(--mg-ink);
+}
+
+.code-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    flex: 1;
+}
+
+.code-pane-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+#code-pane .btn-yellow {
+    margin-top: auto;
+}
+
+.btn-yellow {
+    width: 100%;
+    border: none;
+    border-radius: 16px;
+    background: var(--mg-yellow);
+    color: var(--mg-ink);
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 1rem;
+    letter-spacing: 0.05em;
+    padding: 17px 18px;
+    min-height: 58px;
+    cursor: pointer;
+    touch-action: manipulation;
+    text-transform: uppercase;
+    margin-top: 8px;
+}
+
+.btn-yellow:active:not(:disabled) { filter: brightness(0.97); }
+.btn-yellow:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* pills / round circles */
 .pill-row {
     display: flex;
@@ -309,7 +376,7 @@ body.lobby-body {
     width: 42px;
     height: 50px;
     border: none;
-    background: url("/static/img/lobby/popcorn-thumb.png") center / contain no-repeat;
+    background: url("/static/img/lobby/popcorn.png") center / contain no-repeat;
     background-color: transparent;
     cursor: pointer;
     filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
@@ -320,7 +387,7 @@ body.lobby-body {
     height: 50px;
     border: none;
     border-radius: 0;
-    background: url("/static/img/lobby/popcorn-thumb.png") center / contain no-repeat;
+    background: url("/static/img/lobby/popcorn.png") center / contain no-repeat;
     background-color: transparent;
     cursor: pointer;
 }
@@ -527,39 +594,47 @@ body.lobby-body {
     min-height: 280px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
+    align-items: stretch;
     gap: 22px;
+    padding-top: 18px;
+}
+
+.name-screen .btn-primary {
+    margin-top: 4px;
 }
 
 .hidden { display: none !important; }
 
-/* Desktop: keep side art from frame; room for wider card */
 @media (min-width: 1100px) {
     :root {
         --card-w: min(560px, 42vw);
-        --card-min-h: min(760px, calc(100dvh - 110px));
+        --card-min-h: min(740px, calc(100dvh - 100px));
+    }
+    .lobby-stage {
+        grid-template-columns: minmax(120px, 180px) minmax(0, var(--card-w)) minmax(120px, 180px);
+        gap: 20px 36px;
     }
 }
 
-@media (max-width: 900px) {
-    body.lobby-body {
-        background-image: none;
-        background-color: #fff;
+@media (max-width: 980px) {
+    .lobby-stage {
+        grid-template-columns: minmax(72px, 110px) minmax(0, var(--card-w)) minmax(72px, 110px);
+        gap: 10px 14px;
     }
-    .decor { display: block; }
+    .decor-img { max-width: 100px; }
     :root {
-        --card-w: min(480px, calc(100vw - 40px));
-        --card-min-h: min(680px, calc(100dvh - 110px));
+        --card-w: min(480px, calc(100vw - 180px));
+        --card-min-h: min(660px, calc(100dvh - 100px));
     }
 }
 
 @media (max-width: 720px) {
-    .decor-ticket,
-    .decor-soda,
-    .decor-popcorn,
-    .decor-camera { display: none; }
-    .decor-clap { display: block; top: 64px; width: 96px; left: -28px; opacity: 0.75; }
-    .decor-reel { display: block; top: 56px; width: 90px; right: -24px; opacity: 0.75; }
+    .lobby-stage {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+    .decor-rail { display: none; }
     .top-btn {
         font-size: 0.62rem;
         padding: 10px 12px;
@@ -576,7 +651,6 @@ body.lobby-body {
 }
 
 @media (max-width: 420px) {
-    .decor { display: none !important; }
     .brand-title { padding-right: 108px; font-size: 1.4rem; }
     .mode-tab { font-size: 0.68rem; min-height: 48px; }
     :root {

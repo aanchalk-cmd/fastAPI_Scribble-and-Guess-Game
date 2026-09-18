@@ -1,0 +1,918 @@
+/* Movie Guess — private room / game shell (matches lobby design system) */
+
+:root {
+    --mg-bg: #ffffff;
+    --mg-ink: #000000;
+    --mg-card: #ffffff;
+    --mg-panel: #efeeec;
+    --mg-bubble: #ffeab2;
+    --mg-red: #c92208;
+    --mg-yellow: #feba00;
+    --mg-yellow-soft: rgba(254, 186, 0, 0.2);
+    --mg-muted: rgba(0, 0, 0, 0.6);
+    --mg-muted-soft: rgba(0, 0, 0, 0.5);
+    --mg-line: #000000;
+    --mg-font: "Bowlby One", "Nunito", system-ui, -apple-system, sans-serif;
+    --mg-radius: 18px;
+    --mg-border: 4px;
+}
+
+body.mg-room {
+    background: #ffffff !important;
+    color: var(--mg-ink) !important;
+    font-family: var(--mg-font) !important;
+    position: relative;
+}
+
+/* Bowlby One ships a single weight — block faux-bold synthesis */
+body.mg-room,
+body.mg-room * {
+    font-synthesis: none;
+}
+
+/* Cinema watermark icons — 30% opacity as requested */
+body.mg-room .mg-room-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+body.mg-room .mg-bg-icon {
+    position: absolute;
+    opacity: 0.3;
+    filter: grayscale(1) contrast(0.85);
+    object-fit: contain;
+    user-select: none;
+}
+
+body.mg-room .mg-bg-clap { top: 8%; left: 3%; width: min(160px, 14vw); transform: rotate(-18deg); }
+body.mg-room .mg-bg-ticket { top: 42%; left: 2%; width: min(130px, 12vw); transform: rotate(12deg); }
+body.mg-room .mg-bg-soda { bottom: 6%; left: 4%; width: min(120px, 11vw); transform: rotate(-8deg); }
+body.mg-room .mg-bg-reel { top: 10%; right: 4%; width: min(150px, 13vw); transform: rotate(10deg); }
+body.mg-room .mg-bg-popcorn { top: 40%; right: 3%; width: min(140px, 12vw); transform: rotate(-12deg); }
+body.mg-room .mg-bg-camera { bottom: 5%; right: 4%; width: min(150px, 13vw); transform: rotate(8deg); }
+body.mg-room .mg-bg-clap-2 { top: 55%; left: 18%; width: min(110px, 10vw); transform: rotate(22deg); opacity: 0.3; }
+body.mg-room .mg-bg-reel-2 { bottom: 18%; right: 20%; width: min(120px, 11vw); transform: rotate(-20deg); opacity: 0.3; }
+body.mg-room .mg-bg-popcorn-2 { top: 18%; left: 22%; width: min(100px, 9vw); transform: rotate(6deg); opacity: 0.3; }
+
+/* Keep UI above the watermark layer */
+body.mg-room > header,
+body.mg-room > .main-container,
+body.mg-room > #toast-container,
+body.mg-room > #disconnect-overlay,
+body.mg-room > #rejoin-wait-overlay,
+body.mg-room > #vote-kick-modal,
+body.mg-room > #vote-kick-overlay,
+body.mg-room > #history-modal,
+body.mg-room > #history-overlay {
+    position: relative;
+    z-index: 1;
+}
+
+body.mg-room > header {
+    z-index: 5;
+}
+
+@media (max-width: 900px) {
+    body.mg-room .mg-bg-clap-2,
+    body.mg-room .mg-bg-reel-2,
+    body.mg-room .mg-bg-popcorn-2,
+    body.mg-room .mg-bg-ticket,
+    body.mg-room .mg-bg-soda { display: none; }
+}
+
+@media (max-width: 600px) {
+    body.mg-room .mg-room-bg { display: none; }
+}
+
+/* ---------- Header (design match) ---------- */
+body.mg-room > header.mg-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: transparent !important;
+    border-bottom: none !important;
+    padding: 16px 22px 10px !important;
+    position: relative;
+    z-index: 5;
+}
+
+body.mg-room .mg-brand {
+    margin: 0;
+    font-family: var(--mg-font);
+    font-size: clamp(1.9rem, 3.4vw, 3rem);
+    color: var(--mg-ink);
+    letter-spacing: 0;
+    line-height: 1;
+}
+
+body.mg-room .mg-header-right {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+body.mg-room .mg-badge {
+    background: var(--mg-panel);
+    border-radius: var(--mg-radius);
+    padding: 8px 16px;
+    min-width: 86px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+body.mg-room .mg-badge-label {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .mg-badge-value {
+    font-size: 1.1rem;
+    color: var(--mg-ink);
+    line-height: 1.1;
+    text-transform: uppercase;
+}
+
+body.mg-room .mg-badge-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 20px;
+}
+
+body.mg-room .mg-copy-icon {
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+    line-height: 0;
+    display: inline-grid;
+    place-items: center;
+}
+
+body.mg-room .mg-copy-icon img {
+    width: 18px;
+    height: 18px;
+    display: block;
+}
+
+body.mg-room .mg-copy-icon:active {
+    transform: scale(0.92);
+}
+
+body.mg-room .mg-header-btn {
+    font-family: var(--mg-font);
+    font-size: 1.05rem;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    padding: 14px 18px;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 6px 6px 0 var(--mg-line);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+body.mg-room .mg-header-btn:active {
+    transform: translate(6px, 6px);
+    box-shadow: 0 0 0 var(--mg-line);
+}
+
+body.mg-room .mg-header-btn-history {
+    background: var(--mg-yellow);
+    color: var(--mg-ink);
+}
+
+body.mg-room .mg-header-btn-leave {
+    background: #fff;
+    color: var(--mg-ink);
+}
+
+body.mg-room .mg-header-btn-ghost {
+    background: #fff;
+    color: var(--mg-ink);
+    display: none;
+}
+
+body.mg-room #sidebar-toggle.mg-header-btn-ghost {
+    display: none;
+}
+
+@media (max-width: 720px) {
+    body.mg-room > header.mg-header {
+        padding: 12px 12px 8px !important;
+        gap: 10px;
+    }
+    body.mg-room .mg-brand {
+        font-size: 1.4rem;
+        width: 100%;
+    }
+    body.mg-room .mg-header-right {
+        width: 100%;
+        margin-left: 0;
+        gap: 8px;
+    }
+    body.mg-room .mg-badge {
+        padding: 6px 10px 8px;
+        min-width: 64px;
+        border-radius: 10px;
+    }
+    body.mg-room .mg-badge-value { font-size: 0.95rem; }
+    body.mg-room .mg-header-btn {
+        padding: 10px 12px;
+        min-height: 42px;
+        font-size: 0.75rem;
+        box-shadow: 3px 3px 0 var(--mg-line);
+    }
+    body.mg-room .mg-header-btn:active {
+        transform: translate(3px, 3px);
+    }
+    body.mg-room #sidebar-toggle.mg-header-btn-ghost {
+        display: inline-flex;
+        align-items: center;
+    }
+}
+
+/* ---------- Left sidebar: players + chat ---------- */
+body.mg-room .main-container {
+    background: transparent;
+    gap: 20px;
+    padding: 8px 22px 22px;
+    align-items: stretch;
+    min-height: 0;
+}
+
+/* The room is a fixed-height app shell so the panels fill the viewport */
+@media (min-width: 901px) {
+    body.mg-room {
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+    }
+    body.mg-room .main-container {
+        flex: 1 1 auto;
+    }
+}
+
+body.mg-room #sidebar {
+    width: min(420px, 32vw);
+    min-width: 290px;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    overflow: hidden;
+    min-height: 0;
+    align-self: stretch;
+}
+
+body.mg-room .sidebar-status { display: none; }
+body.mg-room .sidebar-title { display: none; }
+
+body.mg-room .mg-panel {
+    background: #fff;
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    box-shadow: none;
+    padding: 18px;
+}
+
+body.mg-room .mg-panel-players {
+    flex: 0 0 34%;
+    min-height: 180px;
+}
+
+body.mg-room .mg-panel-chat {
+    flex: 1;
+    min-height: 260px;
+    gap: 12px;
+}
+
+/* Yellow rail scrollbars (track #ffeab2, thumb #feba00) */
+body.mg-room #player-list,
+body.mg-room .chat-messages {
+    scrollbar-width: thin;
+    scrollbar-color: var(--mg-yellow) var(--mg-bubble);
+}
+body.mg-room #player-list::-webkit-scrollbar,
+body.mg-room .chat-messages::-webkit-scrollbar {
+    width: 10px;
+}
+body.mg-room #player-list::-webkit-scrollbar-track,
+body.mg-room .chat-messages::-webkit-scrollbar-track {
+    background: var(--mg-bubble);
+    border-radius: 27px;
+}
+body.mg-room #player-list::-webkit-scrollbar-thumb,
+body.mg-room .chat-messages::-webkit-scrollbar-thumb {
+    background: var(--mg-yellow);
+    border-radius: 16px;
+    border: none;
+}
+
+body.mg-room #player-list {
+    padding: 0 18px 0 0;
+    /* always show the yellow rail like the design */
+    overflow-y: scroll;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 17px;
+}
+
+body.mg-room .player-item {
+    display: flex !important;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    flex-shrink: 0;
+}
+
+body.mg-room .player-item.is-me {
+    background: transparent !important;
+}
+
+body.mg-room .player-name {
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: var(--mg-ink);
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body.mg-room .player-drawer-icon {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-grid;
+    place-items: center;
+    line-height: 0;
+}
+
+body.mg-room .mg-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+body.mg-room .player-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+body.mg-room .player-score {
+    background: var(--mg-yellow) !important;
+    color: var(--mg-ink) !important;
+    border: none !important;
+    border-radius: var(--mg-radius) !important;
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+    min-width: 48px;
+    text-align: center;
+    justify-content: center;
+    line-height: 1.5;
+}
+
+body.mg-room .kick-btn {
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    display: inline-grid !important;
+    place-items: center;
+    cursor: pointer;
+    line-height: 0;
+    flex-shrink: 0;
+}
+
+body.mg-room .kick-btn.is-static {
+    cursor: default;
+}
+
+body.mg-room .kick-btn:not(.is-static):hover {
+    transform: scale(1.08);
+}
+
+body.mg-room .kick-btn:not(.is-static):active {
+    transform: scale(0.94);
+}
+
+/* Chat panel */
+body.mg-room .chat-messages {
+    flex: 1;
+    overflow-y: scroll;
+    padding: 0 18px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-height: 0;
+}
+
+body.mg-room .chat-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 78%;
+}
+
+body.mg-room .chat-row.is-me {
+    align-self: flex-end;
+    align-items: flex-end;
+}
+body.mg-room .chat-row.is-other {
+    align-self: flex-start;
+    align-items: flex-start;
+}
+
+body.mg-room .chat-author {
+    font-size: 0.75rem;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mg-muted-soft);
+}
+
+body.mg-room .chat-bubble {
+    border: none;
+    padding: 11px 12px;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+    word-break: break-word;
+}
+
+body.mg-room .chat-row.is-me .chat-bubble {
+    background: var(--mg-yellow);
+    border-radius: 12px 12px 0 12px;
+}
+body.mg-room .chat-row.is-other .chat-bubble {
+    background: var(--mg-bubble);
+    border-radius: 12px 12px 12px 0;
+}
+
+body.mg-room .chat-compose {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 7px 7px 7px 17px;
+    border: none;
+    background: var(--mg-panel);
+    border-radius: var(--mg-radius);
+    flex-shrink: 0;
+}
+
+body.mg-room .chat-compose input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    padding: 8px 0;
+    font-family: var(--mg-font);
+    font-size: 0.8rem;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    outline: none;
+    color: var(--mg-ink);
+    min-width: 0;
+}
+
+body.mg-room .chat-compose input::placeholder {
+    color: var(--mg-muted-soft);
+}
+
+body.mg-room .chat-send {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 12px;
+    background: var(--mg-ink);
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    transition: transform 0.08s ease;
+}
+
+body.mg-room .chat-send img {
+    width: 18px;
+    height: 18px;
+    display: block;
+    /* design flips the arrow to point right */
+    transform: scaleX(-1);
+}
+
+body.mg-room .chat-send:active {
+    transform: scale(0.94);
+}
+
+/* Overrides for the legacy dark-theme ID rules still living in index.html */
+body.mg-room #round-display,
+body.mg-room #room-display {
+    color: var(--mg-ink);
+    letter-spacing: 0;
+}
+
+body.mg-room #lobby-timer-display.lobby-timer-pill,
+body.mg-room #lobby-timer-display.timer-low {
+    display: inline-flex;
+    margin-top: 0;
+    color: var(--mg-ink);
+    background: var(--mg-yellow-soft);
+    border: none;
+    border-radius: var(--mg-radius);
+    padding: 9px 15px;
+    font-size: 0.8rem;
+}
+
+body.mg-room #lobby-waiting-area h2 {
+    color: var(--mg-ink);
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    margin: 0;
+}
+
+body.mg-room #room-code-display {
+    background: transparent;
+    border: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: 1.15rem;
+    letter-spacing: 0;
+    color: var(--mg-ink);
+}
+
+body.mg-room #host-controls {
+    margin-top: 0;
+}
+
+body.mg-room #host-controls > p.lobby-host-label {
+    color: var(--mg-muted);
+    font-size: 0.8rem;
+}
+
+/* ---------- Content / lobby waiting ---------- */
+body.mg-room #content {
+    padding: 0 !important;
+    align-items: stretch !important;
+    background: transparent;
+}
+
+body.mg-room .stage-head {
+    display: none;
+}
+
+body.mg-room #setup-area {
+    width: 100%;
+    max-width: none;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+body.mg-room #lobby-waiting-area {
+    flex: 1;
+    width: 100%;
+    max-width: none;
+    background: #fff !important;
+    border: var(--mg-border) solid var(--mg-line) !important;
+    border-radius: var(--mg-radius) !important;
+    padding: 22px !important;
+    box-shadow: none !important;
+    text-align: left !important;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 0;
+}
+
+body.mg-room #lobby-waiting-area.hidden { display: none !important; }
+
+body.mg-room .lobby-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+body.mg-room .lobby-status-pill {
+    display: inline-flex;
+    align-items: center;
+    background: var(--mg-yellow-soft);
+    border: none;
+    border-radius: var(--mg-radius);
+    padding: 15px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .lobby-timer-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--mg-yellow-soft);
+    border: none;
+    border-radius: var(--mg-radius);
+    padding: 9px 15px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--mg-ink);
+}
+
+body.mg-room .lobby-timer-pill img {
+    width: 26px;
+    height: 26px;
+    display: block;
+}
+
+body.mg-room .lobby-timer-pill.hidden { display: none !important; }
+
+body.mg-room .lobby-hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 30px;
+    padding: 12px 8px;
+}
+
+body.mg-room .lobby-heading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+body.mg-room .lobby-hero h2 {
+    margin: 0;
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-ink) !important;
+}
+
+body.mg-room .lobby-heading p,
+body.mg-room .lobby-hero > p {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .lobby-share-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+    width: 100%;
+    max-width: 340px;
+}
+
+body.mg-room .lobby-share-chip {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: var(--mg-panel);
+    border: none;
+    border-radius: var(--mg-radius);
+    padding: 10px 15px;
+    font-family: var(--mg-font);
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+}
+
+body.mg-room .lobby-share-chip:active {
+    transform: scale(0.985);
+}
+
+body.mg-room .lobby-share-label {
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--mg-muted);
+}
+
+body.mg-room .lobby-share-value {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+body.mg-room .lobby-share-value strong {
+    font-size: 1.15rem;
+    font-weight: inherit;
+    color: var(--mg-ink);
+    line-height: 1.1;
+}
+
+body.mg-room .lobby-share-value img {
+    width: 18px;
+    height: 18px;
+    display: block;
+    flex-shrink: 0;
+}
+
+body.mg-room .lobby-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 360px;
+}
+
+body.mg-room .lobby-host-label {
+    margin: 0 0 12px;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .start-btn,
+body.mg-room #host-controls .start-btn {
+    width: 100%;
+    border: none !important;
+    border-radius: var(--mg-radius) !important;
+    background: var(--mg-red) !important;
+    color: #fff !important;
+    font-family: var(--mg-font) !important;
+    font-size: 1.15rem !important;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    padding: 14px 15px !important;
+    cursor: pointer;
+    box-shadow: none !important;
+    transition: transform 0.08s ease, filter 0.08s ease;
+}
+
+body.mg-room .start-btn:active {
+    transform: scale(0.98);
+    filter: brightness(0.92);
+}
+
+body.mg-room #host-controls,
+body.mg-room #guest-waiting,
+body.mg-room #room-info,
+body.mg-room #public-room-info {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+body.mg-room #host-controls.hidden,
+body.mg-room #guest-waiting.hidden,
+body.mg-room #room-info.hidden,
+body.mg-room #public-room-info.hidden {
+    display: none !important;
+}
+
+/* The room code / invite link now live in the share chips above */
+body.mg-room #room-info,
+body.mg-room #public-room-info {
+    display: none !important;
+}
+
+body.mg-room #guest-waiting-text {
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+body.mg-room #start-error {
+    color: var(--mg-red);
+    font-weight: 800;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+body.mg-room #lobby-count-text { display: none; }
+
+/* Hide drawer setup bits while in lobby shell; JS still toggles later */
+body.mg-room #setup-area.is-lobby #role-display,
+body.mg-room #setup-area.is-lobby #drawer-input {
+    display: none !important;
+}
+
+/* Playing mode: keep content usable with light theme */
+body.mg-room #game-area {
+    background: #fff;
+    border: 3px solid var(--mg-line);
+    border-radius: 16px;
+    padding: 14px;
+}
+
+body.mg-room #drawer-movie { color: var(--mg-ink) !important; }
+body.mg-room .toolbar {
+    background: var(--mg-panel) !important;
+    border: 2.5px solid var(--mg-line) !important;
+}
+body.mg-room .letter-input {
+    background: #fff !important;
+    color: var(--mg-ink) !important;
+    border-color: var(--mg-line) !important;
+}
+
+body.mg-room #history-modal {
+    background: #fff !important;
+    border-left: 3px solid var(--mg-line) !important;
+    color: var(--mg-ink);
+}
+
+body.mg-room .toast {
+    background: #fff !important;
+    color: var(--mg-ink) !important;
+    border: 2.5px solid var(--mg-line) !important;
+    border-left-width: 4px !important;
+}
+
+@media (max-width: 900px) {
+    body.mg-room .main-container {
+        flex-direction: column;
+    }
+    body.mg-room #sidebar {
+        width: 100%;
+        max-height: 280px;
+        flex-direction: row;
+    }
+    body.mg-room .mg-panel-players,
+    body.mg-room .mg-panel-chat {
+        flex: 1;
+        min-height: 240px;
+    }
+    body.mg-room #sidebar-toggle {
+        display: inline-flex !important;
+    }
+}
+
+@media (max-width: 720px) {
+    body.mg-room header h1 { font-size: 1.25rem; }
+    body.mg-room #player-welcome { display: none; }
+    body.mg-room #sidebar {
+        flex-direction: column;
+        max-height: none;
+        display: none;
+    }
+    body.mg-room #sidebar.open-mobile {
+        display: flex !important;
+        position: fixed;
+        inset: 60px 12px 12px;
+        z-index: 200;
+        background: #fff;
+        padding: 12px;
+        border: 3px solid var(--mg-line);
+        border-radius: 16px;
+        max-height: none;
+        height: auto;
+        width: auto;
+        transform: none !important;
+    }
+}

@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Scribble &amp; Guess — Room</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Movie Guess — Room</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/game-room.css">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -112,8 +113,8 @@
             border: 1px solid var(--line-soft);
             white-space: nowrap;
         }
-        #round-display { color: var(--success); }
-        #room-display { color: var(--accent); letter-spacing: 0.09em; }
+        #round-display { color: var(--bg); }
+        #room-display { color: var(--bg); letter-spacing: 0.09em; }
         #player-welcome { color: var(--text-dim); }
 
         /* ---------- shell ---------- */
@@ -786,22 +787,39 @@
         }
     </style>
 </head>
-<body>
+<body class="mg-room">
+    <div class="mg-room-bg" aria-hidden="true">
+        <img class="mg-bg-icon mg-bg-clap" src="/static/img/lobby/clap.png" alt="">
+        <img class="mg-bg-icon mg-bg-ticket" src="/static/img/lobby/ticket.png" alt="">
+        <img class="mg-bg-icon mg-bg-soda" src="/static/img/lobby/soda.png" alt="">
+        <img class="mg-bg-icon mg-bg-reel" src="/static/img/lobby/reel.png" alt="">
+        <img class="mg-bg-icon mg-bg-popcorn" src="/static/img/lobby/popcorn.png" alt="">
+        <img class="mg-bg-icon mg-bg-camera" src="/static/img/lobby/camera.png" alt="">
+        <img class="mg-bg-icon mg-bg-clap-2" src="/static/img/lobby/clap.png" alt="">
+        <img class="mg-bg-icon mg-bg-reel-2" src="/static/img/lobby/reel.png" alt="">
+        <img class="mg-bg-icon mg-bg-popcorn-2" src="/static/img/lobby/popcorn.png" alt="">
+    </div>
     <div id="toast-container"></div>
-    <header>
-        <div class="brand">
-            <div class="brand-mark">✏️</div>
-            <h1>Scribble &amp; Guess</h1>
-        </div>
-        <div id="header-right">
-            <button id="sidebar-toggle" onclick="toggleSidebar()">👥 Players</button>
-            <div class="meta-chips">
-                <span class="meta-chip" id="round-display">ROUND: 1</span>
-                <span class="meta-chip" id="room-display">ROOM: {{ room_code }}</span>
-                <span class="meta-chip" id="player-welcome">{{ username }}</span>
+    <header class="mg-header">
+        <h1 class="mg-brand">Movie Guess</h1>
+        <div class="mg-header-right">
+            <button id="sidebar-toggle" class="mg-header-btn mg-header-btn-ghost" type="button" onclick="toggleSidebar()">Players</button>
+            <div class="mg-badge" id="round-badge">
+                <span class="mg-badge-label">Round</span>
+                <span class="mg-badge-value" id="round-display">1</span>
             </div>
-            <button onclick="toggleHistory()" class="btn">📜 History</button>
-            <button onclick="leaveGame()" class="btn btn-danger">Leave</button>
+            <div class="mg-badge" id="room-badge">
+                <span class="mg-badge-label">Room</span>
+                <div class="mg-badge-row">
+                    <span class="mg-badge-value" id="room-display">{{ room_code }}</span>
+                    <button type="button" class="mg-copy-icon" onclick="copyRoomCode()" title="Copy room code" aria-label="Copy room code">
+                        <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                    </button>
+                </div>
+            </div>
+            <span id="player-welcome" class="hidden">{{ username }}</span>
+            <button type="button" onclick="toggleHistory()" class="mg-header-btn mg-header-btn-history">History</button>
+            <button type="button" onclick="leaveGame()" class="mg-header-btn mg-header-btn-leave">Leave Room</button>
         </div>
     </header>
 
@@ -837,11 +855,19 @@
 
     <div class="main-container">
         <div id="sidebar">
-            <div class="sidebar-status">
-                Drawer: <span id="sidebar-drawer">Waiting...</span>
+            <div class="mg-panel mg-panel-players">
+                <div id="player-list"></div>
             </div>
-            <div class="sidebar-title" style="margin-top: 18px;">Leaderboard</div>
-            <div id="player-list"></div>
+            <div class="mg-panel mg-panel-chat">
+                <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+                <form id="chat-form" class="chat-compose" autocomplete="off">
+                    <input type="text" id="chat-input" maxlength="160" placeholder="TYPE HERE" aria-label="Chat message">
+                    <button type="submit" class="chat-send" title="Send" aria-label="Send message">
+                        <img src="/static/img/icons/ic-send.svg" width="24" height="24" alt="">
+                    </button>
+                </form>
+            </div>
+            <span id="sidebar-drawer" class="hidden">Waiting...</span>
         </div>
 
         <div id="content">
@@ -853,35 +879,53 @@
 
             <div id="setup-area">
                 <div id="lobby-waiting-area" class="hidden">
-                <h2>🎮 In Lobby</h2>
-                <p id="lobby-count-text">Waiting for players ...</p>
-                <div id="lobby-timer-display" class="hidden">⏳ Game starts in <span id="lobby-time-left">05:00</span></div>
-
-                <div id="room-info" class="info-panel is-private hidden">
-                    <p class="info-label">Private room code</p>
-                    <div class="code-row">
-                        <div id="room-code-display"></div>
-                        <button class="btn" onclick="copyRoomCode()">📋 Copy</button>
+                    <div class="lobby-top-row">
+                        <span class="lobby-status-pill" id="lobby-status-pill">Waiting for players</span>
+                        <div id="lobby-timer-display" class="lobby-timer-pill hidden">
+                            <img src="/static/img/icons/ic-clock.svg" width="33.3333" height="33.3333" alt="">
+                            <span id="lobby-time-left">05:00</span>
+                        </div>
                     </div>
-                    <p class="info-hint">Share the code with friends, or send them the invite link.</p>
-                    <button class="btn" onclick="copyInviteLink()" style="width: 100%;">🔗 Copy Invite Link</button>
-                </div>
 
-                <div id="public-room-info" class="info-panel is-public hidden">
-                    <p class="info-label" style="color: var(--success); margin-bottom: 6px;">🌐 Public room</p>
-                    <p class="info-hint" style="margin: 0;">Anyone can join this room directly from the lobby.</p>
-                </div>
+                    <div class="lobby-hero">
+                        <div class="lobby-heading">
+                            <h2>Get ready to play!</h2>
+                            <p id="lobby-hero-sub">The host will start the game soon.</p>
+                        </div>
+                        <p id="lobby-count-text" class="hidden">Waiting for players ...</p>
 
-                <div id="host-controls" class="hidden">
-                    <p>You are the host</p>
-                    <button class="start-btn" onclick="hostStartGame()">Start Game</button>
-                    <div id="start-error" class="hidden"></div>
-                </div>
+                        <div class="lobby-share-row" id="lobby-share-row">
+                            <button type="button" class="lobby-share-chip" id="lobby-room-chip" onclick="copyRoomCode()" title="Copy room code">
+                                <span class="lobby-share-label">Room</span>
+                                <span class="lobby-share-value">
+                                    <strong id="room-code-display">{{ room_code }}</strong>
+                                    <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                </span>
+                            </button>
+                            <button type="button" class="lobby-share-chip" id="lobby-link-chip" onclick="copyInviteLink()" title="Copy invite link">
+                                <span class="lobby-share-label">Link</span>
+                                <span class="lobby-share-value">
+                                    <strong>Copy invite link</strong>
+                                    <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                </span>
+                            </button>
+                        </div>
 
-                <div id="guest-waiting" class="hidden">
-                    <p id="guest-waiting-text">Waiting for host to start...</p>
+                        <div id="room-info" class="info-panel is-private hidden"></div>
+                        <div id="public-room-info" class="info-panel is-public hidden"></div>
+
+                        <div class="lobby-actions">
+                            <div id="host-controls" class="hidden">
+                                <p class="lobby-host-label">You are the host</p>
+                                <button class="start-btn" onclick="hostStartGame()">Start Game</button>
+                                <div id="start-error" class="hidden"></div>
+                            </div>
+                            <div id="guest-waiting" class="hidden">
+                                <p id="guest-waiting-text">Waiting for host to start...</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
                 <h3 id="role-display">Determining Role...</h3>
                 <div id="drawer-input" class="hidden">
                     <label class="hint-toggle">
@@ -947,10 +991,13 @@
         let myName = decodeURIComponent(getCookie("username") || "Anonymous").replace(/^"|"$/g, '');
         const currentRoom = getCookie("room_id");
         console.log(`[DEBUG-FRONTEND] Page loaded. Username: ${myName}, Room: ${currentRoom}`);
-        document.getElementById('room-display').innerText = "ROOM: " + currentRoom;
+        document.getElementById('room-display').innerText = currentRoom || "------";
         
         function updateRoundDisplay() {
-            document.getElementById('round-display').innerText = `ROUND: ${currentRound} / ${totalRounds}`;
+            const el = document.getElementById('round-display');
+            if (!el) return;
+            // Design shows current round number in the badge
+            el.innerText = String(currentRound || 1);
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -1297,50 +1344,61 @@
                 
                 if (isInLobby) {
                     console.log(`[DEBUG-FRONTEND] Room is in LOBBY. Showing waiting area.`);
-                    document.getElementById('setup-area').classList.remove('hidden'); // ✅ FIX: Make sure parent container is visible
+                    const setupArea = document.getElementById('setup-area');
+                    setupArea.classList.remove('hidden');
+                    setupArea.classList.add('is-lobby');
                     document.getElementById('lobby-waiting-area').classList.remove('hidden');
                     document.getElementById('game-area').classList.add('hidden');
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
-                    document.getElementById('role-display').style.display = 'none'; // Optional: hide role text while in lobby
+                    document.getElementById('role-display').style.display = 'none';
 
-                    if (data.player_count !== undefined) {
-                        document.getElementById('lobby-count-text').innerText = `Waiting for players...`;
-                    }
-                    
-                    // Show room info for private rooms
+                    const roomCode = getCookie("room_id");
+                    const codeEl = document.getElementById('room-code-display');
+                    if (codeEl) codeEl.innerText = roomCode || "LOADING...";
+
+                    const linkChip = document.getElementById('lobby-link-chip');
+                    const roomChip = document.getElementById('lobby-room-chip');
+                    const heroSub = document.getElementById('lobby-hero-sub');
+                    const statusPill = document.getElementById('lobby-status-pill');
+
                     if (data.room_type === "private") {
-                        const roomCode = getCookie("room_id");
                         document.getElementById('room-info').classList.remove('hidden');
-                        document.getElementById('room-code-display').innerText = roomCode || "LOADING...";
                         document.getElementById('public-room-info').classList.add('hidden');
+                        if (linkChip) linkChip.classList.remove('hidden');
+                        if (roomChip) roomChip.classList.remove('hidden');
+                        if (statusPill) statusPill.innerText = "Waiting for players";
                         if (data.lobby_time_left !== undefined && data.lobby_time_left !== null) {
                             startLobbyTimer(data.lobby_time_left);
                         }
                     } else {
                         stopLobbyTimer();
-                        // Public room - show public room info
                         document.getElementById('room-info').classList.add('hidden');
                         document.getElementById('public-room-info').classList.remove('hidden');
+                        if (linkChip) linkChip.classList.add('hidden');
+                        if (statusPill) statusPill.innerText = "Public room";
                     }
-                    
+
                     if (myName === data.host_name) {
                         console.log(`[DEBUG-FRONTEND] Current player is HOST. Showing start button.`);
                         currentHostName = data.host_name;
                         document.getElementById('host-controls').classList.remove('hidden');
                         document.getElementById('guest-waiting').classList.add('hidden');
                         document.getElementById('start-error').classList.add('hidden');
+                        if (heroSub) heroSub.innerText = "The host will start the game soon";
                     } else {
                         console.log(`[DEBUG-FRONTEND] Current player is GUEST. Waiting for host to start.`);
                         currentHostName = data.host_name || currentHostName;
                         document.getElementById('host-controls').classList.add('hidden');
                         document.getElementById('guest-waiting').classList.remove('hidden');
-                        document.getElementById('guest-waiting-text').innerText = `Waiting for ${data.host_name} to start...`;
+                        document.getElementById('guest-waiting-text').innerText =
+                            `Waiting for ${data.host_name || "host"} to start...`;
+                        if (heroSub) heroSub.innerText = "The host will start the game soon";
                     }
                 } else {
                     console.log(`[DEBUG-FRONTEND] Room is PLAYING. Hiding lobby area.`);
+                    document.getElementById('setup-area').classList.remove('is-lobby');
                     document.getElementById('lobby-waiting-area').classList.add('hidden');
-                    // Undo the lobby-only hide so the role label is visible again in-game
                     document.getElementById('role-display').style.display = '';
                     stopLobbyTimer();
                 }
@@ -1464,32 +1522,63 @@
                 draw(data.x, data.y, data.tool, data.color);
             }
             if (data.type === "clear") ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (data.type === "chat") {
+                appendChatMessage(data.name, data.message);
+            }
         };
+        function appendChatMessage(name, message) {
+            const box = document.getElementById("chat-messages");
+            if (!box || !message) return;
+            const mine = name === myName;
+            const row = document.createElement("div");
+            row.className = "chat-row " + (mine ? "is-me" : "is-other");
+            row.innerHTML = `
+                <span class="chat-author">${mine ? "YOU" : escapeHtml(name)}</span>
+                <div class="chat-bubble">${escapeHtml(message)}</div>
+            `;
+            box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+        const ICON_PENCIL = `<img class="mg-icon" src="/static/img/icons/ic-pencil.svg" width="32.5" height="33.3237" alt="">`;
+        const ICON_KICK = `<img class="mg-icon" src="/static/img/icons/ic-kick-player.svg" width="31.8167" height="33.3333" alt="">`;
+
         function updatePlayerList(players) {
             const listContainer = document.getElementById('player-list');
             listContainer.innerHTML = "";
+            window.lastPlayerData = players;
             const drawerStatus = document.getElementById('drawer-status').dataset.drawerName;
             players.forEach(p => {
                 const div = document.createElement('div');
                 div.className = "player-item" + (p.name === myName ? " is-me" : "");
-                const drawerIcon = (p.name === drawerStatus) ? " ✏️" : "";
-                
-                // Can only kick others, not yourself
-                const canKick = p.name !== myName;
-                const kickButton = canKick ? `<button class="btn kick-btn" onclick="initiateVoteKick('${p.name}')">🚫 Kick</button>` : '';
-                
+                const isDrawer = p.name === drawerStatus;
+                const showPencil = isDrawer || p.name === myName;
+                const pencil = showPencil
+                    ? `<span class="player-drawer-icon" title="${isDrawer ? "Drawer" : "You"}">${ICON_PENCIL}</span>`
+                    : "";
+                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
+                const kickButton = canKick
+                    ? `<button type="button" class="kick-btn" onclick="initiateVoteKick('${p.name.replace(/'/g, "\\'")}')" title="Kick player" aria-label="Kick ${escapeHtml(p.name)}">${ICON_KICK}</button>`
+                    : `<span class="kick-btn is-static" title="Player">${ICON_KICK}</span>`;
                 div.innerHTML = `
-                    <span class="player-name">${p.name}${drawerIcon}</span>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <span class="player-score">${p.score} pts</span>
+                    <span class="player-name">${escapeHtml(p.name)}${pencil}</span>
+                    <div class="player-right">
+                        <span class="player-score">${p.score}</span>
                         ${kickButton}
                     </div>
                 `;
-                div.style.display = 'flex';
-                div.style.justifyContent = 'space-between';
-                div.style.alignItems = 'center';
                 listContainer.appendChild(div);
             });
+            const countEl = document.getElementById("lobby-count-text");
+            if (countEl && currentRoomStatus === "LOBBY") {
+                countEl.innerText = `${players.length} player${players.length === 1 ? "" : "s"} in room`;
+            }
         }
         function startTimer(seconds) {
             console.log('[DEBUG] startTimer called with', seconds);
@@ -2165,6 +2254,18 @@
 
             modal.classList.toggle("hidden");
             overlay.classList.toggle("hidden");
+        }
+
+        const chatForm = document.getElementById("chat-form");
+        if (chatForm) {
+            chatForm.addEventListener("submit", (event) => {
+                event.preventDefault();
+                const input = document.getElementById("chat-input");
+                const message = (input.value || "").trim();
+                if (!message || !ws || ws.readyState !== WebSocket.OPEN) return;
+                ws.send(JSON.stringify({ type: "chat", message }));
+                input.value = "";
+            });
         }
     </script>
     <div id="history-overlay" class="hidden" onclick="toggleHistory()"></div>

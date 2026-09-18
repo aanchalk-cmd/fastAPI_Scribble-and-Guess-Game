@@ -2341,7 +2341,15 @@ async def websocket_endpoint(
     try:
         while True:
             data = await websocket.receive_json()
-            if data["type"] == "start_game":
+            if data["type"] == "chat":
+                text = str(data.get("message") or "").strip()[:160]
+                if text:
+                    await manager.broadcast({
+                        "type": "chat",
+                        "name": username,
+                        "message": text,
+                    })
+            elif data["type"] == "start_game":
                 print(f"[GAME] start_game event from {username} in room {room_id}. Is host? {username == room.host}")
                 if username == room.host:
                     if len(room.players) >= 2:

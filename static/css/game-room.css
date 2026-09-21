@@ -839,6 +839,7 @@ body.mg-room #lobby-count-text { display: none; }
 /* Hide drawer setup bits while in lobby shell; JS still toggles later */
 body.mg-room #setup-area.is-lobby #role-display,
 body.mg-room #setup-area.is-lobby #drawer-input,
+body.mg-room #setup-area.is-lobby #guesser-waiting,
 body.mg-room #setup-area.is-lobby .drawer-card-body {
     display: none !important;
 }
@@ -1194,6 +1195,49 @@ body.mg-room .drawer-btn:active {
     transform: scale(0.985);
 }
 
+body.mg-room #guesser-waiting {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    width: 100%;
+    min-width: 0;
+}
+
+body.mg-room #guesser-waiting.hidden {
+    display: none !important;
+}
+
+body.mg-room .guesser-status {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid var(--mg-line);
+    border-radius: 12px;
+    padding: 24px;
+}
+
+body.mg-room .guesser-status-icon {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+body.mg-room .guesser-status-text {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.5;
+    text-transform: uppercase;
+    color: var(--mg-input-text);
+    min-width: 0;
+}
+
 /* Playing mode: keep content usable with light theme */
 body.mg-room #game-area {
     background: #fff;
@@ -1229,13 +1273,16 @@ body.mg-room .toast {
 @media (max-height: 900px) {
     body.mg-room .drawer-card-body,
     body.mg-room #drawer-input,
-    body.mg-room .drawer-pick-main {
+    body.mg-room .drawer-pick-main,
+    body.mg-room #guesser-waiting {
         gap: 20px;
     }
     body.mg-room .drawer-pick-copy {
         gap: 10px;
     }
 }
+
+@media (max-width: 1100px) {
     body.mg-room #setup-area:not(.is-lobby) {
         padding: 22px;
         gap: 24px;
@@ -1244,13 +1291,15 @@ body.mg-room .toast {
         gap: 24px;
     }
     body.mg-room #drawer-input,
-    body.mg-room .drawer-pick-main {
+    body.mg-room .drawer-pick-main,
+    body.mg-room #guesser-waiting {
         gap: 24px;
     }
     body.mg-room .drawer-btn {
         font-size: 20px;
         padding: 16px 18px;
     }
+}
 
 
 @media (max-width: 900px) {
@@ -1306,7 +1355,8 @@ body.mg-room .toast {
     }
     body.mg-room .drawer-card-body,
     body.mg-room #drawer-input,
-    body.mg-room .drawer-pick-main {
+    body.mg-room .drawer-pick-main,
+    body.mg-room #guesser-waiting {
         gap: 18px;
     }
     body.mg-room .drawer-role-row {
@@ -1320,6 +1370,14 @@ body.mg-room .toast {
     }
     body.mg-room .drawer-pick-title {
         font-size: 18px;
+    }
+    body.mg-room .guesser-status {
+        padding: 16px;
+        gap: 12px;
+        align-items: flex-start;
+    }
+    body.mg-room .guesser-status-text {
+        font-size: 14px;
     }
     body.mg-room .drawer-pick-sub,
     body.mg-room #category-label,

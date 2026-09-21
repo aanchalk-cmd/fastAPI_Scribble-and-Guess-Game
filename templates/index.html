@@ -936,6 +936,19 @@
                         </div>
                     </div>
 
+                    <div id="guesser-waiting" class="hidden">
+                        <div class="drawer-pick-copy">
+                            <p class="drawer-pick-title">Get ready to guess!</p>
+                            <p class="drawer-pick-sub">The drawer is picking a movie.</p>
+                        </div>
+                        <div class="guesser-status">
+                            <span class="guesser-status-icon">
+                                <img src="/static/img/icons/ic-choosing.svg" width="22" height="22" alt="">
+                            </span>
+                            <p class="guesser-status-text" id="guesser-waiting-drawer">The drawer is choosing the movie</p>
+                        </div>
+                    </div>
+
                     <div id="drawer-input" class="hidden">
                         <div class="drawer-pick-main">
                             <div class="drawer-pick-copy">
@@ -1220,10 +1233,15 @@
             }
             if (data.type === "new_drawer") {
                 const newDrawer = data.drawer_name;
+                document.getElementById('setup-area').classList.remove('is-lobby');
+                document.getElementById('lobby-waiting-area').classList.add('hidden');
+                const roleEl = document.getElementById('role-display');
+                if (roleEl) roleEl.style.display = '';
                 if (newDrawer === myName) {
                     myRole = "drawer";
                     setRoleDisplay("DRAWER");
                     document.getElementById('drawer-input').classList.remove('hidden');
+                    setGuesserWaitingVisible(false);
                     document.getElementById('controls').classList.remove('hidden');
                     showToast(`🧩 You are now the drawer. Pick a word in 60 seconds.`);
                     startSelectionTimer(60);
@@ -1232,8 +1250,9 @@
                     setRoleDisplay("GUESSER");
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
+                    setGuesserWaitingVisible(true);
                     showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a word.`);
-                    stopSelectionTimer();
+                    startSelectionTimer(60);
                 }
                 updateDrawerStatus(newDrawer);
                 document.getElementById('setup-area').classList.remove('hidden');
@@ -1381,6 +1400,7 @@
                     document.getElementById('game-area').classList.add('hidden');
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
+                    setGuesserWaitingVisible(false);
                     const roleDisplay = document.getElementById('role-display');
                     if (roleDisplay) roleDisplay.style.display = 'none';
 
@@ -1456,18 +1476,21 @@
                         document.getElementById('drawer-input').classList.remove('hidden');
                         document.getElementById('controls').classList.remove('hidden');
                     }
+                    setGuesserWaitingVisible(false);
                 } else {
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
                 }
                 updateDrawerStatus(data.drawer_name);
-                if (data.selection_active && myRole === "drawer") {
-                    console.log(`[DEBUG-FRONTEND] Drawer in selection phase. Starting timer.`);
+                if (data.selection_active && !isInLobby) {
+                    console.log(`[DEBUG-FRONTEND] Selection phase. Starting timer. role=${myRole}`);
                     startSelectionTimer(data.selection_time_left || 60);
                     document.getElementById('setup-area').classList.remove('hidden');
                     document.getElementById('game-area').classList.add('hidden');
+                    setGuesserWaitingVisible(myRole !== "drawer");
                 } else {
                     stopSelectionTimer();
+                    if (myRole !== "drawer") setGuesserWaitingVisible(false);
                 }
                 if (data.history) {
                     data.history.forEach(step => {
@@ -1981,9 +2004,18 @@
             statusEl.innerText = "Drawer: " + name;
             const sideDrawer = document.getElementById('sidebar-drawer');
             if (sideDrawer) sideDrawer.innerText = name;
+            const waitingName = document.getElementById('guesser-waiting-drawer');
+            if (waitingName) {
+                waitingName.textContent = name + " is choosing the movie";
+            }
             if (window.lastPlayerData) {
                 updatePlayerList(window.lastPlayerData);
             }
+        }
+        function setGuesserWaitingVisible(visible) {
+            const el = document.getElementById('guesser-waiting');
+            if (!el) return;
+            el.classList.toggle('hidden', !visible);
         }
         function setupGameUI(display, full) {
             targetMovie = full;
@@ -1992,6 +2024,7 @@
             } else {
                 document.getElementById("drawer-movie").innerText = "";
             }
+            setGuesserWaitingVisible(false);
             document.getElementById('setup-area').classList.add('hidden');
             document.getElementById('game-area').classList.remove('hidden');
             createGuessingBoxes(display);

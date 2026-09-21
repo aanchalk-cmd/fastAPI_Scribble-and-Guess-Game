@@ -770,6 +770,12 @@ body.mg-room .share-icon {
     place-items: center;
 }
 
+body.mg-room .share-icon img {
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
 body.mg-room .share-icon-copied {
     display: none;
     position: absolute;

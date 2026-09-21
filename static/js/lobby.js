@@ -586,15 +586,70 @@
         saveDraft();
     });
 
+    function extractRoomCode(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (/https?:\/\//i.test(raw) || /[?&]invite=/i.test(raw)) {
+            try {
+                const urlMatch = raw.match(/https?:\/\/[^\s]+/i) || raw.match(/\S+/);
+                const invite = urlMatch ? new URL(urlMatch[0], window.location.origin).searchParams.get("invite") : null;
+                if (invite) {
+                    return atob(invite).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+                }
+            } catch (_) { /* ignore malformed URLs */ }
+            return "";
+        }
+        return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    }
+
+    function copyText(value) {
+        const text = String(value || "");
+        const fallback = () => {
+            const ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "absolute";
+            ta.style.left = "-9999px";
+            ta.style.top = `${window.pageYOffset || 0}px`;
+            ta.style.userSelect = "text";
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            ta.setSelectionRange(0, text.length);
+            const ok = document.execCommand("copy");
+            ta.remove();
+            return ok;
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).catch(() => {
+                if (!fallback()) throw new Error("copy failed");
+            });
+        }
+        return fallback() ? Promise.resolve() : Promise.reject(new Error("copy failed"));
+    }
+
     if (els.copyJoinCode) {
-        els.copyJoinCode.addEventListener("click", () => {
-            const code = state.roomCode || (state.selectedRoom && state.selectedRoom.room_id) || "";
+        els.copyJoinCode.addEventListener("click", (event) => {
+            event.preventDefault();
+            const code = extractRoomCode(state.roomCode || (state.selectedRoom && state.selectedRoom.room_id) || "");
             if (!code) return;
-            navigator.clipboard.writeText(code).then(() => {
+            copyText(code).then(() => {
                 showError("");
                 els.copyJoinCode.textContent = "✓";
                 setTimeout(() => { els.copyJoinCode.textContent = "⧉"; }, 1200);
             }).catch(() => {});
+        });
+    }
+
+    if (els.roomCodeInput) {
+        els.roomCodeInput.addEventListener("paste", (event) => {
+            const pasted = (event.clipboardData && (event.clipboardData.getData("text/plain") || event.clipboardData.getData("text"))) || "";
+            const extracted = extractRoomCode(pasted);
+            if (!extracted) return;
+            event.preventDefault();
+            els.roomCodeInput.value = extracted;
+            state.roomCode = extracted;
+            saveDraft();
         });
     }
 

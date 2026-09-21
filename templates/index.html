@@ -809,8 +809,11 @@
                 <span class="mg-badge-label">Room</span>
                 <div class="mg-badge-row">
                     <span class="mg-badge-value" id="room-display">{{ room_code }}</span>
-                    <button type="button" class="mg-copy-icon" onclick="copyRoomCode()" title="Copy room code" aria-label="Copy room code">
-                        <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                    <button type="button" class="mg-copy-icon" id="header-copy-code" onclick="copyRoomCode()" title="Copy room code" aria-label="Copy room code">
+                        <span class="share-icon">
+                            <img class="share-icon-copy" src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                            <img class="share-icon-copied" src="/static/img/icons/ic-copied.svg" width="31.8198" height="31.8198" alt="">
+                        </span>
                     </button>
                 </div>
             </div>
@@ -895,14 +898,20 @@
                                 <span class="lobby-share-label">Room</span>
                                 <span class="lobby-share-value">
                                     <strong id="room-code-display">{{ room_code }}</strong>
-                                    <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                    <span class="share-icon">
+                                        <img class="share-icon-copy" src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                        <img class="share-icon-copied" src="/static/img/icons/ic-copied.svg" width="31.8198" height="31.8198" alt="">
+                                    </span>
                                 </span>
                             </button>
                             <button type="button" class="lobby-share-chip" id="lobby-link-chip" onclick="copyInviteLink()" title="Copy invite link">
                                 <span class="lobby-share-label">Link</span>
                                 <span class="lobby-share-value">
                                     <strong>Copy invite link</strong>
-                                    <img src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                    <span class="share-icon">
+                                        <img class="share-icon-copy" src="/static/img/icons/ic-copy.svg" width="19.9998" height="20" alt="">
+                                        <img class="share-icon-copied" src="/static/img/icons/ic-copied.svg" width="31.8198" height="31.8198" alt="">
+                                    </span>
                                 </span>
                             </button>
                         </div>
@@ -1083,13 +1092,48 @@
             }
         }
         
+        const copiedResetTimers = new WeakMap();
+        function markCopied(el) {
+            if (!el) return;
+            el.classList.add('is-copied');
+            const prev = copiedResetTimers.get(el);
+            if (prev) clearTimeout(prev);
+            copiedResetTimers.set(el, setTimeout(() => {
+                el.classList.remove('is-copied');
+                copiedResetTimers.delete(el);
+            }, 2000));
+        }
+        function copyToClipboard(text) {
+            const fallback = () => new Promise((resolve, reject) => {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, text.length);
+                    const ok = document.execCommand('copy');
+                    ta.remove();
+                    ok ? resolve() : reject(new Error('execCommand copy failed'));
+                } catch (err) {
+                    reject(err);
+                }
+            });
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text).catch(() => fallback());
+            }
+            return fallback();
+        }
+
         function copyRoomCode() {
             const roomCode = getCookie("room_id");
             console.debug('[COPY-DEBUG] copyRoomCode called, roomCode=', roomCode);
             if (roomCode) {
-                navigator.clipboard.writeText(roomCode).then(() => {
-                    showToast("✅ Room code copied!");
-                }).catch((err) => {
+                markCopied(document.getElementById('lobby-room-chip'));
+                markCopied(document.getElementById('header-copy-code'));
+                copyToClipboard(roomCode).catch((err) => {
                     console.debug('[COPY-DEBUG] copyRoomCode failed', err);
                 });
             } else {
@@ -1097,17 +1141,16 @@
             }
         }
         
-        function copyInviteLink() {
+        function copyInviteLink(options) {
+            const showTick = !(options && options.showTick === false);
             const roomCode = getCookie("room_id");
-            console.debug('[COPY-DEBUG] copyInviteLink called, roomCode=', roomCode);
+            console.debug('[COPY-DEBUG] copyInviteLink called, roomCode=', roomCode, 'showTick=', showTick);
             if (roomCode) {
                 // Encode the room code before placing it in the URL
                 const encodedCode = btoa(roomCode); 
                 const inviteLink = `${window.location.origin}/?invite=${encodedCode}`;
-                
-                navigator.clipboard.writeText(inviteLink).then(() => {
-                    showToast("✅ Invite link copied!");
-                }).catch((err) => {
+                if (showTick) markCopied(document.getElementById('lobby-link-chip'));
+                copyToClipboard(inviteLink).catch((err) => {
                     console.debug('[COPY-DEBUG] copyInviteLink failed', err);
                 });
             } else {
@@ -1119,7 +1162,7 @@
         try {
             if (sessionStorage.getItem("movie_guess_copy_invite") === "1") {
                 sessionStorage.removeItem("movie_guess_copy_invite");
-                setTimeout(() => copyInviteLink(), 400);
+                setTimeout(() => copyInviteLink({ showTick: false }), 400);
             }
         } catch (e) { /* ignore */ }
         

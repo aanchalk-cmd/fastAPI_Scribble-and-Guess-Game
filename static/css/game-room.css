@@ -156,7 +156,7 @@ body.mg-room .mg-copy-icon {
     place-items: center;
 }
 
-body.mg-room .mg-copy-icon img {
+body.mg-room .mg-copy-icon img.share-icon-copy {
     width: 18px;
     height: 18px;
     display: block;
@@ -751,11 +751,37 @@ body.mg-room .lobby-share-value strong {
     line-height: 1.1;
 }
 
-body.mg-room .lobby-share-value img {
+body.mg-room .lobby-share-value img.share-icon-copy {
     width: 18px;
     height: 18px;
     display: block;
     flex-shrink: 0;
+}
+
+body.mg-room .share-icon {
+    width: 24px;
+    height: 24px;
+    overflow: hidden;
+    position: relative;
+    flex-shrink: 0;
+    display: inline-grid;
+    place-items: center;
+}
+
+body.mg-room .share-icon-copied {
+    display: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+body.mg-room .is-copied img.share-icon-copy {
+    display: none;
+}
+
+body.mg-room .is-copied .share-icon-copied {
+    display: block;
 }
 
 body.mg-room .lobby-actions {
@@ -1399,5 +1425,13 @@ body.mg-room .toast {
         width: 100%;
         font-size: 18px;
         padding: 14px 16px;
+    }
+    body.mg-room .lobby-share-row {
+        max-width: 100%;
+    }
+    body.mg-room .lobby-share-value strong {
+        font-size: 1rem;
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 }

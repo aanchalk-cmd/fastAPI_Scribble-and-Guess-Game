@@ -9,6 +9,9 @@
     --mg-red: #c92208;
     --mg-yellow: #feba00;
     --mg-yellow-soft: rgba(254, 186, 0, 0.2);
+    --mg-yellow-mid: rgba(254, 186, 0, 0.5);
+    --mg-input: #f5f4f4;
+    --mg-input-text: rgba(0, 0, 0, 0.8);
     --mg-muted: rgba(0, 0, 0, 0.6);
     --mg-muted-soft: rgba(0, 0, 0, 0.5);
     --mg-line: #000000;
@@ -585,6 +588,9 @@ body.mg-room #content {
     padding: 0 !important;
     align-items: stretch !important;
     background: transparent;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
 }
 
 body.mg-room .stage-head {
@@ -832,8 +838,360 @@ body.mg-room #lobby-count-text { display: none; }
 
 /* Hide drawer setup bits while in lobby shell; JS still toggles later */
 body.mg-room #setup-area.is-lobby #role-display,
-body.mg-room #setup-area.is-lobby #drawer-input {
+body.mg-room #setup-area.is-lobby #drawer-input,
+body.mg-room #setup-area.is-lobby .drawer-card-body {
     display: none !important;
+}
+
+/* ---------- Drawer pick-a-movie card (Figma 405:1436) ---------- */
+body.mg-room #setup-area:not(.is-lobby) {
+    background: #fff;
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    padding: 30px;
+    gap: 40px;
+}
+
+body.mg-room .drawer-card-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    width: 100%;
+    overflow: hidden;
+}
+
+body.mg-room .drawer-role-row {
+    display: flex;
+    align-items: stretch;
+    gap: 30px;
+    width: 100%;
+}
+
+body.mg-room .drawer-role-bar {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: var(--mg-yellow-soft);
+    border-radius: var(--mg-radius);
+    padding: 20px;
+    min-height: 64px;
+}
+
+body.mg-room .drawer-role-label,
+body.mg-room #role-display {
+    margin: 0 !important;
+    font-size: 16px !important;
+    font-weight: inherit !important;
+    letter-spacing: 0 !important;
+    line-height: 1.5 !important;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+}
+
+body.mg-room .drawer-role-label {
+    color: var(--mg-muted);
+}
+
+body.mg-room #role-display {
+    color: var(--mg-ink) !important;
+}
+
+body.mg-room .drawer-timer,
+body.mg-room #selection-timer-display.drawer-timer {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    background: var(--mg-yellow-soft) !important;
+    border-radius: var(--mg-radius) !important;
+    padding: 12px 20px !important;
+    min-height: 64px;
+    font-size: 16px !important;
+    font-weight: inherit !important;
+    line-height: 1.5;
+    text-transform: uppercase;
+    color: var(--mg-ink) !important;
+    border: none !important;
+    animation: none !important;
+}
+
+body.mg-room #selection-timer-display.drawer-timer.hidden {
+    display: none !important;
+}
+
+body.mg-room #selection-timer-display.timer-low {
+    color: var(--mg-ink) !important;
+    background: var(--mg-yellow-soft) !important;
+    animation: none !important;
+}
+
+body.mg-room .drawer-timer-icon {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+body.mg-room #drawer-input {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body.mg-room .drawer-pick-main {
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+body.mg-room .drawer-pick-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+body.mg-room #drawer-input.hidden {
+    display: none !important;
+}
+
+body.mg-room .drawer-pick-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: 100%;
+}
+
+body.mg-room .drawer-pick-title {
+    margin: 0;
+    font-size: 24px;
+    line-height: normal;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+}
+
+body.mg-room .drawer-pick-sub,
+body.mg-room #category-label {
+    margin: 0;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+    font-weight: inherit;
+}
+
+body.mg-room #category-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+body.mg-room .drawer-pick-field {
+    width: 100%;
+}
+
+body.mg-room #movieInput {
+    width: 100%;
+    max-width: none !important;
+    box-sizing: border-box;
+    background: var(--mg-input) !important;
+    border: 1px solid var(--mg-line) !important;
+    border-radius: var(--mg-radius) !important;
+    padding: 24px !important;
+    color: var(--mg-input-text) !important;
+    font-family: var(--mg-font) !important;
+    font-size: 16px !important;
+    line-height: 1.5;
+    text-transform: uppercase;
+    outline: none;
+}
+
+body.mg-room #movieInput::placeholder {
+    color: var(--mg-muted-soft);
+    text-transform: uppercase;
+}
+
+body.mg-room #movieInput:focus {
+    border-color: var(--mg-line) !important;
+}
+
+body.mg-room .hint-toggle {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    cursor: pointer;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    width: fit-content;
+    max-width: 100%;
+    font-size: 16px;
+    font-weight: inherit;
+    position: relative;
+}
+
+body.mg-room #hintToggle {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    width: 52px;
+    height: 52px;
+    margin: 0;
+    cursor: pointer;
+    z-index: 1;
+}
+
+body.mg-room .hint-switch {
+    position: relative;
+    width: 52px;
+    height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: clip;
+}
+
+body.mg-room .hint-switch img {
+    position: absolute;
+    display: none;
+}
+
+body.mg-room #hintToggle:checked + .hint-switch .hint-switch-on,
+body.mg-room #hintToggle:not(:checked) + .hint-switch .hint-switch-off {
+    display: block;
+}
+
+body.mg-room .hint-toggle-copy {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+body.mg-room .hint-toggle-label {
+    font-size: 16px;
+    line-height: 1.5;
+    text-transform: uppercase;
+    color: var(--mg-input-text);
+}
+
+body.mg-room .hint-easier {
+    background: var(--mg-ink);
+    color: var(--mg-yellow);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 16px;
+    line-height: 1.5;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+body.mg-room #movie-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: flex-start;
+    margin: 0;
+}
+
+body.mg-room .word-choice,
+body.mg-room #movie-options .word-choice {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 2px solid var(--mg-line) !important;
+    border-radius: var(--mg-radius) !important;
+    padding: 18px !important;
+    min-height: 0 !important;
+    color: var(--mg-ink) !important;
+    font-family: var(--mg-font) !important;
+    font-size: 16px !important;
+    font-weight: inherit !important;
+    line-height: 1.5;
+    letter-spacing: 0 !important;
+    text-transform: uppercase;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+body.mg-room .word-choice:hover,
+body.mg-room #movie-options .word-choice:hover {
+    background: var(--mg-yellow-mid) !important;
+    transform: none !important;
+}
+
+body.mg-room .word-choice.is-selected,
+body.mg-room #movie-options .word-choice.is-selected {
+    background: var(--mg-yellow-mid) !important;
+}
+
+body.mg-room .drawer-actions {
+    display: flex;
+    gap: 16px;
+    align-items: stretch;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 0;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+body.mg-room .drawer-btn {
+    flex: 1 1 220px;
+    min-width: 0;
+    border: none;
+    border-radius: var(--mg-radius);
+    padding: 18px 20px;
+    font-family: var(--mg-font);
+    font-size: 24px;
+    line-height: normal;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+body.mg-room .drawer-btn-random {
+    background: var(--mg-ink);
+    color: #fff;
+}
+
+body.mg-room .drawer-btn-start {
+    background: var(--mg-red);
+    color: #fff;
+}
+
+body.mg-room .drawer-btn:active {
+    transform: scale(0.985);
 }
 
 /* Playing mode: keep content usable with light theme */
@@ -868,6 +1226,33 @@ body.mg-room .toast {
     border-left-width: 4px !important;
 }
 
+@media (max-height: 900px) {
+    body.mg-room .drawer-card-body,
+    body.mg-room #drawer-input,
+    body.mg-room .drawer-pick-main {
+        gap: 20px;
+    }
+    body.mg-room .drawer-pick-copy {
+        gap: 10px;
+    }
+}
+    body.mg-room #setup-area:not(.is-lobby) {
+        padding: 22px;
+        gap: 24px;
+    }
+    body.mg-room .drawer-card-body {
+        gap: 24px;
+    }
+    body.mg-room #drawer-input,
+    body.mg-room .drawer-pick-main {
+        gap: 24px;
+    }
+    body.mg-room .drawer-btn {
+        font-size: 20px;
+        padding: 16px 18px;
+    }
+
+
 @media (max-width: 900px) {
     body.mg-room .main-container {
         flex-direction: column;
@@ -884,6 +1269,12 @@ body.mg-room .toast {
     }
     body.mg-room #sidebar-toggle {
         display: inline-flex !important;
+    }
+    body.mg-room .drawer-role-row {
+        gap: 12px;
+    }
+    body.mg-room .drawer-pick-title {
+        font-size: 20px;
     }
 }
 
@@ -908,5 +1299,47 @@ body.mg-room .toast {
         height: auto;
         width: auto;
         transform: none !important;
+    }
+    body.mg-room #setup-area:not(.is-lobby) {
+        padding: 16px;
+        gap: 18px;
+    }
+    body.mg-room .drawer-card-body,
+    body.mg-room #drawer-input,
+    body.mg-room .drawer-pick-main {
+        gap: 18px;
+    }
+    body.mg-room .drawer-role-row {
+        flex-direction: column;
+    }
+    body.mg-room .drawer-role-bar,
+    body.mg-room .drawer-timer {
+        width: 100%;
+        min-height: 52px;
+        padding: 12px 16px;
+    }
+    body.mg-room .drawer-pick-title {
+        font-size: 18px;
+    }
+    body.mg-room .drawer-pick-sub,
+    body.mg-room #category-label,
+    body.mg-room .hint-toggle-label,
+    body.mg-room .hint-easier,
+    body.mg-room .word-choice {
+        font-size: 14px !important;
+    }
+    body.mg-room #movieInput {
+        padding: 16px !important;
+        font-size: 14px !important;
+    }
+    body.mg-room .drawer-actions {
+        flex-direction: column;
+        gap: 12px;
+    }
+    body.mg-room .drawer-btn {
+        flex: 1 1 auto;
+        width: 100%;
+        font-size: 18px;
+        padding: 14px 16px;
     }
 }

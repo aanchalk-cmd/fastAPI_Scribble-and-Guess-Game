@@ -871,7 +871,6 @@
             <div class="stage-head">
                 <div id="status-bar"><span id="drawer-status">Waiting for game...</span></div>
                 <div id="timer-display" class="hidden">⏱️ <span id="time-left">05:00</span></div>
-                <div id="selection-timer-display" class="hidden">🕒 <span id="selection-time-left">01:00</span></div>
             </div>
 
             <div id="setup-area">
@@ -923,19 +922,53 @@
                         </div>
                     </div>
                 </div>
-                <h3 id="role-display">Determining Role...</h3>
-                <div id="drawer-input" class="hidden">
-                    <label class="hint-toggle">
-                        <input type="checkbox" id="hintToggle" checked>
-                        <span>Show vowel hints</span>
-                    </label>
-                    <p id="category-label">Category: —</p>
-                    <div id="movie-options"></div>
-                    <p class="divider-text">or pick your own</p>
-                    <input type="text" id="movieInput" placeholder="Type a custom word...">
-                    <div class="drawer-actions">
-                        <button class="btn active-tool" onclick="sendMovie()">Use Custom Word</button>
-                        <button class="btn" onclick="generateMovie()">🎲 New Options</button>
+                <div class="drawer-card-body">
+                    <div class="drawer-role-row">
+                        <div class="drawer-role-bar">
+                            <span class="drawer-role-label">Your role</span>
+                            <h3 id="role-display">Determining Role...</h3>
+                        </div>
+                        <div id="selection-timer-display" class="drawer-timer hidden">
+                            <span class="drawer-timer-icon">
+                                <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
+                            </span>
+                            <span id="selection-time-left">00 : 59</span>
+                        </div>
+                    </div>
+
+                    <div id="drawer-input" class="hidden">
+                        <div class="drawer-pick-main">
+                            <div class="drawer-pick-copy">
+                                <p class="drawer-pick-title">Pick a movie to give clues for</p>
+                                <p class="drawer-pick-sub">Choose a category, type a title — or let us surprise you. Others will try to guess it from your clues.</p>
+                                <p id="category-label">Category: —</p>
+                            </div>
+
+                            <div class="drawer-pick-controls">
+                                <div class="drawer-pick-field">
+                                    <input type="text" id="movieInput" placeholder="Type a title" autocomplete="off">
+                                </div>
+
+                                <label class="hint-toggle">
+                                    <input type="checkbox" id="hintToggle" checked>
+                                    <span class="hint-switch" aria-hidden="true">
+                                        <img class="hint-switch-on" src="/static/img/icons/ic-switch-on.svg" width="43.3333" height="35.2734" alt="">
+                                        <img class="hint-switch-off" src="/static/img/icons/ic-switch-off.svg" width="43.3333" height="35.2734" alt="">
+                                    </span>
+                                    <span class="hint-toggle-copy">
+                                        <span class="hint-toggle-label">Show vowel hints to guessers</span>
+                                        <span class="hint-easier">Easier</span>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div id="movie-options"></div>
+                        </div>
+
+                        <div class="drawer-actions">
+                            <button type="button" class="drawer-btn drawer-btn-random" onclick="generateMovie()">Random</button>
+                            <button type="button" class="drawer-btn drawer-btn-start" onclick="sendMovie()">Start Game</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1189,14 +1222,14 @@
                 const newDrawer = data.drawer_name;
                 if (newDrawer === myName) {
                     myRole = "drawer";
-                    document.getElementById('role-display').innerText = "Role: DRAWER";
+                    setRoleDisplay("DRAWER");
                     document.getElementById('drawer-input').classList.remove('hidden');
                     document.getElementById('controls').classList.remove('hidden');
                     showToast(`🧩 You are now the drawer. Pick a word in 60 seconds.`);
                     startSelectionTimer(60);
                 } else {
                     myRole = "guesser";
-                    document.getElementById('role-display').innerText = "Role: GUESSER";
+                    setRoleDisplay("GUESSER");
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
                     showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a word.`);
@@ -1348,7 +1381,8 @@
                     document.getElementById('game-area').classList.add('hidden');
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
-                    document.getElementById('role-display').style.display = 'none';
+                    const roleDisplay = document.getElementById('role-display');
+                    if (roleDisplay) roleDisplay.style.display = 'none';
 
                     const roomCode = getCookie("room_id");
                     const codeEl = document.getElementById('room-code-display');
@@ -1396,7 +1430,8 @@
                     console.log(`[DEBUG-FRONTEND] Room is PLAYING. Hiding lobby area.`);
                     document.getElementById('setup-area').classList.remove('is-lobby');
                     document.getElementById('lobby-waiting-area').classList.add('hidden');
-                    document.getElementById('role-display').style.display = '';
+                    const roleDisplay = document.getElementById('role-display');
+                    if (roleDisplay) roleDisplay.style.display = '';
                     stopLobbyTimer();
                 }
                 if (data.history_movies) {
@@ -1415,7 +1450,7 @@
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 document.getElementById('congrats-area').style.display = "none";
                 document.getElementById('movie-reveal').classList.add('hidden');
-                document.getElementById('role-display').innerText = "Role: " + myRole.toUpperCase();
+                setRoleDisplay(myRole);
                 if (myRole === "drawer") {
                     if (!isInLobby) {
                         document.getElementById('drawer-input').classList.remove('hidden');
@@ -1723,12 +1758,18 @@
             if (selectionInterval) clearInterval(selectionInterval);
             document.getElementById('selection-timer-display').classList.add('hidden');
         }
+        function setRoleDisplay(roleText) {
+            const el = document.getElementById('role-display');
+            if (!el) return;
+            const raw = String(roleText || "").replace(/^Role:\s*/i, "").trim();
+            el.textContent = raw ? raw.toUpperCase() : "Determining Role...";
+        }
         function updateSelectionTimerDisplay() {
             const mins = Math.floor(selectionTimeLeft / 60);
             const secs = selectionTimeLeft % 60;
             const timerSpan = document.getElementById('selection-time-left');
             const timerDiv = document.getElementById('selection-timer-display');
-            timerSpan.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            timerSpan.innerText = `${mins.toString().padStart(2, '0')} : ${secs.toString().padStart(2, '0')}`;
             if (selectionTimeLeft <= 30) timerDiv.classList.add('timer-low');
             else timerDiv.classList.remove('timer-low');
         }
@@ -2022,11 +2063,19 @@
         function showMovieOptions(options) {
             const container = document.getElementById("movie-options");
             container.innerHTML = "";
-            options.forEach(movie => {
+            const input = document.getElementById("movieInput");
+            options.forEach((movie, index) => {
                 let btn = document.createElement("button");
-                btn.className = "btn word-choice";
+                btn.type = "button";
+                btn.className = "btn word-choice" + (index === 0 ? " is-selected" : "");
                 btn.innerText = movie;
+                if (index === 0 && input && !input.value) {
+                    input.value = movie;
+                }
                 btn.onclick = () => {
+                    container.querySelectorAll(".word-choice").forEach((el) => el.classList.remove("is-selected"));
+                    btn.classList.add("is-selected");
+                    if (input) input.value = movie;
                     const showVowels = document.getElementById('hintToggle').checked;
                     ws.send(JSON.stringify({
                         type: "select_movie",

@@ -42,20 +42,17 @@ body.mg-room .mg-room-bg {
 body.mg-room .mg-bg-icon {
     position: absolute;
     opacity: 0.3;
-    filter: grayscale(1) contrast(0.85);
     object-fit: contain;
     user-select: none;
 }
 
-body.mg-room .mg-bg-clap { top: 8%; left: 3%; width: min(160px, 14vw); transform: rotate(-18deg); }
-body.mg-room .mg-bg-ticket { top: 42%; left: 2%; width: min(130px, 12vw); transform: rotate(12deg); }
-body.mg-room .mg-bg-soda { bottom: 6%; left: 4%; width: min(120px, 11vw); transform: rotate(-8deg); }
-body.mg-room .mg-bg-reel { top: 10%; right: 4%; width: min(150px, 13vw); transform: rotate(10deg); }
-body.mg-room .mg-bg-popcorn { top: 40%; right: 3%; width: min(140px, 12vw); transform: rotate(-12deg); }
-body.mg-room .mg-bg-camera { bottom: 5%; right: 4%; width: min(150px, 13vw); transform: rotate(8deg); }
-body.mg-room .mg-bg-clap-2 { top: 55%; left: 18%; width: min(110px, 10vw); transform: rotate(22deg); opacity: 0.3; }
-body.mg-room .mg-bg-reel-2 { bottom: 18%; right: 20%; width: min(120px, 11vw); transform: rotate(-20deg); opacity: 0.3; }
-body.mg-room .mg-bg-popcorn-2 { top: 18%; left: 22%; width: min(100px, 9vw); transform: rotate(6deg); opacity: 0.3; }
+/* Three per side, flush to the edges and slightly cropped */
+body.mg-room .mg-bg-clap { top: 15%; left: -1.2%; width: min(170px, 10.5vw); }
+body.mg-room .mg-bg-ticket { top: 57%; left: -0.8%; width: min(160px, 10vw); }
+body.mg-room .mg-bg-soda { top: 87%; left: -0.5%; width: min(140px, 8.5vw); }
+body.mg-room .mg-bg-reel { top: 18%; right: 0; width: min(200px, 12.8vw); }
+body.mg-room .mg-bg-popcorn { top: 54%; right: -0.5%; width: min(155px, 9.5vw); }
+body.mg-room .mg-bg-camera { top: 88%; right: 0; width: min(155px, 9.5vw); }
 
 /* Keep UI above the watermark layer */
 body.mg-room > header,
@@ -76,11 +73,8 @@ body.mg-room > header {
 }
 
 @media (max-width: 900px) {
-    body.mg-room .mg-bg-clap-2,
-    body.mg-room .mg-bg-reel-2,
-    body.mg-room .mg-bg-popcorn-2,
     body.mg-room .mg-bg-ticket,
-    body.mg-room .mg-bg-soda { display: none; }
+    body.mg-room .mg-bg-popcorn { display: none; }
 }
 
 @media (max-width: 600px) {

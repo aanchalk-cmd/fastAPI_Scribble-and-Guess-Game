@@ -7,3 +7,4 @@ Documentation
 .env
 .env.*.env
 static/img/lobby
+static/img/icons

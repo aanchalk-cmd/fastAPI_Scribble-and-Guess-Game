@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play2">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -873,7 +873,6 @@
         <div id="content">
             <div class="stage-head">
                 <div id="status-bar"><span id="drawer-status">Waiting for game...</span></div>
-                <div id="timer-display" class="hidden">⏱️ <span id="time-left">05:00</span></div>
             </div>
 
             <div id="setup-area">
@@ -1009,15 +1008,38 @@
                         <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
                     </div>
                 </div>
-                <h2 id="drawer-movie"></h2>
-                <div id="controls" class="toolbar hidden">
-                    <button id="drawBtn" class="btn active-tool" onclick="setTool('draw')">✏️ Pencil</button>
-                    <button id="eraseBtn" class="btn" onclick="setTool('erase')">🧽 Eraser</button>
-                    <input type="color" id="colorPicker" value="#333333" title="Choose color">
-                    <button class="btn" onclick="clearCanvasSync()">🗑️ Clear</button>
+                <div class="game-play-head">
+                    <h2 id="drawer-movie"></h2>
+                    <div id="timer-display" class="play-timer hidden">
+                        <span class="play-timer-icon">
+                            <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
+                        </span>
+                        <span id="time-left">05 : 00</span>
+                    </div>
                 </div>
-                <canvas id="canvas" width="800" height="500"></canvas>
+                <div class="game-canvas-wrap">
+                    <canvas id="canvas" width="800" height="500"></canvas>
+                </div>
                 <div id="movie-display" class="box-container"></div>
+                <div id="controls" class="toolbar hidden">
+                    <button type="button" id="drawBtn" class="draw-tool active-tool" onclick="setTool('draw')">
+                        <img src="/static/img/icons/ic-pencil.svg" width="32.5" height="33.3237" alt="">
+                        <span>Pencil</span>
+                    </button>
+                    <button type="button" id="eraseBtn" class="draw-tool" onclick="setTool('erase')">
+                        <img src="/static/img/icons/ic-eraser.svg" width="32" height="32" alt="">
+                        <span>Eraser</span>
+                    </button>
+                    <label class="draw-tool draw-color" title="Choose color">
+                        <span class="draw-color-swatch" id="color-swatch"></span>
+                        <input type="color" id="colorPicker" value="#333333" aria-label="Colour picker">
+                        <span>Colour picker</span>
+                    </label>
+                    <button type="button" class="draw-tool" onclick="clearCanvasSync()">
+                        <img src="/static/img/icons/ic-trash.svg" width="28" height="32" alt="">
+                        <span>Clear</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1055,6 +1077,15 @@
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
         let ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
+        (function initColorSwatch() {
+            const picker = document.getElementById('colorPicker');
+            const swatch = document.getElementById('color-swatch');
+            if (!picker || !swatch) return;
+            const sync = () => { swatch.style.background = picker.value; };
+            sync();
+            picker.addEventListener('input', sync);
+            picker.addEventListener('change', sync);
+        })();
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
         let roomCategory = "movies";
         let currentHostName = null;
@@ -1844,7 +1875,7 @@
             const secs = timeLeft % 60;
             const timerSpan = document.getElementById('time-left');
             const timerDiv = document.getElementById('timer-display');
-            timerSpan.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            timerSpan.innerText = `${mins.toString().padStart(2, '0')} : ${secs.toString().padStart(2, '0')}`;
             if (timeLeft <= 30) timerDiv.classList.add('timer-low');
             else timerDiv.classList.remove('timer-low');
         }
@@ -2062,14 +2093,16 @@
         }
         function setupGameUI(display, full) {
             targetMovie = full;
+            const gameArea = document.getElementById('game-area');
+            gameArea.classList.toggle('is-drawer', myRole === 'drawer');
             if (myRole === "drawer") {
-                document.getElementById("drawer-movie").innerText = "Draw this: " + full;
+                document.getElementById("drawer-movie").innerText = (full || "").toUpperCase();
             } else {
                 document.getElementById("drawer-movie").innerText = "";
             }
             setGuesserWaitingVisible(false);
             document.getElementById('setup-area').classList.add('hidden');
-            document.getElementById('game-area').classList.remove('hidden');
+            gameArea.classList.remove('hidden');
             createGuessingBoxes(display);
         }
         function requestRestart() { ws.send(JSON.stringify({type: "restart"})); }

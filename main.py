@@ -1,4 +1,5 @@
 import random
+import re
 import asyncio
 import time
 import string
@@ -598,8 +599,26 @@ class ConnectionManager:
             "selection_end_time": None,
             "winner_announcement": None,
             "revealed_movie": None,
+            "word_guessed": False,
+            "revealed_words": [],
             "show_vowels": True   
         }
+
+    def movie_word_list(self) -> List[str]:
+        movie = self.game_state.get("movie") or ""
+        return [match.group(0).upper() for match in re.finditer(r"\S+", movie)]
+
+    def reveal_word_if_valid(self, word: str) -> Optional[str]:
+        words = self.movie_word_list()
+        if len(words) < 2:
+            return None
+        token = (word or "").strip().upper()
+        if not token or token not in words:
+            return None
+        revealed = self.game_state.setdefault("revealed_words", [])
+        if token not in revealed:
+            revealed.append(token)
+        return token
 
     def get_player_score(self, name: str):
         score = r.get(f"score:{self.room_id}:{name}")
@@ -767,6 +786,8 @@ class ConnectionManager:
             "is_round_active": False,
             "winner_announcement": None,
             "revealed_movie": None,
+            "word_guessed": False,
+            "revealed_words": [],
         })
         self.draw_history = []
 
@@ -790,6 +811,7 @@ class ConnectionManager:
                 "round_number": self.get_display_round(),
                 "total_rounds": self.get_display_total_rounds(),
                 "movie_set": False,
+                "word_guessed": False,
                 "drawer_name": new_drawer_name,
                 "selection_active": True,
                 "selection_time_left": self.get_selection_time_left(),
@@ -1426,6 +1448,7 @@ class ConnectionManager:
                         "type": "announcement",
                         "message": self.game_state["winner_announcement"],
                         "reveal": self.game_state["revealed_movie"],
+                        "word_guessed": False,
                         "is_final_round": is_final_round,
                         "round_number": self.get_display_round(),
                         "total_rounds": self.get_display_total_rounds(),
@@ -1469,7 +1492,9 @@ class ConnectionManager:
         r.delete("round_end_time")
         self.game_state.update({
             "movie": "", "display_name": "", "is_round_active": False,
-            "winner_announcement": None, "revealed_movie": None
+            "winner_announcement": None, "revealed_movie": None,
+            "word_guessed": False,
+            "revealed_words": [],
         })
         self.history_recorded_for_round = False
         self.draw_history = []
@@ -1519,6 +1544,7 @@ class ConnectionManager:
                 "round_number": self.get_display_round(),
                 "total_rounds": self.get_display_total_rounds(),
                 "movie_set": False,
+                "word_guessed": False,
                 "drawer_name": new_drawer_name,
                 "selection_active": True,
                 "selection_time_left": self.get_selection_time_left(),
@@ -1561,6 +1587,8 @@ class ConnectionManager:
             "is_round_active": False,
             "winner_announcement": None,
             "revealed_movie": None,
+            "word_guessed": False,
+            "revealed_words": [],
             "drawer_assigned": False,
             "drawer_name": None,
             "is_selecting": False,
@@ -1828,6 +1856,8 @@ async def resume_game_after_rejoin(room: GameRoom):
         "is_round_active": False,
         "winner_announcement": None,
         "revealed_movie": None,
+        "word_guessed": False,
+        "revealed_words": [],
         "drawer_assigned": False,
         "drawer_name": None,
         "is_selecting": False,
@@ -2338,8 +2368,10 @@ async def websocket_endpoint(
             "selection_active": manager.game_state.get("selection_active", False),
             "selection_time_left": manager.get_selection_time_left(),
             "history": manager.draw_history,
-            "winner_msg": manager.game_state["winner_announcement"], 
+            "winner_msg": manager.game_state["winner_announcement"],
             "revealed": manager.game_state["revealed_movie"],
+            "word_guessed": bool(manager.game_state.get("word_guessed")),
+            "revealed_words": list(manager.game_state.get("revealed_words") or []),
             "is_round_active": manager.game_state["is_round_active"],
             "time_left": current_time_left if manager.game_state["is_round_active"] else 0,
             "lobby_time_left": get_lobby_time_left(room),
@@ -2432,6 +2464,8 @@ async def websocket_endpoint(
                 manager.cancel_selection_timer()
                 manager.game_state["movie"] = data["movie"].upper()
                 manager.game_state["show_vowels"] = data.get("show_vowels", True)
+                manager.game_state["word_guessed"] = False
+                manager.game_state["revealed_words"] = []
 
                 manager.game_state["display_name"] = process_movie(
                     manager.game_state["movie"],
@@ -2472,6 +2506,7 @@ async def websocket_endpoint(
 
                 manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"
                 manager.game_state["revealed_movie"] = manager.game_state["movie"]
+                manager.game_state["word_guessed"] = True
                 is_final_round = manager.current_round >= manager.total_rounds
 
                 await manager.broadcast({"type": "player_list", "players": manager.get_player_data()})
@@ -2479,6 +2514,7 @@ async def websocket_endpoint(
                     "type": "announcement",
                     "message": manager.game_state["winner_announcement"],
                     "reveal": manager.game_state["revealed_movie"],
+                    "word_guessed": True,
                     "is_final_round": is_final_round,
                     "round_number": manager.get_display_round(),
                     "total_rounds": manager.get_display_total_rounds(),
@@ -2495,6 +2531,15 @@ async def websocket_endpoint(
             elif data["type"] == "drawing":
                 manager.draw_history.append(data)
                 await manager.broadcast(data)
+            elif data["type"] == "word_revealed":
+                if manager.game_state.get("is_round_active"):
+                    token = manager.reveal_word_if_valid(data.get("word"))
+                    if token:
+                        await manager.broadcast({
+                            "type": "word_revealed",
+                            "word": token,
+                            "revealed_words": list(manager.game_state.get("revealed_words") or []),
+                        })
             elif data["type"] == "clear":
                 manager.draw_history = []
                 await manager.broadcast(data)
@@ -2527,6 +2572,8 @@ async def websocket_endpoint(
                     # Normalize to uppercase for consistent guessing
                     manager.game_state["movie"] = movie.strip().upper()
                     manager.game_state["show_vowels"] = data.get("show_vowels", True)
+                    manager.game_state["word_guessed"] = False
+                    manager.game_state["revealed_words"] = []
 
                     manager.game_state["display_name"] = process_movie(
                         manager.game_state["movie"],

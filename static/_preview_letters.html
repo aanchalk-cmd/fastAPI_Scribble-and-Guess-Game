@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="/static/css/game-room.css">
+<style>
+  body { padding: 40px; }
+  .box-container { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+  .letter-input { width: 42px; height: 52px; font-size: 22px; text-align: center; border: 2px solid #ccc; border-radius: 10px; text-transform: uppercase; font-weight: 800; }
+  .space { width: 34px; height: 52px; display: inline-block; }
+</style>
+</head>
+<body class="mg-room">
+  <div class="box-container" id="row"></div>
+</body>
+<script>
+  const answer = "THE DARK KNIGHT";
+  const revealed = new Set(["THE"]);
+  const row = document.getElementById('row');
+  let pos = 0;
+  answer.split(" ").forEach((word, wi) => {
+    if (wi > 0) { const s = document.createElement('div'); s.className = 'space'; row.appendChild(s); }
+    const isRev = revealed.has(word);
+    word.split("").forEach(ch => {
+      const i = document.createElement('input');
+      i.className = 'letter-input' + (isRev ? ' revealed-word' : '');
+      i.maxLength = 1;
+      if (isRev) { i.value = ch; i.disabled = true; }
+      row.appendChild(i);
+    });
+  });
+</script>
+</html>

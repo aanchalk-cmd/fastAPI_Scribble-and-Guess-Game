@@ -8,3 +8,4 @@ Documentation
 .env.*.env
 static/img/lobby
 static/img/icons
+/tests

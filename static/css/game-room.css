@@ -1489,6 +1489,12 @@ body.mg-room .letter-input {
     border-color: var(--mg-line) !important;
 }
 
+body.mg-room .letter-input.revealed-word {
+    background: #c5e8b7 !important;
+    color: var(--mg-ink) !important;
+    border-color: #7cc35f !important;
+}
+
 body.mg-room #history-modal {
     background: #fff !important;
     border-left: 3px solid var(--mg-line) !important;

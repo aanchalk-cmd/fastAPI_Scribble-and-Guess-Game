@@ -936,7 +936,16 @@ class ConnectionManager:
     def get_player_data(self):
         players = [{"name": name, "score": self.get_player_score(name)} 
                    for name in self.active_connections.keys()]
-        return sorted(players, key=lambda x: x['score'], reverse=True)
+        roster_order = {
+            name: index for index, name in enumerate(self.room.players)
+        } if self.room else {}
+        return sorted(
+            players,
+            key=lambda player: (
+                -player["score"],
+                roster_order.get(player["name"], len(roster_order)),
+            ),
+        )
 
     async def connect(self, websocket: WebSocket, name: str, guest_id: Optional[str] = None):
         original_name = name

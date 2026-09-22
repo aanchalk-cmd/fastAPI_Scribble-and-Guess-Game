@@ -1739,9 +1739,8 @@
                 const div = document.createElement('div');
                 div.className = "player-item" + (p.name === myName ? " is-me" : "");
                 const isDrawer = p.name === drawerStatus;
-                const showPencil = isDrawer || p.name === myName;
-                const pencil = showPencil
-                    ? `<span class="player-drawer-icon" title="${isDrawer ? "Drawer" : "You"}">${ICON_PENCIL}</span>`
+                const pencil = isDrawer
+                    ? `<span class="player-drawer-icon" title="Drawer">${ICON_PENCIL}</span>`
                     : "";
                 const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
                 const kickButton = canKick

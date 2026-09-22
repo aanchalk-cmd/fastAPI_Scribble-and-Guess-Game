@@ -1062,9 +1062,14 @@
             if (parts.length === 2) return parts.pop().split(';').shift();
         }
         // This removes the surrounding double quotes and decodes any URL-encoded spaces
-        let myName = decodeURIComponent(getCookie("username") || "Anonymous").replace(/^"|"$/g, '');
         const currentRoom = getCookie("room_id");
-        console.log(`[DEBUG-FRONTEND] Page loaded. Username: ${myName}, Room: ${currentRoom}`);
+        let tabPlayerName = null;
+        try {
+            tabPlayerName = sessionStorage.getItem("movie_guess_player_name");
+        } catch (_) { /* ignore */ }
+        let myName = decodeURIComponent(tabPlayerName || getCookie(`player_name_${currentRoom}`) || getCookie("username") || "Anonymous").replace(/^"|"$/g, '');
+        const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
+        console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
         
         function updateRoundDisplay() {
@@ -1075,7 +1080,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         (function initColorSwatch() {
             const picker = document.getElementById('colorPicker');
@@ -2115,7 +2120,7 @@
         }
 
         function quitGame() {
-            window.location.href = "/leave";
+            window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
         }
 
         function updateDrawerStatus(name) {
@@ -2322,13 +2327,14 @@
             })); 
         }
         ws.onclose = () => {
+            console.log(`[REFRESH-DEBUG] WebSocket closed. navigation=${navigationType} player=${myName} room=${currentRoom}`);
             stopTimer();
             document.getElementById('disconnect-overlay').classList.remove('hidden');
             document.getElementById('drawer-status').innerText = "🔌 Connection Lost";
         };
         function leaveGame() {
             if (confirm("Are you sure you want to leave the room?")) {
-                window.location.href = "/leave";
+                window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
             }
         }
         

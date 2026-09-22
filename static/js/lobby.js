@@ -389,6 +389,10 @@
     }
 
     function finishSubmit() {
+        try {
+            sessionStorage.setItem("movie_guess_player_name", state.name);
+            sessionStorage.setItem("movie_guess_player_room", state.roomCode);
+        } catch (_) { /* ignore */ }
         if (state.pendingAction === "create" && state.copyLink) {
             try {
                 sessionStorage.setItem(COPY_FLAG, "1");

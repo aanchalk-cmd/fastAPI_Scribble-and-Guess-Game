@@ -4,7 +4,7 @@ import time
 import string
 import uuid
 import fakeredis
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -273,6 +273,10 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
     return validated if validated else str(uuid.uuid4())
 
 
+def player_cookie_name(room_id: str) -> str:
+    return f"player_name_{room_id}"
+
+
 def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
     if room.is_guest_banned(guest_id):
         return True
@@ -455,13 +459,18 @@ async def join(
         await broadcast_lobby_update()
 
     response = RedirectResponse(url="/game", status_code=303)
-    response.set_cookie("username", name)
     response.set_cookie("room_id", room_code)
+    response.set_cookie(player_cookie_name(room_code), name)
     response.set_cookie("guest_id", guest_id, max_age=31536000)
     return response
 
 @app.get("/leave")
-async def leave(username: str = Cookie(None), room_id: str = Cookie(None)):
+async def leave(
+    request: Request,
+    player_name: str = Query(None),
+    room_id: str = Cookie(None),
+):
+    username = player_name or (request.cookies.get(player_cookie_name(room_id)) if room_id else None)
     if room_id in rooms and username:
         room = rooms[room_id]
         manager = room.manager
@@ -939,6 +948,9 @@ class ConnectionManager:
 
         await websocket.accept()
         ws_id = id(websocket)
+        previous_websocket = self.active_connections.get(name)
+        if previous_websocket and previous_websocket is not websocket:
+            self.ws_to_name.pop(id(previous_websocket), None)
         self.active_connections[name] = websocket
         self.ws_to_name[ws_id] = name
         print(f"[WEBSOCKET] Player {name} connected. Total connections: {len(self.active_connections)}")
@@ -1911,6 +1923,7 @@ async def get_game(request: Request, room_id: str = Cookie(None), username: str 
     if not room_id:
         return RedirectResponse(url="/", status_code=303)
     
+    username = request.cookies.get(player_cookie_name(room_id), username)
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "room_code": room_id,
@@ -2190,7 +2203,15 @@ async def websocket_endpoint(
     username: str = Cookie(None),
     room_id: str = Cookie(None),
     guest_id: str = Cookie(None),
+    player_name: str = Query(None),
 ):
+    legacy_username = username
+    username = player_name or websocket.cookies.get(player_cookie_name(room_id)) or username
+    print(
+        f"[REFRESH-DEBUG] /ws room={room_id} requested_player={player_name!r} "
+        f"room_cookie={websocket.cookies.get(player_cookie_name(room_id))!r} "
+        f"legacy_cookie={legacy_username!r} resolved_player={username!r}"
+    )
     room = rooms.get(room_id)
 
     if not username or not room_id or room_id not in rooms:

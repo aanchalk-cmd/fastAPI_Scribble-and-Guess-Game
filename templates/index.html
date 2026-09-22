@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play7">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -834,13 +834,13 @@
         <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
     </div>
 
-    <div id="rejoin-wait-overlay" class="modal-card hidden" style="z-index: 10050; text-align: center;">
+    <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050; text-align: center;">
         <h2>Opponent left</h2>
         <p id="rejoin-wait-message">End the game or wait for another player to join.</p>
-        <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none; margin: 8px 0 16px; color: var(--warning);">Waiting: <span id="rejoin-time-left">05:00</span></div>
+        <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none; margin: 8px 0 16px; color: var(--warning);">Waiting - <span id="rejoin-time-left">05:00</span></div>
         <div id="rejoin-choice-actions" class="vote-actions">
+            <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait</button>
             <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
-            <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait 5 Minutes</button>
         </div>
         <div id="rejoin-waiting-actions" class="vote-actions hidden" style="display: none;">
             <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
@@ -1001,16 +1001,25 @@
 
             <div id="game-area" class="hidden">
                 <div id="congrats-area" style="display: none;">
-                    <div id="congrats-text"></div>
-                    <div id="movie-reveal" class="hidden">The word was: <span id="revealed-name" style="color: var(--accent);"></span></div>
-                    <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
-                    <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
-                        <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
-                            <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
-                            <select id="host-end-category" class="name-input" style="width:100%;"></select>
+                    <div class="round-result-card">
+                        <img class="round-result-popcorn is-left" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
+                        <img class="round-result-popcorn is-right" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
+                        <p class="round-result-eyebrow">
+                            <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
+                        </p>
+                        <h2 id="congrats-winner-name" class="round-result-winner"></h2>
+                        <p class="round-result-sub" id="congrats-sub-label">Guessed it first</p>
+                        <div id="congrats-text"></div>
+                        <div id="movie-reveal" class="hidden">The word was: <span id="revealed-name"></span></div>
+                        <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
+                        <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
+                            <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
+                                <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
+                                <select id="host-end-category" class="name-input" style="width:100%;"></select>
+                            </div>
+                            <button class="btn-restart" id="continue-game-btn" onclick="continueGame()">Continue Game</button>
+                            <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
                         </div>
-                        <button class="btn-restart" id="continue-game-btn" onclick="continueGame()">Continue Game</button>
-                        <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
                     </div>
                 </div>
                 <div class="game-play-head">
@@ -1993,9 +2002,33 @@
             }
         }
 
+        function populateRoundResultCard(msg) {
+            const roundLabelEl = document.getElementById('congrats-round-label');
+            const sepEl = document.getElementById('congrats-kind-sep');
+            const kindLabelEl = document.getElementById('congrats-kind-label');
+            const nameEl = document.getElementById('congrats-winner-name');
+            const subEl = document.getElementById('congrats-sub-label');
+            if (roundLabelEl) roundLabelEl.innerText = `Round ${currentRound}`;
+
+            const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
+            const winnerMatch = /^(.*?)\s+guessed it first!?$/i.exec(cleaned);
+            if (winnerMatch) {
+                if (sepEl) sepEl.classList.remove('hidden');
+                if (kindLabelEl) kindLabelEl.innerText = "Winner";
+                if (nameEl) { nameEl.innerText = winnerMatch[1]; nameEl.classList.remove('hidden'); }
+                if (subEl) { subEl.innerText = "Guessed it first"; subEl.classList.remove('hidden'); }
+            } else {
+                if (sepEl) sepEl.classList.add('hidden');
+                if (kindLabelEl) kindLabelEl.innerText = "";
+                if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
+                if (subEl) subEl.classList.add('hidden');
+            }
+        }
+
         function showAnnouncement(msg, reveal, isFinalRound) {
             document.getElementById('congrats-text').innerText = msg;
             document.getElementById('congrats-area').style.display = "block";
+            populateRoundResultCard(msg);
 
             const finalRound = dataRoundIsFinal(isFinalRound);
             if (finalRound) {
@@ -2032,7 +2065,7 @@
             closeFinalLeaderboard();
             const modal = document.createElement('div');
             modal.id = 'final-leaderboard-modal';
-            modal.className = 'modal-card';
+            modal.className = 'modal-card film-modal';
             modal.innerHTML = `<h1 class="lb-title">Game ended</h1><p class="lb-sub"></p><div class="lb-actions"><button onclick="quitGame()" class="btn btn-danger">Leave Room</button></div>`;
             modal.querySelector('.lb-sub').innerText = message;
             document.body.appendChild(modal);

@@ -60,17 +60,19 @@ body.mg-room .mg-bg-camera { top: 88%; right: 0; width: min(155px, 9.5vw); }
 
 /* Keep UI above the watermark layer */
 body.mg-room > header,
-body.mg-room > .main-container,
-body.mg-room > #toast-container,
-body.mg-room > #disconnect-overlay,
-body.mg-room > #rejoin-wait-overlay,
-body.mg-room > #vote-kick-modal,
-body.mg-room > #vote-kick-overlay,
-body.mg-room > #history-modal,
-body.mg-room > #history-overlay {
+body.mg-room > .main-container {
     position: relative;
     z-index: 1;
 }
+
+/* #toast-container, #disconnect-overlay, #rejoin-wait-overlay, #vote-kick-modal,
+   #vote-kick-overlay, #history-modal and #history-overlay are all deliberately left
+   out of the rule above: their base <style> rules already set position:fixed with a
+   z-index of 9998+ (see index.html), so they don't need this treatment — and giving
+   them position:relative instead breaks their fixed/centered overlay positioning
+   (this bit several of them before it was caught: the toast popups pushed the page
+   down, and the "opponent left" modal's striped border rendered detached from the
+   card because top/left percentages resolve differently under position:relative). */
 
 body.mg-room > header {
     z-index: 5;
@@ -1287,10 +1289,170 @@ body.mg-room #game-area {
     padding: 24px 28px 20px;
     gap: 16px;
     box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
 }
 
 body.mg-room #game-area.hidden {
     display: none !important;
+}
+
+/* ---------- Round result / winner card ----------
+   #congrats-area's show/hide is driven by inline style.display ("none"/"block")
+   set from JS (showAnnouncement / new_round / etc). We deliberately avoid
+   forcing `display` here so that toggle keeps working; centering of the
+   card itself is done with absolute positioning instead of flex. */
+body.mg-room #congrats-area {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    margin: 0;
+    padding: 24px;
+    background: #fff;
+    border-radius: var(--mg-radius);
+    animation: none;
+    text-align: center;
+}
+
+body.mg-room #congrats-text {
+    display: none;
+}
+
+body.mg-room .round-result-card {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: calc(100% - 48px);
+    max-width: 560px;
+    background: var(--mg-cream);
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    padding: 36px 32px;
+    box-sizing: border-box;
+}
+
+body.mg-room .round-result-popcorn {
+    position: absolute;
+    bottom: -34px;
+    width: min(120px, 24vw);
+    pointer-events: none;
+    user-select: none;
+    z-index: 1;
+}
+
+body.mg-room .round-result-popcorn.is-left {
+    left: -38px;
+    transform: rotate(-8deg);
+}
+
+body.mg-room .round-result-popcorn.is-right {
+    right: -38px;
+    transform: scaleX(-1) rotate(-8deg);
+}
+
+body.mg-room .round-result-eyebrow {
+    margin: 0;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room #congrats-kind-sep.hidden {
+    display: none;
+}
+
+body.mg-room .round-result-winner {
+    margin: 4px 0 0;
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    line-height: 1.15;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+    word-break: break-word;
+}
+
+body.mg-room .round-result-winner.hidden {
+    display: none;
+}
+
+body.mg-room .round-result-sub {
+    margin: 0;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .round-result-sub.hidden {
+    display: none;
+}
+
+body.mg-room #movie-reveal {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--mg-muted-soft);
+}
+
+body.mg-room #movie-reveal.hidden {
+    display: none;
+}
+
+body.mg-room #revealed-name {
+    font-weight: 700;
+    color: var(--mg-ink);
+}
+
+body.mg-room #congrats-area .btn-restart {
+    border: none !important;
+    border-radius: var(--mg-radius) !important;
+    background: var(--mg-red) !important;
+    background-image: none !important;
+    color: #fff !important;
+    font-family: var(--mg-font) !important;
+    font-size: 1.05rem !important;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    padding: 14px 26px !important;
+    min-width: 200px;
+    cursor: pointer;
+    box-shadow: none !important;
+    transition: transform 0.08s ease, filter 0.08s ease;
+}
+
+body.mg-room #congrats-area .btn-restart:active {
+    transform: scale(0.98);
+    filter: brightness(0.92);
+}
+
+body.mg-room #congrats-area #quit-game-btn.btn-danger {
+    background: #fff !important;
+    background-image: none !important;
+    color: var(--mg-red) !important;
+    border: var(--mg-border) solid var(--mg-red) !important;
+    border-radius: var(--mg-radius) !important;
+    font-family: var(--mg-font) !important;
+    text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+    body.mg-room .round-result-card {
+        padding: 28px 20px;
+        max-width: 340px;
+    }
+    body.mg-room .round-result-popcorn {
+        width: min(90px, 22vw);
+        bottom: -24px;
+    }
+    body.mg-room .round-result-popcorn.is-left { left: -20px; }
+    body.mg-room .round-result-popcorn.is-right { right: -20px; }
 }
 
 body.mg-room .game-play-head {
@@ -1585,6 +1747,110 @@ body.mg-room .toast {
     body.mg-room .game-canvas-wrap {
         min-height: 180px;
     }
+}
+
+/* ---------- Film-strip modal (opponent left / waiting / game ended) ---------- */
+body.mg-room .film-modal {
+    background: var(--mg-ink) !important;
+    background-image: none !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: var(--mg-radius) !important;
+    box-shadow: none !important;
+    padding: 40px 28px 32px !important;
+    overflow: visible !important;
+}
+
+body.mg-room .film-modal::before,
+body.mg-room .film-modal::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 16px;
+    background: repeating-linear-gradient(90deg, #fff 0 11px, var(--mg-ink) 11px 18px);
+    pointer-events: none;
+}
+
+body.mg-room .film-modal::before { top: 0; border-radius: var(--mg-radius) var(--mg-radius) 0 0; }
+body.mg-room .film-modal::after { bottom: 0; border-radius: 0 0 var(--mg-radius) var(--mg-radius); }
+
+body.mg-room .film-modal h1,
+body.mg-room .film-modal h2 {
+    font-family: var(--mg-font);
+    font-size: 1.3rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: #fff;
+    margin: 6px 0 12px;
+}
+
+body.mg-room .film-modal p {
+    font-family: var(--mg-font);
+    font-size: 0.78rem;
+    line-height: 1.5;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.65);
+    margin: 0 0 24px;
+}
+
+/* No `display` override here on purpose: showRejoinWait() toggles this element's
+   visibility via inline style.display ("none" / "inline-flex"), which always wins
+   over a stylesheet rule unless that rule is also !important — so leaving `display`
+   alone keeps the hidden/shown state working, while the rest still restyles it into
+   a full-width bar whenever JS shows it. */
+body.mg-room .film-modal #rejoin-wait-timer.meta-chip {
+    width: 100%;
+    justify-content: center;
+    background: var(--mg-panel) !important;
+    color: var(--mg-ink) !important;
+    font-family: var(--mg-font);
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    border-radius: var(--mg-radius);
+    padding: 14px 18px;
+    margin: 0 0 12px !important;
+    box-sizing: border-box;
+}
+
+body.mg-room .film-modal .vote-actions,
+body.mg-room .film-modal .lb-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+body.mg-room .film-modal .vote-actions .btn,
+body.mg-room .film-modal .lb-actions .btn {
+    width: 100%;
+    flex: none;
+    font-family: var(--mg-font);
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    border-radius: var(--mg-radius);
+    padding: 14px 18px;
+    border: none;
+    cursor: pointer;
+}
+
+body.mg-room .film-modal .btn-danger {
+    background: var(--mg-red) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+}
+
+body.mg-room .film-modal .btn-danger:hover {
+    background: var(--mg-red) !important;
+    color: #fff !important;
+}
+
+body.mg-room .film-modal .btn-primary-success {
+    background: #fff !important;
+    border-color: transparent !important;
+    color: var(--mg-ink) !important;
 }
 
 @media (max-width: 720px) {

@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play11">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play13">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -1002,10 +1002,10 @@
             <div id="game-area" class="hidden">
                 <div id="congrats-area" style="display: none;">
                     <div class="round-result-card">
-                        <img class="round-result-popcorn is-left" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
-                        <img class="round-result-popcorn is-right" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
-                        <img class="round-result-burst is-left" src="/static/img/lobby/popcorn-burst-left.png" alt="" aria-hidden="true">
-                        <img class="round-result-burst is-right" src="/static/img/lobby/popcorn-burst-right.png" alt="" aria-hidden="true">
+                        <img class="round-result-popcorn is-left" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
+                        <img class="round-result-popcorn is-right" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
+                        <img class="round-result-burst is-left" src="/static/img/lobby/popcorn-burst-left-scatter.png" alt="" aria-hidden="true">
+                        <img class="round-result-burst is-right" src="/static/img/lobby/popcorn-burst-right-scatter.png" alt="" aria-hidden="true">
                         <p class="round-result-eyebrow">
                             <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
                         </p>
@@ -1670,7 +1670,7 @@
                 if (data.is_round_active && data.time_left > 0 && data.movie_set) {
                     startTimer(data.time_left);
                 }
-                if (data.winner_msg) showAnnouncement(data.winner_msg, data.revealed);
+                if (data.winner_msg) showAnnouncement(data.winner_msg, data.revealed, undefined, { isRestore: true });
                 if (data.movie_set) {
                     console.log(`[DEBUG-FRONTEND] Movie set by drawer. Setting up game UI.`);
                     setupGameUI(data.display, data.full_movie);
@@ -2035,10 +2035,14 @@
             const sepEl = document.getElementById('congrats-kind-sep');
             const kindLabelEl = document.getElementById('congrats-kind-label');
             const nameEl = document.getElementById('congrats-winner-name');
+            const congratsArea = document.getElementById('congrats-area');
             if (roundLabelEl) roundLabelEl.innerText = `Round ${currentRound}`;
 
             const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
             const winnerMatch = /^(.*?)\s+guessed it first!?$/i.exec(cleaned);
+            // has-winner gates the popcorn burst (see game-room.css): it should only
+            // celebrate an actual first-correct-guess, never a "time's up" round.
+            if (congratsArea) congratsArea.classList.toggle('has-winner', Boolean(winnerMatch));
             if (winnerMatch) {
                 if (sepEl) sepEl.classList.remove('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "Winner";
@@ -2050,9 +2054,14 @@
             }
         }
 
-        function showAnnouncement(msg, reveal, isFinalRound) {
+        function showAnnouncement(msg, reveal, isFinalRound, options = {}) {
+            const congratsArea = document.getElementById('congrats-area');
+            // Restoring from init (page load / WS reconnect) shows the already-decided
+            // result instantly, with no entrance/popcorn animation — only a live
+            // "announcement" broadcast (a real first-correct-guess just now) animates.
+            congratsArea.classList.toggle('no-anim', Boolean(options.isRestore));
             document.getElementById('congrats-text').innerText = msg;
-            document.getElementById('congrats-area').style.display = "block";
+            congratsArea.style.display = "block";
             populateRoundResultCard(msg);
 
             const finalRound = dataRoundIsFinal(isFinalRound);

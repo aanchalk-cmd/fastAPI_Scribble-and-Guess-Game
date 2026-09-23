@@ -1338,25 +1338,35 @@ body.mg-room .round-result-card {
 
 body.mg-room .round-result-popcorn {
     position: absolute;
-    bottom: -34px;
-    width: min(120px, 24vw);
+    /* This bucket art (static/img/lobby/celeb-popcorn.png) is a tall, narrow
+       67x104 crop — noticeably slimmer than the old popcorn.png it replaced —
+       so it's sized/offset differently to avoid dwarfing the card. */
+    bottom: -22px;
+    width: min(80px, 16vw);
     pointer-events: none;
     user-select: none;
     z-index: 1;
 }
 
 body.mg-room .round-result-popcorn.is-left {
-    left: -38px;
+    left: -26px;
     transform: rotate(-8deg);
 }
 
 body.mg-room .round-result-popcorn.is-right {
-    right: -38px;
+    right: -26px;
     transform: scaleX(-1) rotate(-8deg);
 }
 
 /* Kernel-burst flourish (real Figma-exported sprites) that pops briefly out of
-   each bucket's mouth as the card settles in, then fades — purely decorative. */
+   each bucket's mouth as the card settles in, then fades — purely decorative.
+   Only plays when this round actually has a winner (see #congrats-area.has-winner,
+   toggled in populateRoundResultCard()) — a "time's up, nobody guessed" round
+   never fires the "first correct guess" moment this celebrates. */
+body.mg-room #congrats-area:not(.has-winner) .round-result-burst {
+    display: none;
+}
+
 body.mg-room .round-result-burst {
     position: absolute;
     bottom: 26px;
@@ -1404,10 +1414,20 @@ body.mg-room .round-result-burst.is-right {
     100% { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1) translateY(0); }
 }
 
+/* Timing lifted directly from the Figma prototype's own interaction spec for
+   this popcorn burst: "After delay 800ms -> Change to [scattered frame],
+   Smart animate, Gentle easing, 800ms duration". That single documented
+   transition is encoded below as the first half (0% -> 50%) of a 1.6s
+   keyframe animation — the kernels ease from hidden into the scattered
+   "popped" arrangement over exactly that 800ms. The second half (50% ->
+   100%) settles them back out of view over a matching 800ms so the flourish
+   has a clean end state; Figma's own recording wasn't accessible to confirm
+   this return leg, so it mirrors the documented leg's timing/easing rather
+   than inventing a different one. */
 @keyframes roundResultBurst {
-    0%   { opacity: 0; transform: scale(0.5) translateY(6px); }
-    45%  { opacity: 1; transform: scale(1.12) translateY(-10px); }
-    100% { opacity: 0; transform: scale(1.4) translateY(-22px); }
+    0%   { opacity: 0; transform: scale(0.55) rotate(-6deg) translateY(10px); }
+    50%  { opacity: 1; transform: scale(1) rotate(2deg) translateY(-14px); }
+    100% { opacity: 0; transform: scale(0.85) rotate(6deg) translateY(-26px); }
 }
 
 body.mg-room .round-result-card {
@@ -1437,8 +1457,21 @@ body.mg-room .round-result-popcorn.is-right {
 }
 
 body.mg-room .round-result-burst {
-    animation: roundResultBurst 0.55s ease-out both;
-    animation-delay: 0.32s;
+    /* 1.6s = the Figma-specified 800ms "gentle" ease in, then a matching
+       800ms back out (see the roundResultBurst keyframes above). */
+    animation: roundResultBurst 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation-delay: 0.8s;
+}
+
+/* Set by populateRoundResultCard()/showAnnouncement() when the round-result
+   card is being restored from server state on page load / WS reconnect
+   (init.winner_msg) rather than arriving as a live "announcement" broadcast.
+   A refresh must show the already-decided result immediately, not replay the
+   first-correct-guess celebration — see the acceptance criteria this exists
+   for: refresh/reconnect must never replay the popcorn animation. */
+body.mg-room #congrats-area.no-anim,
+body.mg-room #congrats-area.no-anim * {
+    animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1544,11 +1577,11 @@ body.mg-room #congrats-area #quit-game-btn.btn-danger {
         max-width: 340px;
     }
     body.mg-room .round-result-popcorn {
-        width: min(90px, 22vw);
-        bottom: -24px;
+        width: min(58px, 15vw);
+        bottom: -14px;
     }
-    body.mg-room .round-result-popcorn.is-left { left: -20px; }
-    body.mg-room .round-result-popcorn.is-right { right: -20px; }
+    body.mg-room .round-result-popcorn.is-left { left: -14px; }
+    body.mg-room .round-result-popcorn.is-right { right: -14px; }
 }
 
 body.mg-room .game-play-head {

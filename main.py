@@ -1668,12 +1668,20 @@ class ConnectionManager:
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
 manager = ConnectionManager()
 
+def _vowel_hints_allowed(movie: str) -> bool:
+    letters = [char for char in movie if char.isalpha()]
+    if not letters or len(letters) <= 3:
+        return False
+    vowels = set("AEIOUaeiou")
+    return not all(char in vowels for char in letters)
+
+
 def process_movie(movie: str, show_vowels: bool = True):
-    if show_vowels:
+    movie = movie or ""
+    if show_vowels and _vowel_hints_allowed(movie):
         vowels = "AEIOUaeiou "
         return "".join([char if (char in vowels or not char.isalnum()) else "_" for char in movie])
-    else:
-        return "".join(["_" if char.isalnum() else char for char in movie])
+    return "".join(["_" if char.isalnum() else char for char in movie])
 
 rooms: Dict[str, GameRoom] = {}
 

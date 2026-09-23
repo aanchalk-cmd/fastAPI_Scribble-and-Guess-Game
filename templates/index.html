@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play9">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play11">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -2084,61 +2084,62 @@
             const category = options.category || roomCategory || "movies";
             const hostName = options.hostName || currentHostName;
             const isHost = myName === hostName;
+            const sorted = [...finalScores].sort((a, b) => b.score - a.score);
 
             const modal = document.createElement('div');
             modal.id = 'final-leaderboard-modal';
-            modal.className = 'modal-card';
 
-            let leaderboardHTML = `
-                <h1 class="lb-title">🎉 Game Over!</h1>
-                <p class="lb-sub">Completed ${totalRoundsCompleted} rounds</p>
-                <div class="lb-list">
-            `;
-            
-            const sorted = [...finalScores].sort((a, b) => b.score - a.score);
-            
-            sorted.forEach((player, index) => {
-                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🔹';
-                leaderboardHTML += `
+            if (isHost) {
+                modal.className = 'modal-card film-modal is-host-gameover';
+
+                const rowsHTML = sorted.map((player, index) => `
                     <div class="lb-row">
-                        <span class="lb-name">${medal} ${player.name}</span>
+                        <span class="lb-name">${index === 0 ? '<img class="lb-medal" src="/static/img/lobby/medal-first.png" alt="" aria-hidden="true">' : ''}${escapeHtml(player.name)}</span>
                         <span class="lb-score">${player.score} pts</span>
                     </div>
+                `).join("");
+
+                const categoryButtonsHTML = categories.map((cat) => {
+                    const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                    const selected = cat === category ? " is-selected" : "";
+                    return `<button type="button" class="lb-category-btn${selected}" data-category="${cat}" onclick="selectLbCategory(this)">${escapeHtml(label)}</button>`;
+                }).join("");
+
+                modal.innerHTML = `
+                    <h1 class="lb-title">Game Over</h1>
+                    <div class="lb-list">${rowsHTML}</div>
+                    <p class="lb-category-label">Choose category for next game</p>
+                    <div class="lb-category-options" role="group" aria-label="Category for next game">${categoryButtonsHTML}</div>
+                    <div class="lb-actions">
+                        <button type="button" class="lb-continue-btn" onclick="continueGame()">Continue Game</button>
+                        <button type="button" class="lb-cancel-btn" onclick="closeFinalLeaderboard()">Cancel</button>
+                    </div>
                 `;
-            });
+            } else {
+                modal.className = 'modal-card';
+                const rowsHTML = sorted.map((player, index) => {
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🔹';
+                    return `
+                        <div class="lb-row">
+                            <span class="lb-name">${medal} ${escapeHtml(player.name)}</span>
+                            <span class="lb-score">${player.score} pts</span>
+                        </div>
+                    `;
+                }).join("");
 
-            const categoryOptions = categories.map((cat) => {
-                const selected = cat === category ? " selected" : "";
-                const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-                return `<option value="${cat}"${selected}>${label}</option>`;
-            }).join("");
+                modal.innerHTML = `
+                    <h1 class="lb-title">🎉 Game Over!</h1>
+                    <p class="lb-sub">Completed ${totalRoundsCompleted} rounds</p>
+                    <div class="lb-list">${rowsHTML}</div>
+                    <p class="lb-sub" style="margin-top:0;">Waiting for host to continue, or leave the room.</p>
+                    <div class="lb-actions">
+                        <button onclick="quitGame()" class="btn btn-danger">Quit Game</button>
+                    </div>
+                `;
+            }
 
-            const hostCategoryBlock = isHost ? `
-                <div style="text-align:left; margin: 0 0 14px;">
-                    <label for="host-continue-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600; text-transform:uppercase; letter-spacing:0.02em;">
-                        Word category (host only)
-                    </label>
-                    <select id="host-continue-category" class="name-input" style="width:100%;">
-                        ${categoryOptions}
-                    </select>
-                </div>
-            ` : `
-                <p class="lb-sub" style="margin-top:0;">Waiting for host to continue, or leave the room.</p>
-            `;
-            
-            leaderboardHTML += `
-                </div>
-                ${isHost ? `<p class="lb-sub" style="margin-top: 0;">Choose a category for the next series, then continue.</p>` : ""}
-                ${hostCategoryBlock}
-                <div class="lb-actions">
-                    ${isHost ? `<button onclick="continueGame()" class="btn btn-primary-success">Continue Game</button>` : ""}
-                    <button onclick="quitGame()" class="btn btn-danger">Quit Game</button>
-                </div>
-            `;
-            
-            modal.innerHTML = leaderboardHTML;
             document.body.appendChild(modal);
-            
+
             const overlay = document.createElement('div');
             overlay.id = 'final-leaderboard-overlay';
             overlay.className = 'modal-overlay';
@@ -2149,13 +2150,19 @@
             showEndGameActions();
         }
 
+        function selectLbCategory(btn) {
+            btn.parentElement.querySelectorAll('.lb-category-btn').forEach((b) => b.classList.remove('is-selected'));
+            btn.classList.add('is-selected');
+        }
+
         function continueGame() {
+            const selectedCategoryBtn = document.querySelector('.lb-category-btn.is-selected');
             const categorySel =
                 document.getElementById("host-continue-category") ||
                 document.getElementById("host-end-category");
-            const nextCategory = (categorySel && categorySel.value)
-                ? categorySel.value
-                : roomCategory;
+            const nextCategory = selectedCategoryBtn
+                ? selectedCategoryBtn.dataset.category
+                : (categorySel && categorySel.value) ? categorySel.value : roomCategory;
             console.log("[DEBUG-FRONTEND] Continue game requested", { category: nextCategory });
             closeFinalLeaderboard();
             document.getElementById('congrats-area').style.display = "none";

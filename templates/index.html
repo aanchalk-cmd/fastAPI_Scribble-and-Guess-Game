@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play7">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play9">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -1004,13 +1004,17 @@
                     <div class="round-result-card">
                         <img class="round-result-popcorn is-left" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
                         <img class="round-result-popcorn is-right" src="/static/img/lobby/popcorn.png" alt="" aria-hidden="true">
+                        <img class="round-result-burst is-left" src="/static/img/lobby/popcorn-burst-left.png" alt="" aria-hidden="true">
+                        <img class="round-result-burst is-right" src="/static/img/lobby/popcorn-burst-right.png" alt="" aria-hidden="true">
                         <p class="round-result-eyebrow">
                             <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
                         </p>
                         <h2 id="congrats-winner-name" class="round-result-winner"></h2>
-                        <p class="round-result-sub" id="congrats-sub-label">Guessed it first</p>
                         <div id="congrats-text"></div>
-                        <div id="movie-reveal" class="hidden">The word was: <span id="revealed-name"></span></div>
+                        <div id="movie-reveal" class="hidden">
+                            <p class="round-result-movie-label">Movie</p>
+                            <p class="round-result-movie-value" id="revealed-name"></p>
+                        </div>
                         <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
                         <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
                             <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
@@ -2007,7 +2011,6 @@
             const sepEl = document.getElementById('congrats-kind-sep');
             const kindLabelEl = document.getElementById('congrats-kind-label');
             const nameEl = document.getElementById('congrats-winner-name');
-            const subEl = document.getElementById('congrats-sub-label');
             if (roundLabelEl) roundLabelEl.innerText = `Round ${currentRound}`;
 
             const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
@@ -2016,12 +2019,10 @@
                 if (sepEl) sepEl.classList.remove('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "Winner";
                 if (nameEl) { nameEl.innerText = winnerMatch[1]; nameEl.classList.remove('hidden'); }
-                if (subEl) { subEl.innerText = "Guessed it first"; subEl.classList.remove('hidden'); }
             } else {
                 if (sepEl) sepEl.classList.add('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "";
                 if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
-                if (subEl) subEl.classList.add('hidden');
             }
         }
 

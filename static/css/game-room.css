@@ -104,7 +104,7 @@ body.mg-room > header.mg-header {
 body.mg-room .mg-brand {
     margin: 0;
     font-family: var(--mg-font);
-    font-size: clamp(1.9rem, 3.4vw, 3rem);
+    font-size: clamp(1.9rem, 4.6vw, 4rem);
     color: var(--mg-ink);
     letter-spacing: 0;
     line-height: 1;
@@ -121,23 +121,23 @@ body.mg-room .mg-header-right {
 body.mg-room .mg-badge {
     background: var(--mg-panel);
     border-radius: var(--mg-radius);
-    padding: 8px 16px;
+    padding: 10px 20px;
     min-width: 86px;
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
+    align-items: center;
+    gap: 8px;
 }
 
 body.mg-room .mg-badge-label {
-    font-size: 0.75rem;
+    font-size: 1rem;
     line-height: 1.5;
     text-transform: uppercase;
     color: var(--mg-muted);
 }
 
 body.mg-room .mg-badge-value {
-    font-size: 1.1rem;
+    font-size: 1.5rem;
     color: var(--mg-ink);
     line-height: 1.1;
     text-transform: uppercase;
@@ -146,7 +146,7 @@ body.mg-room .mg-badge-value {
 body.mg-room .mg-badge-row {
     display: inline-flex;
     align-items: center;
-    gap: 20px;
+    gap: 26px;
 }
 
 body.mg-room .mg-copy-icon {
@@ -160,8 +160,8 @@ body.mg-room .mg-copy-icon {
 }
 
 body.mg-room .mg-copy-icon img.share-icon-copy {
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     display: block;
 }
 
@@ -171,20 +171,20 @@ body.mg-room .mg-copy-icon:active {
 
 body.mg-room .mg-header-btn {
     font-family: var(--mg-font);
-    font-size: 1.05rem;
+    font-size: 1.5rem;
     letter-spacing: 0;
     text-transform: uppercase;
     border: var(--mg-border) solid var(--mg-line);
     border-radius: var(--mg-radius);
-    padding: 14px 18px;
+    padding: 18px;
     cursor: pointer;
     touch-action: manipulation;
-    box-shadow: 6px 6px 0 var(--mg-line);
+    box-shadow: 9px 8px 0 var(--mg-line);
     transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 
 body.mg-room .mg-header-btn:active {
-    transform: translate(6px, 6px);
+    transform: translate(9px, 8px);
     box-shadow: 0 0 0 var(--mg-line);
 }
 
@@ -1355,6 +1355,105 @@ body.mg-room .round-result-popcorn.is-right {
     transform: scaleX(-1) rotate(-8deg);
 }
 
+/* Kernel-burst flourish (real Figma-exported sprites) that pops briefly out of
+   each bucket's mouth as the card settles in, then fades — purely decorative. */
+body.mg-room .round-result-burst {
+    position: absolute;
+    bottom: 26px;
+    width: min(150px, 30vw);
+    pointer-events: none;
+    user-select: none;
+    z-index: 2;
+    opacity: 0;
+}
+
+body.mg-room .round-result-burst.is-left {
+    left: -46px;
+}
+
+body.mg-room .round-result-burst.is-right {
+    right: -46px;
+}
+
+/* ---------- Round result entrance animation ----------
+   Driven purely by the real display:none -> display:block toggle that
+   showAnnouncement() already performs on #congrats-area when the backend's
+   "announcement" WebSocket event lands — CSS animations restart automatically
+   when an element re-enters the render tree, so no extra JS trigger is needed.
+   All animations use `forwards`/`both` fill-modes and finite durations, so
+   nothing loops or animates outside of that one entrance. */
+@keyframes roundResultCardIn {
+    from { opacity: 0; transform: translate(-50%, -50%) scale(0.82) translateY(14px); }
+    to   { opacity: 1; transform: translate(-50%, -50%) scale(1) translateY(0); }
+}
+
+@keyframes roundResultFadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes roundResultPopcornInLeft {
+    0%   { opacity: 0; transform: rotate(-8deg) scale(0.4) translateY(30px); }
+    70%  { opacity: 1; transform: rotate(-8deg) scale(1.08) translateY(-4px); }
+    100% { opacity: 1; transform: rotate(-8deg) scale(1) translateY(0); }
+}
+
+@keyframes roundResultPopcornInRight {
+    0%   { opacity: 0; transform: scaleX(-1) rotate(-8deg) scale(0.4) translateY(30px); }
+    70%  { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1.08) translateY(-4px); }
+    100% { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1) translateY(0); }
+}
+
+@keyframes roundResultBurst {
+    0%   { opacity: 0; transform: scale(0.5) translateY(6px); }
+    45%  { opacity: 1; transform: scale(1.12) translateY(-10px); }
+    100% { opacity: 0; transform: scale(1.4) translateY(-22px); }
+}
+
+body.mg-room .round-result-card {
+    animation: roundResultCardIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+body.mg-room .round-result-eyebrow,
+body.mg-room .round-result-winner,
+body.mg-room #movie-reveal:not(.hidden),
+body.mg-room #congrats-area .btn-restart {
+    animation: roundResultFadeUp 0.32s ease-out both;
+}
+
+body.mg-room .round-result-eyebrow { animation-delay: 0.10s; }
+body.mg-room .round-result-winner { animation-delay: 0.16s; }
+body.mg-room #movie-reveal:not(.hidden) { animation-delay: 0.22s; }
+body.mg-room #congrats-area .btn-restart { animation-delay: 0.28s; }
+
+body.mg-room .round-result-popcorn.is-left {
+    animation: roundResultPopcornInLeft 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: 0.08s;
+}
+
+body.mg-room .round-result-popcorn.is-right {
+    animation: roundResultPopcornInRight 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation-delay: 0.08s;
+}
+
+body.mg-room .round-result-burst {
+    animation: roundResultBurst 0.55s ease-out both;
+    animation-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    body.mg-room .round-result-card,
+    body.mg-room .round-result-eyebrow,
+    body.mg-room .round-result-winner,
+    body.mg-room #movie-reveal:not(.hidden),
+    body.mg-room #congrats-area .btn-restart,
+    body.mg-room .round-result-popcorn.is-left,
+    body.mg-room .round-result-popcorn.is-right,
+    body.mg-room .round-result-burst {
+        animation: none !important;
+    }
+}
+
 body.mg-room .round-result-eyebrow {
     margin: 0;
     font-size: 0.85rem;
@@ -1381,33 +1480,30 @@ body.mg-room .round-result-winner.hidden {
     display: none;
 }
 
-body.mg-room .round-result-sub {
-    margin: 0;
-    font-size: 0.8rem;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: var(--mg-muted);
-}
-
-body.mg-room .round-result-sub.hidden {
-    display: none;
-}
-
 body.mg-room #movie-reveal {
-    margin-top: 10px;
-    font-size: 0.75rem;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    color: var(--mg-muted-soft);
+    margin-top: 14px;
 }
 
 body.mg-room #movie-reveal.hidden {
     display: none;
 }
 
-body.mg-room #revealed-name {
+body.mg-room .round-result-movie-label {
+    margin: 0;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+}
+
+body.mg-room .round-result-movie-value {
+    margin: 2px 0 0;
+    font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+    letter-spacing: 0;
+    text-transform: uppercase;
     font-weight: 700;
     color: var(--mg-ink);
+    word-break: break-word;
 }
 
 body.mg-room #congrats-area .btn-restart {

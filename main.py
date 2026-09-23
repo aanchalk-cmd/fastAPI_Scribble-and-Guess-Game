@@ -5,6 +5,7 @@ import time
 import string
 import uuid
 import fakeredis
+from urllib.parse import urlencode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -459,7 +460,10 @@ async def join(
         log_room_state(room)
         await broadcast_lobby_update()
 
-    response = RedirectResponse(url="/game", status_code=303)
+    # The room is encoded directly in the redirect URL (not just the shared
+    # `room_id` cookie) so that a later browser refresh keeps working even if
+    # a *different* tab's /leave call clears that cookie — see /game below.
+    response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
     response.set_cookie(player_cookie_name(room_code), name)
     response.set_cookie("guest_id", guest_id, max_age=31536000)
@@ -1965,17 +1969,32 @@ async def get(request: Request):
     )
 
 @app.get("/game")
-async def get_game(request: Request, room_id: str = Cookie(None), username: str = Cookie(None)):
-    
-    if not room_id:
+async def get_game(
+    request: Request,
+    room: str = Query(None),
+    room_id: str = Cookie(None),
+    username: str = Cookie(None),
+):
+    # Prefer the room encoded in the URL over the `room_id` cookie. The cookie
+    # is shared by every tab on this origin, so another tab calling /leave
+    # (e.g. the other player in a 2-player game leaving) deletes it out from
+    # under this tab too. The URL query param is per-tab (it's part of this
+    # tab's own address bar / history), so a refresh of THIS tab keeps working
+    # even when a sibling tab's cookie deletion would otherwise strand it.
+    resolved_room_id = room or room_id
+
+    if not resolved_room_id:
         return RedirectResponse(url="/", status_code=303)
-    
-    username = request.cookies.get(player_cookie_name(room_id), username)
-    return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "room_code": room_id,
+
+    username = request.cookies.get(player_cookie_name(resolved_room_id), username)
+    response = templates.TemplateResponse("index.html", {
+        "request": request,
+        "room_code": resolved_room_id,
         "username": username or "Guest"
     })
+    # Repair this tab's room_id cookie in case a sibling tab had cleared it.
+    response.set_cookie("room_id", resolved_room_id)
+    return response
 
 
 async def broadcast_lobby_update():
@@ -2244,14 +2263,19 @@ async def broadcast_lobby():
         except:
             continue
 
-@app.websocket("/ws") 
+@app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
     username: str = Cookie(None),
     room_id: str = Cookie(None),
     guest_id: str = Cookie(None),
     player_name: str = Query(None),
+    room_id_param: str = Query(None, alias="room_id"),
 ):
+    # Same reasoning as /game: prefer the room_id the client sent explicitly
+    # (from its own per-tab state) over the shared cookie, which a sibling
+    # tab's /leave may have deleted without this tab's involvement.
+    room_id = room_id_param or room_id
     legacy_username = username
     username = player_name or websocket.cookies.get(player_cookie_name(room_id)) or username
     print(

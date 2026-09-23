@@ -1080,13 +1080,36 @@
             let parts = value.split(`; ${name}=`);
             if (parts.length === 2) return parts.pop().split(';').shift();
         }
-        // This removes the surrounding double quotes and decodes any URL-encoded spaces
-        const currentRoom = getCookie("room_id");
+        // Room resolution, in priority order:
+        //   1. The room `/game` just rendered server-side (it already prefers the
+        //      `?room=` URL param over the `room_id` cookie — see main.py).
+        //   2. This tab's own sessionStorage (survives a refresh of THIS tab even
+        //      if a sibling tab's /leave deleted the shared `room_id` cookie).
+        //   3. The `room_id` cookie, as a last-resort legacy fallback.
+        // The cookie alone used to be the only signal here, which is exactly the
+        // bug: cookies are shared by every tab on the origin, so one player
+        // leaving (deleting their `room_id` cookie) could strand a completely
+        // different player's tab on refresh, even though that player never left.
+        const currentRoom = (function resolveRoomId() {
+            const rendered = document.getElementById('room-display')?.innerText?.trim();
+            if (rendered && rendered !== "------") return rendered;
+            try {
+                const stored = sessionStorage.getItem("movie_guess_room_id");
+                if (stored) return stored;
+            } catch (_) { /* ignore */ }
+            return getCookie("room_id");
+        })();
+        try {
+            if (currentRoom) sessionStorage.setItem("movie_guess_room_id", currentRoom);
+        } catch (_) { /* ignore */ }
         let tabPlayerName = null;
         try {
             tabPlayerName = sessionStorage.getItem("movie_guess_player_name");
         } catch (_) { /* ignore */ }
         let myName = decodeURIComponent(tabPlayerName || getCookie(`player_name_${currentRoom}`) || getCookie("username") || "Anonymous").replace(/^"|"$/g, '');
+        try {
+            if (myName) sessionStorage.setItem("movie_guess_player_name", myName);
+        } catch (_) { /* ignore */ }
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1099,7 +1122,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         (function initColorSwatch() {
             const picker = document.getElementById('colorPicker');

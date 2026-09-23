@@ -1062,13 +1062,14 @@
         </div>
     </div>
     <script>
-        (function ensureGuestId() {
+        const currentGuestId = (function ensureGuestId() {
             let guestId = localStorage.getItem('scribble_guest_id');
             if (!guestId) {
                 guestId = crypto.randomUUID();
                 localStorage.setItem('scribble_guest_id', guestId);
             }
             document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
+            return guestId;
         })();
 
         let currentRound = 0;
@@ -2213,6 +2214,36 @@
             gameArea.classList.remove('hidden');
             createGuessingBoxes(display);
         }
+        function getGuessDraftStorageKey() {
+            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}`;
+        }
+        function saveGuessDraft() {
+            if (myRole === "drawer") return;
+            const values = {};
+            document.querySelectorAll('.letter-input').forEach(input => {
+                if (input.value) values[input.dataset.index] = input.value;
+            });
+            try {
+                sessionStorage.setItem(getGuessDraftStorageKey(), JSON.stringify({
+                    movie: targetMovie,
+                    values: values
+                }));
+            } catch (_) { /* ignore unavailable storage */ }
+        }
+        function restoreGuessDraft() {
+            if (myRole === "drawer") return;
+            try {
+                const raw = sessionStorage.getItem(getGuessDraftStorageKey());
+                if (!raw) return;
+                const draft = JSON.parse(raw);
+                if (draft.movie !== targetMovie || !draft.values) return;
+                const inputsByIndex = getInputsByIndex();
+                Object.entries(draft.values).forEach(([index, value]) => {
+                    const input = inputsByIndex.get(Number(index));
+                    if (input && !input.disabled) input.value = value;
+                });
+            } catch (_) { /* ignore malformed or unavailable storage */ }
+        }
         function requestRestart() { ws.send(JSON.stringify({type: "restart"})); }
         function hostStartGame() {
             const playerCount = window.lastPlayerData ? window.lastPlayerData.length : 0;
@@ -2272,6 +2303,7 @@
                         input.oninput = (e) => {
                             let val = e.target.value.toUpperCase();
                             e.target.value = val;
+                            saveGuessDraft();
                             if (!val) return;
                             let inputs = Array.from(document.querySelectorAll('.letter-input'));
                             let currentIndex = inputs.indexOf(e.target);
@@ -2287,6 +2319,7 @@
                     container.appendChild(input);
                 }
             });
+            restoreGuessDraft();
             checkWordReveals();
         }
         function getInputsByIndex() {

@@ -158,7 +158,7 @@
                 createTab: draft.createTab || state.createTab,
                 category: draft.category || state.category,
                 rounds: draft.rounds || state.rounds,
-                duration: draft.duration || state.duration,
+                duration: Math.max(2, Math.min(5, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom === true,
                 maxPlayers: draft.maxPlayers || state.maxPlayers,
                 roomCode: draft.roomCode || "",
@@ -571,7 +571,7 @@
     });
 
     els.duration.addEventListener("input", () => {
-        state.duration = Number(els.duration.value) || 5;
+        state.duration = Math.max(2, Math.min(5, Number(els.duration.value) || 5));
         saveDraft();
         render();
     });

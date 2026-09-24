@@ -1345,6 +1345,13 @@
                 movieHistory = data.history;
                 renderHistory();
             }
+            if (data.type === "name_updated" && data.new_name) {
+                // Server resolved a duplicate name (e.g. "Sam" -> "Sam(1)").
+                myName = data.new_name;
+                try { sessionStorage.setItem("movie_guess_player_name", myName); } catch (_) { /* ignore */ }
+                showToast("Name already taken — you are " + myName);
+                return;
+            }
             if (data.type === "room_closed") {
                 // Public room auto-discarded (nobody joined in time) — go back to
                 // the lobby with an explanation instead of "Connection lost".

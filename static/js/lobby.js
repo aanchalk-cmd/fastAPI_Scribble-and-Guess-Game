@@ -409,7 +409,10 @@
 
     function finishSubmit() {
         try {
-            sessionStorage.setItem("movie_guess_player_name", state.name);
+            // Don't pre-save the typed name: /join may rename a duplicate
+            // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
+            // name from the join cookie and stores it for this tab's refreshes.
+            sessionStorage.removeItem("movie_guess_player_name");
             sessionStorage.setItem("movie_guess_player_room", state.roomCode);
         } catch (_) { /* ignore */ }
         if (state.pendingAction === "create" && state.copyLink) {

@@ -2523,6 +2523,24 @@ async def websocket_endpoint(
         await websocket.close()
         return
 
+    # Duplicate names: /join renames a second "Sam" to "Sam(1)" and stores that in
+    # the room cookie, but a stale client may still ask for "Sam". Never let it take
+    # over a name that belongs to a different guest — use the name /join assigned.
+    requested_name = username
+    owner_guest_id = rooms[room_id].get_player_guest_id(username)
+    cookie_name = websocket.cookies.get(player_cookie_name(room_id))
+    if cookie_name:
+        cookie_name = cookie_name.strip('"')
+    if (
+        owner_guest_id
+        and owner_guest_id != validated_guest_id
+        and cookie_name
+        and cookie_name != username
+        and rooms[room_id].get_player_guest_id(cookie_name) == validated_guest_id
+    ):
+        print(f"[PLAYER_JOIN] {username!r} belongs to another guest; using assigned name {cookie_name!r}")
+        username = cookie_name
+
     room = rooms[room_id]
 
     if is_guest_banned_in_room(room, validated_guest_id):
@@ -2541,6 +2559,8 @@ async def websocket_endpoint(
     print(f"[WEBSOCKET] Room status={room.status} game_started={room.game_started} players={len(room.players)}/{room.max_players}")
 
     role = await manager.connect(websocket, username, validated_guest_id)
+    if username != requested_name:
+        await websocket.send_json({"type": "name_updated", "new_name": username})
     print(f"[WEBSOCKET] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
 
     # After a vacancy wait, start a clean new round once 2+ players are connected.

@@ -1318,6 +1318,50 @@ body.mg-room #congrats-text {
     display: none;
 }
 
+body.mg-room .round-result-scores {
+    margin: 10px auto 0;
+    width: 100%;
+    max-width: 340px;
+    text-align: left;
+    position: relative;
+    z-index: 2;
+}
+
+body.mg-room .round-result-scores.hidden {
+    display: none;
+}
+
+body.mg-room .round-result-score-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    margin-top: 8px;
+    border-radius: 12px;
+    background: #fff;
+    border: 2px solid var(--mg-line);
+    font-family: var(--mg-font);
+    font-weight: 800;
+    font-size: 0.95rem;
+    color: var(--mg-ink);
+}
+
+body.mg-room .round-result-score-name {
+    color: var(--mg-ink);
+}
+
+body.mg-room .round-result-score-pts {
+    color: #1f7a3a;
+    margin-right: 8px;
+}
+
+body.mg-room .round-result-score-total {
+    color: #666;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
 body.mg-room .round-result-card {
     position: absolute;
     top: 50%;

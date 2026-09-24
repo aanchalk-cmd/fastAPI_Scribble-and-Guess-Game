@@ -606,6 +606,9 @@ class ConnectionManager:
             "revealed_movie": None,
             "word_guessed": False,
             "revealed_words": [],
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
             "show_vowels": True   
         }
 
@@ -705,6 +708,10 @@ class ConnectionManager:
         current_score = self.get_player_score(name)
         new_score = current_score + points
         r.set(f"score:{self.room_id}:{name}", new_score)
+        print(
+            f"[SCORE] room={self.room_id} player={name} "
+            f"+{points} → total={new_score}"
+        )
 
         if not self.room or not self.room.db_id:
             return
@@ -754,6 +761,65 @@ class ConnectionManager:
             return max(0, remaining)
         return 0
 
+    def get_elapsed_time(self) -> float:
+        """Seconds since the active round started (backend clock)."""
+        start = self.game_state.get("round_start_time")
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        if start is None:
+            remaining = self.get_remaining_time()
+            return float(max(0, duration - remaining))
+        elapsed = time.time() - float(start)
+        if duration > 0:
+            return max(0.0, min(float(duration), elapsed))
+        return max(0.0, elapsed)
+
+    def points_for_elapsed(self, elapsed: Optional[float] = None) -> int:
+        """Time-band points: first 50%→100, next 30%→80, final 20%→50."""
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        if elapsed is None:
+            elapsed = self.get_elapsed_time()
+        return points_for_elapsed_time(elapsed, duration)
+
+    def clear_round_guess_state(self):
+        self.game_state["word_guessed"] = False
+        self.game_state["revealed_words"] = []
+        self.game_state["correct_guessers"] = {}
+        self.game_state["round_start_time"] = None
+        self.game_state["round_duration_seconds"] = None
+
+    def register_correct_guess(self, username: str) -> Optional[int]:
+        """
+        Award time-band points for a correct guess without ending the round.
+        Returns points awarded, or None if the guess is rejected.
+        """
+        if not self.game_state.get("is_round_active"):
+            return None
+        if not username or username == self.game_state.get("drawer_name"):
+            return None
+        guessers = self.game_state.setdefault("correct_guessers", {})
+        if username in guessers:
+            return None
+        if self.get_remaining_time() <= 0:
+            return None
+
+        points = self.points_for_elapsed()
+        elapsed = self.get_elapsed_time()
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        guessers[username] = points
+        self.set_player_score(username, points)
+        print(
+            f"[SCORE] correct_guess room={self.room_id} player={username} "
+            f"elapsed={elapsed:.1f}s/{duration}s points=+{points} "
+            f"correct_guessers={guessers}"
+        )
+        return points
+
     def get_selection_time_left(self):
         selection_end = r.get(f"selection_end_time:{id(self)}")
         if selection_end:
@@ -785,6 +851,8 @@ class ConnectionManager:
             self.round_timer_task = None
 
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "",
             "display_name": "",
@@ -793,6 +861,9 @@ class ConnectionManager:
             "revealed_movie": None,
             "word_guessed": False,
             "revealed_words": [],
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
         })
         self.draw_history = []
 
@@ -1419,11 +1490,19 @@ class ConnectionManager:
             self.round_timer_task.cancel()
         
         end_timestamp = time.time() + duration
+        start_timestamp = end_timestamp - duration
 
         r.set(f"round_end_time:{id(self)}", end_timestamp)
         r.set("round_end_time", end_timestamp)
-        
+        r.set(f"round_start_time:{id(self)}", start_timestamp)
+
         self.game_state["is_round_active"] = True
+        self.game_state["round_start_time"] = start_timestamp
+        self.game_state["round_duration_seconds"] = int(duration)
+        self.game_state["correct_guessers"] = {}
+        self.game_state["word_guessed"] = False
+        self.game_state["winner_announcement"] = None
+        self.game_state["revealed_movie"] = None
 
         
 
@@ -1444,16 +1523,41 @@ class ConnectionManager:
 
                 if self.game_state["is_round_active"]:
                     self.game_state["is_round_active"] = False
-                    self.game_state["winner_announcement"] = "⏰ Time's up!"
+                    correct = self.game_state.get("correct_guessers") or {}
+                    anyone_correct = bool(correct)
+                    if anyone_correct:
+                        first_name = next(iter(correct))
+                        self.game_state["winner_announcement"] = (
+                            f"⏰ Time's up! {len(correct)} player(s) guessed it."
+                        )
+                        winner_for_db = first_name
+                    else:
+                        self.game_state["winner_announcement"] = "⏰ Time's up!"
+                        winner_for_db = None
                     self.game_state["revealed_movie"] = self.game_state["movie"]
+                    self.game_state["word_guessed"] = anyone_correct
                     await self.record_current_movie_history()
-                    self.finish_current_round()
+                    self.finish_current_round(winner_for_db)
                     is_final_round = self.current_round >= self.total_rounds
+                    scoreboard = self.get_player_data()
+                    print(
+                        f"[SCORE] round_end room={self.room_id} "
+                        f"round={self.get_display_round()}/{self.get_display_total_rounds()} "
+                        f"movie={self.game_state.get('movie')} "
+                        f"correct_guessers={correct} "
+                        f"totals={scoreboard}"
+                    )
+                    await self.broadcast({
+                        "type": "player_list",
+                        "players": scoreboard,
+                    })
                     await self.broadcast({
                         "type": "announcement",
                         "message": self.game_state["winner_announcement"],
                         "reveal": self.game_state["revealed_movie"],
-                        "word_guessed": False,
+                        "word_guessed": anyone_correct,
+                        "correct_guessers": correct,
+                        "scores": scoreboard,
                         "is_final_round": is_final_round,
                         "round_number": self.get_display_round(),
                         "total_rounds": self.get_display_total_rounds(),
@@ -1495,11 +1599,16 @@ class ConnectionManager:
             self.round_timer_task = None
         
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "", "display_name": "", "is_round_active": False,
             "winner_announcement": None, "revealed_movie": None,
             "word_guessed": False,
             "revealed_words": [],
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
         })
         self.history_recorded_for_round = False
         self.draw_history = []
@@ -1586,6 +1695,8 @@ class ConnectionManager:
             self.round_timer_task.cancel()
             self.round_timer_task = None
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "",
             "display_name": "",
@@ -1594,6 +1705,9 @@ class ConnectionManager:
             "revealed_movie": None,
             "word_guessed": False,
             "revealed_words": [],
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
             "drawer_assigned": False,
             "drawer_name": None,
             "is_selecting": False,
@@ -1672,6 +1786,27 @@ class ConnectionManager:
             
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
 manager = ConnectionManager()
+
+def points_for_elapsed_time(elapsed: float, duration: int) -> int:
+    """
+    Award points from how far into the round the correct guess happened.
+
+    Bands (dynamic for any duration):
+    - first 50% of duration → 100
+    - next 30% (50%–80%) → 80
+    - final 20% → 50
+
+    Exact boundaries use the later band (e.g. elapsed == 50% → 80).
+    """
+    if duration <= 0:
+        return 50
+    elapsed = max(0.0, float(elapsed))
+    if elapsed < duration * 0.5:
+        return 100
+    if elapsed < duration * 0.8:
+        return 80
+    return 50
+
 
 def _vowel_hints_allowed(movie: str) -> bool:
     letters = [char for char in movie if char.isalpha()]
@@ -1871,6 +2006,9 @@ async def resume_game_after_rejoin(room: GameRoom):
         "revealed_movie": None,
         "word_guessed": False,
         "revealed_words": [],
+        "correct_guessers": {},
+        "round_start_time": None,
+        "round_duration_seconds": None,
         "drawer_assigned": False,
         "drawer_name": None,
         "is_selecting": False,
@@ -2405,6 +2543,9 @@ async def websocket_endpoint(
             "revealed": manager.game_state["revealed_movie"],
             "word_guessed": bool(manager.game_state.get("word_guessed")),
             "revealed_words": list(manager.game_state.get("revealed_words") or []),
+            "correct_guessers": dict(manager.game_state.get("correct_guessers") or {}),
+            "already_guessed": username in (manager.game_state.get("correct_guessers") or {}),
+            "scores": manager.get_player_data(),
             "is_round_active": manager.game_state["is_round_active"],
             "time_left": current_time_left if manager.game_state["is_round_active"] else 0,
             "lobby_time_left": get_lobby_time_left(room),
@@ -2499,6 +2640,7 @@ async def websocket_endpoint(
                 manager.game_state["show_vowels"] = data.get("show_vowels", True)
                 manager.game_state["word_guessed"] = False
                 manager.game_state["revealed_words"] = []
+                manager.game_state["correct_guessers"] = {}
 
                 manager.game_state["display_name"] = process_movie(
                     manager.game_state["movie"],
@@ -2522,39 +2664,22 @@ async def websocket_endpoint(
                     "time_left": manager.round_duration 
                 })
             elif data["type"] == "won" and manager.game_state["is_round_active"]:
-                manager.game_state["is_round_active"] = False
-
-                if manager.round_timer_task:
-                    manager.round_timer_task.cancel()
-                    manager.round_timer_task = None
-                r.delete(f"round_end_time:{id(manager)}")
-                r.delete("round_end_time")
-
-                manager.set_player_score(username, 50) 
-                if manager.game_state["drawer_name"]:
-                    manager.set_player_score(manager.game_state["drawer_name"], 25)
-
-                await manager.record_current_movie_history()
-                manager.finish_current_round(username)
-
-                manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"
-                manager.game_state["revealed_movie"] = manager.game_state["movie"]
-                manager.game_state["word_guessed"] = True
-                is_final_round = manager.current_round >= manager.total_rounds
-
-                await manager.broadcast({"type": "player_list", "players": manager.get_player_data()})
-                await manager.broadcast({
-                    "type": "announcement",
-                    "message": manager.game_state["winner_announcement"],
-                    "reveal": manager.game_state["revealed_movie"],
-                    "word_guessed": True,
-                    "is_final_round": is_final_round,
-                    "round_number": manager.get_display_round(),
-                    "total_rounds": manager.get_display_total_rounds(),
-                })
-                # Last round finished — show Quit / Continue (no "Next Round")
-                if is_final_round:
-                    await manager.end_game()
+                # Award time-band points; round continues until the full duration ends.
+                points = manager.register_correct_guess(username)
+                if points is not None:
+                    await manager.broadcast({
+                        "type": "player_list",
+                        "players": manager.get_player_data(),
+                    })
+                    await manager.broadcast({
+                        "type": "correct_guess",
+                        "name": username,
+                        "points": points,
+                        "correct_guessers": dict(
+                            manager.game_state.get("correct_guessers") or {}
+                        ),
+                        "message": f"{username} guessed it! (+{points})",
+                    })
             elif data["type"] == "restart":
                 # Ignore mid-click "next round" once the series is already complete
                 if manager.current_round >= manager.total_rounds or manager.game_complete:
@@ -2607,6 +2732,7 @@ async def websocket_endpoint(
                     manager.game_state["show_vowels"] = data.get("show_vowels", True)
                     manager.game_state["word_guessed"] = False
                     manager.game_state["revealed_words"] = []
+                    manager.game_state["correct_guessers"] = {}
 
                     manager.game_state["display_name"] = process_movie(
                         manager.game_state["movie"],

@@ -558,6 +558,33 @@
         }
         @keyframes slideDown { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         #congrats-text { font-size: 1.15rem; color: var(--success); font-weight: 800; }
+        .round-result-scores {
+            margin: 14px auto 0;
+            width: 100%;
+            max-width: 320px;
+            text-align: left;
+        }
+        .round-result-scores.hidden { display: none; }
+        .round-result-score-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            margin-top: 6px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            font-weight: 800;
+            font-size: 0.92rem;
+        }
+        .round-result-score-name { color: #fff; }
+        .round-result-score-pts { color: #4ade80; white-space: nowrap; }
+        .round-result-score-total {
+            color: var(--text-dim);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
         #movie-reveal {
             margin-top: 8px;
             color: var(--text-dim);
@@ -1011,6 +1038,7 @@
                         </p>
                         <h2 id="congrats-winner-name" class="round-result-winner"></h2>
                         <div id="congrats-text"></div>
+                        <div id="congrats-score-list" class="round-result-scores hidden" aria-live="polite"></div>
                         <div id="movie-reveal" class="hidden">
                             <p class="round-result-movie-label">Movie</p>
                             <p class="round-result-movie-value" id="revealed-name"></p>
@@ -1687,12 +1715,22 @@
                 if (data.is_round_active && data.time_left > 0 && data.movie_set) {
                     startTimer(data.time_left);
                 }
-                if (data.winner_msg) showAnnouncement(data.winner_msg, data.revealed, undefined, { isRestore: true });
+                if (data.winner_msg) {
+                    showAnnouncement(data.winner_msg, data.revealed, undefined, {
+                        isRestore: true,
+                        correctGuessers: data.correct_guessers,
+                        scores: data.scores || window.lastPlayerData,
+                    });
+                }
                 if (data.movie_set) {
                     console.log(`[DEBUG-FRONTEND] Movie set by drawer. Setting up game UI.`);
                     setupGameUI(data.display, data.full_movie);
                     if (data.word_guessed) {
                         markWordCorrect(data.revealed || data.full_movie);
+                        hasWon = true;
+                    } else if (data.already_guessed) {
+                        markWordCorrect(data.full_movie);
+                        hasWon = true;
                     } else if (Array.isArray(data.revealed_words)) {
                         data.revealed_words.forEach(applyRevealedWord);
                     }
@@ -1719,7 +1757,16 @@
                 setupGameUI(data.display, data.full_movie);
                 startTimer(data.time_left || 300);
                 hasWon = false;
+                populateRoundScoreList(null, null);
                 console.log(`[DEBUG-FRONTEND] Game started. Drawer: ${data.drawer_name}, Timer: ${data.time_left}s`);
+            }
+            if (data.type === "correct_guess") {
+                // Round stays live until the configured duration ends.
+                if (data.name === myName) {
+                    hasWon = true;
+                    markWordCorrect(targetMovie);
+                }
+                if (data.message) showToast(data.message);
             }
             if (data.type === "word_revealed") {
                 applyRevealedWord(data.word);
@@ -1727,8 +1774,14 @@
             if (data.type === "announcement") {
                 stopTimer();
                 stopSelectionTimer();
-                if (data.word_guessed) markWordCorrect(data.reveal);
-                showAnnouncement(data.message, data.reveal, data.is_final_round);
+                if (data.reveal) markWordCorrect(data.reveal);
+                if (Array.isArray(data.scores)) {
+                    updatePlayerList(data.scores);
+                }
+                showAnnouncement(data.message, data.reveal, data.is_final_round, {
+                    correctGuessers: data.correct_guessers,
+                    scores: data.scores,
+                });
             }
             if (data.type === "game_ended") {
                 console.log("[DEBUG-FRONTEND] Game ended.");
@@ -2057,18 +2110,65 @@
 
             const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
             const winnerMatch = /^(.*?)\s+guessed it first!?$/i.exec(cleaned);
+            const multiMatch = /(\d+)\s+player\(s\)\s+guessed it/i.exec(cleaned);
             // has-winner gates the popcorn burst (see game-room.css): it should only
-            // celebrate an actual first-correct-guess, never a "time's up" round.
-            if (congratsArea) congratsArea.classList.toggle('has-winner', Boolean(winnerMatch));
+            // celebrate actual correct guesses, never a lonely "time's up" with nobody.
+            const hasWinner = Boolean(winnerMatch) || Boolean(multiMatch);
+            if (congratsArea) congratsArea.classList.toggle('has-winner', hasWinner);
             if (winnerMatch) {
                 if (sepEl) sepEl.classList.remove('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "Winner";
                 if (nameEl) { nameEl.innerText = winnerMatch[1]; nameEl.classList.remove('hidden'); }
+            } else if (multiMatch) {
+                if (sepEl) sepEl.classList.remove('hidden');
+                if (kindLabelEl) kindLabelEl.innerText = "Guessed";
+                if (nameEl) { nameEl.innerText = `${multiMatch[1]} player(s)`; nameEl.classList.remove('hidden'); }
             } else {
                 if (sepEl) sepEl.classList.add('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "";
                 if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
             }
+        }
+
+        function populateRoundScoreList(correctGuessers, scores) {
+            const listEl = document.getElementById('congrats-score-list');
+            if (!listEl) return;
+
+            const gained = correctGuessers && typeof correctGuessers === "object"
+                ? Object.entries(correctGuessers)
+                : [];
+            if (!gained.length) {
+                listEl.innerHTML = "";
+                listEl.classList.add('hidden');
+                return;
+            }
+
+            const totals = {};
+            (Array.isArray(scores) ? scores : []).forEach((p) => {
+                if (p && p.name != null) totals[p.name] = p.score;
+            });
+
+            gained.sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
+            listEl.innerHTML = gained.map(([name, points]) => {
+                const total = totals[name];
+                const totalHtml = total == null
+                    ? ""
+                    : `<span class="round-result-score-total">total ${total}</span>`;
+                return `
+                    <div class="round-result-score-row">
+                        <span class="round-result-score-name"></span>
+                        <span>
+                            <span class="round-result-score-pts">+${points}</span>
+                            ${totalHtml}
+                        </span>
+                    </div>
+                `;
+            }).join("");
+            Array.from(listEl.querySelectorAll('.round-result-score-row')).forEach((row, index) => {
+                const nameEl = row.querySelector('.round-result-score-name');
+                if (nameEl) nameEl.textContent = gained[index][0];
+            });
+            listEl.classList.remove('hidden');
         }
 
         function showAnnouncement(msg, reveal, isFinalRound, options = {}) {
@@ -2080,6 +2180,7 @@
             document.getElementById('congrats-text').innerText = msg;
             congratsArea.style.display = "block";
             populateRoundResultCard(msg);
+            populateRoundScoreList(options.correctGuessers, options.scores);
 
             const finalRound = dataRoundIsFinal(isFinalRound);
             if (finalRound) {
@@ -2629,6 +2730,7 @@
         let hasWon = false;
         function checkFullWord() {
             if (hasWon) return;
+            if (myRole === "drawer") return;
             if (document.getElementById('congrats-area').style.display === "block") return;
             let inputs = document.querySelectorAll('.letter-input');
             let guessArr = targetMovie.split("").map(c => c === " " ? " " : "");

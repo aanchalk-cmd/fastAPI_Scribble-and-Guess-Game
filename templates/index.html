@@ -1345,6 +1345,15 @@
                 movieHistory = data.history;
                 renderHistory();
             }
+            if (data.type === "room_closed") {
+                // Public room auto-discarded (nobody joined in time) — go back to
+                // the lobby with an explanation instead of "Connection lost".
+                publicRoomClosed = true;
+                document.cookie = "room_id=; path=/; max-age=0";
+                try { sessionStorage.removeItem("movie_guess_room_id"); } catch (_) { /* ignore */ }
+                window.location.replace("/?error=room_expired");
+                return;
+            }
             if (data.type === "error") {
                 console.log(`[DEBUG-FRONTEND] Error from server: ${data.message}`);
                 if (data.code === "banned") {
@@ -2631,7 +2640,9 @@
                 category: roomCategory
             })); 
         }
+        let publicRoomClosed = false;
         ws.onclose = () => {
+            if (publicRoomClosed) return;
             console.log(`[REFRESH-DEBUG] WebSocket closed. navigation=${navigationType} player=${myName} room=${currentRoom}`);
             stopTimer();
             document.getElementById('disconnect-overlay').classList.remove('hidden');

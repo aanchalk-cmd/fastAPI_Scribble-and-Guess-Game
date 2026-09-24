@@ -1,3 +1,4 @@
+import os
 import random
 import re
 import asyncio
@@ -159,6 +160,12 @@ class GameRoom:
 public_rooms: Dict[str, GameRoom] = {} 
 lobby_connections: List[WebSocket] = [] 
 public_room_timers: Dict[str, asyncio.Task] = {}
+# Public rooms removed by the auto-discard timer, so a later refresh can be told
+# the room expired instead of silently dropping the socket.
+discarded_public_rooms: Set[str] = set()
+PUBLIC_ROOM_CLOSED_MESSAGE = "No one joined within 5 minutes, so this public room was closed."
+# Env override exists only to make the discard path testable without a 5-minute wait.
+PUBLIC_ROOM_DISCARD_SECONDS = int(os.getenv("PUBLIC_ROOM_DISCARD_SECONDS", "300"))
 private_room_timers: Dict[str, asyncio.Task] = {}
 rejoin_wait_timers: Dict[str, asyncio.Task] = {}
 REJOIN_WAIT_SECONDS = 300
@@ -544,6 +551,7 @@ async def leave(
                 del public_rooms[room_id]
             await broadcast_lobby_update()
         else:
+            restart_public_room_timer_if_alone(room)
             # Running public rooms with a free slot reappear in wait lobby via broadcast
             await broadcast_lobby_update()
 
@@ -1945,6 +1953,7 @@ async def finalize_player_disconnect(room: GameRoom, username: str):
                 "type": "host_transferred",
                 "new_host": new_host,
             })
+        restart_public_room_timer_if_alone(room)
         log_wait_lobby_eligibility(room)
         await broadcast_lobby_update()
 
@@ -2249,13 +2258,25 @@ async def cleanup_public_room(room_id: str):
 
     # Cancel timer if exists
     if room_id in public_room_timers:
-        public_room_timers[room_id].cancel()
-        del public_room_timers[room_id]
+        timer_task = public_room_timers.pop(room_id)
+        # Usually called from inside this very timer; cancelling ourselves would
+        # abort the cleanup below at its next await.
+        if timer_task is not asyncio.current_task():
+            timer_task.cancel()
         print(f"[AUTO-DISCARD] Timer removed for room: {room_id}")
 
-    # Disconnect active websocket references
+    discarded_public_rooms.add(room_id)
+
+    # Tell connected players why, then disconnect active websocket references
     try:
         for name, ws in list(room.manager.active_connections.items()):
+            try:
+                await ws.send_json({
+                    "type": "room_closed",
+                    "message": PUBLIC_ROOM_CLOSED_MESSAGE,
+                })
+            except Exception:
+                pass
             try:
                 await ws.close()
             except:
@@ -2376,7 +2397,7 @@ async def start_public_room_timer(room_id: str):
     try:
         print(f"[AUTO-DISCARD] Timer started for room: {room_id}")
 
-        await asyncio.sleep(300)  # 5 minutes
+        await asyncio.sleep(PUBLIC_ROOM_DISCARD_SECONDS)
 
         # Room might already be deleted
         if room_id not in rooms:
@@ -2405,6 +2426,27 @@ async def start_public_room_timer(room_id: str):
 
     except Exception as e:
         print(f"[AUTO-DISCARD] Timer error for room {room_id}: {e}")
+
+def restart_public_room_timer_if_alone(room: GameRoom):
+    """
+    A public room that drops back to a single player before the game starts
+    (e.g. the joiner or the original host left) gets a fresh auto-discard timer,
+    otherwise it would sit in the wait lobby forever.
+    """
+    room_id = room.room_id
+    if (
+        room.room_type != "public"
+        or room.game_started
+        or len(room.players) != 1
+        or room_id not in rooms
+    ):
+        return
+    existing = public_room_timers.get(room_id)
+    if existing and not existing.done():
+        return
+    public_room_timers[room_id] = asyncio.create_task(start_public_room_timer(room_id))
+    print(f"[AUTO-DISCARD] Room {room_id} back to 1 player before start. Timer restarted")
+
 
 @app.websocket("/ws/lobby")
 async def lobby_endpoint(websocket: WebSocket):
@@ -2459,6 +2501,16 @@ async def websocket_endpoint(
         f"legacy_cookie={legacy_username!r} resolved_player={username!r}"
     )
     room = rooms.get(room_id)
+
+    if room_id and room_id not in rooms and room_id in discarded_public_rooms:
+        print(f"[AUTO-DISCARD] {username} reconnected to discarded public room {room_id}")
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "room_closed",
+            "message": PUBLIC_ROOM_CLOSED_MESSAGE,
+        })
+        await websocket.close()
+        return
 
     if not username or not room_id or room_id not in rooms:
         print(f"[DEBUG] WS Connection Denied: Missing credentials or room {room_id} exists: {room_id in rooms}")

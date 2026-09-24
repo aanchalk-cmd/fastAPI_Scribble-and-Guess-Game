@@ -1179,6 +1179,8 @@
             picker.addEventListener('change', sync);
         })();
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
+        // Masked display (e.g. "_I_E_-_A_") and what we've already asked the server about.
+        let currentDisplay = "", submittedGuess = "", submittedWords = {};
         let wordRanges = [], revealedWordKeys = new Set();
         let roomCategory = "hollywood_movies";
         let currentHostName = null;
@@ -1792,7 +1794,7 @@
                         markWordCorrect(data.full_movie);
                         hasWon = true;
                     } else if (Array.isArray(data.revealed_words)) {
-                        data.revealed_words.forEach(applyRevealedWord);
+                        data.revealed_words.forEach((w) => applyRevealedWord(w.index, w.word));
                     }
                 } else if (!isInLobby) {
                     document.getElementById('setup-area').classList.remove('hidden');
@@ -1821,15 +1823,20 @@
                 console.log(`[DEBUG-FRONTEND] Game started. Drawer: ${data.drawer_name}, Timer: ${data.time_left}s`);
             }
             if (data.type === "correct_guess") {
-                // Round stays live until the configured duration ends.
-                if (data.name === myName) {
-                    hasWon = true;
-                    markWordCorrect(targetMovie);
-                }
+                // Room-wide notice (who guessed it) — never contains the answer.
                 if (data.message) showToast(data.message);
             }
+            if (data.type === "guess_result") {
+                // Private reply to our own guess; only a correct one carries the answer.
+                if (data.correct && data.answer) {
+                    hasWon = true;
+                    targetMovie = data.answer;
+                    markWordCorrect(data.answer);
+                }
+            }
             if (data.type === "word_revealed") {
-                applyRevealedWord(data.word);
+                // Private confirmation of one word we solved.
+                applyRevealedWord(data.index, data.word);
             }
             if (data.type === "announcement") {
                 stopTimer();
@@ -2421,8 +2428,10 @@
             el.classList.toggle('hidden', !visible);
         }
         function setupGameUI(display, full) {
-            targetMovie = full;
+            targetMovie = full || "";
             revealedWordKeys = new Set();
+            submittedGuess = "";
+            submittedWords = {};
             const gameArea = document.getElementById('game-area');
             gameArea.classList.toggle('is-drawer', myRole === 'drawer');
             if (myRole === "drawer") {
@@ -2446,7 +2455,7 @@
             });
             try {
                 sessionStorage.setItem(getGuessDraftStorageKey(), JSON.stringify({
-                    movie: targetMovie,
+                    movie: currentDisplay,
                     values: values
                 }));
             } catch (_) { /* ignore unavailable storage */ }
@@ -2457,7 +2466,7 @@
                 const raw = sessionStorage.getItem(getGuessDraftStorageKey());
                 if (!raw) return;
                 const draft = JSON.parse(raw);
-                if (draft.movie !== targetMovie || !draft.values) return;
+                if (draft.movie !== currentDisplay || !draft.values) return;
                 const inputsByIndex = getInputsByIndex();
                 Object.entries(draft.values).forEach(([index, value]) => {
                     const input = inputsByIndex.get(Number(index));
@@ -2491,14 +2500,15 @@
         function createGuessingBoxes(displayStr) {
             let container = document.getElementById('movie-display'); 
             container.innerHTML = "";
+            currentDisplay = displayStr || "";
             wordRanges = [];
             const wordPattern = /\S+/g;
             let wordMatch;
-            while ((wordMatch = wordPattern.exec(targetMovie)) !== null) {
+            while ((wordMatch = wordPattern.exec(currentDisplay)) !== null) {
                 wordRanges.push({
                     start: wordMatch.index,
                     end: wordMatch.index + wordMatch[0].length,
-                    key: wordMatch[0].toUpperCase()
+                    key: wordRanges.length
                 });
             }
             displayStr.split("").forEach((char, index) => {
@@ -2550,27 +2560,26 @@
             });
             return inputsByIndex;
         }
-        function applyRevealedWord(word) {
-            const key = String(word || "").toUpperCase();
-            if (!key || wordRanges.length < 2) return false;
+        function applyRevealedWord(index, word) {
+            const range = wordRanges[Number(index)];
+            const text = String(word || "").toUpperCase();
+            if (!range || !text || wordRanges.length < 2) return false;
             const inputsByIndex = getInputsByIndex();
             let applied = false;
-            wordRanges.forEach(range => {
-                if (range.key !== key) return;
-                revealedWordKeys.add(key);
-                for (let index = range.start; index < range.end; index++) {
-                    const input = inputsByIndex.get(index);
-                    if (!input) continue;
-                    const char = targetMovie[index];
-                    if (char && char !== " ") input.value = char.toUpperCase();
-                    input.classList.add('revealed-word');
-                    input.disabled = true;
-                    applied = true;
-                }
-            });
+            revealedWordKeys.add(range.key);
+            for (let pos = range.start; pos < range.end; pos++) {
+                const input = inputsByIndex.get(pos);
+                if (!input) continue;
+                const char = text[pos - range.start];
+                if (char && char !== " ") input.value = char;
+                input.classList.add('revealed-word');
+                input.disabled = true;
+                applied = true;
+            }
             return applied;
         }
         function checkWordReveals() {
+            // Ask the server whether a completed word is right; only we get the reply.
             if (wordRanges.length < 2) return;
             const inputsByIndex = getInputsByIndex();
             wordRanges.forEach(range => {
@@ -2581,13 +2590,19 @@
                     if (input) inputs.push(input);
                 }
                 if (inputs.length === 0 || inputs.some(input => input.value === "")) return;
-                const guessedWord = inputs.map(input => input.value).join("").toUpperCase();
-                const answerWord = targetMovie.slice(range.start, range.end).toUpperCase();
-                if (guessedWord !== answerWord) return;
-
-                applyRevealedWord(range.key);
+                const guessedWord = currentDisplay
+                    .slice(range.start, range.end)
+                    .split("")
+                    .map((char, offset) => {
+                        const input = inputsByIndex.get(range.start + offset);
+                        return input ? input.value : char;
+                    })
+                    .join("")
+                    .toUpperCase();
+                if (submittedWords[range.key] === guessedWord) return;
+                submittedWords[range.key] = guessedWord;
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: "word_revealed", word: range.key }));
+                    ws.send(JSON.stringify({ type: "word_revealed", index: range.key, word: guessedWord }));
                 }
             });
         }
@@ -2802,17 +2817,21 @@
         } 
         let hasWon = false;
         function checkFullWord() {
+            // The server checks the guess; we never hold the answer ourselves.
             if (hasWon) return;
             if (myRole === "drawer") return;
             if (document.getElementById('congrats-area').style.display === "block") return;
-            let inputs = document.querySelectorAll('.letter-input');
-            let guessArr = targetMovie.split("").map(c => c === " " ? " " : "");
+            const inputs = document.querySelectorAll('.letter-input');
+            if (Array.from(inputs).some(input => input.value === "")) return;
+            const guessArr = currentDisplay.split("");
             inputs.forEach(input => {
                 guessArr[input.dataset.index] = input.value.toUpperCase();
             });
-            if (guessArr.join("") === targetMovie) {
-                hasWon = true;   
-                ws.send(JSON.stringify({type: "won"}));
+            const guess = guessArr.join("");
+            if (guess === submittedGuess) return;
+            submittedGuess = guess;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "guess", guess: guess }));
             }
         }
         let movieHistory = [];

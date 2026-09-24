@@ -261,9 +261,10 @@
             row.className = "room-row";
             const cat = (room.category || "movies").toUpperCase();
             const rounds = room.rounds || 3;
+            const liveTag = room.in_progress ? `<span class="room-live-tag">IN PROGRESS</span>` : "";
             row.innerHTML = `
                 <div>
-                    <div class="room-id">${room.room_id}</div>
+                    <div class="room-id">${room.room_id}${liveTag}</div>
                     <div class="room-meta">
                         <span>👤 ${room.count}/${room.max}</span>
                         <span>${cat}</span>
@@ -473,6 +474,7 @@
                 banned: "You have been banned from this room and cannot rejoin.",
                 full: "This room is full. Try another room.",
                 ended: "This room has ended. Create or join another room.",
+                room_expired: "No one joined within 5 minutes, so your public room was closed.",
             };
             showError(messages[error] || "Something went wrong.");
             if (error === "not_found" || error === "missing_code") {

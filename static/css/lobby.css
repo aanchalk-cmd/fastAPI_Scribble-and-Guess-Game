@@ -591,6 +591,18 @@ body.lobby-body {
     letter-spacing: 0.04em;
 }
 
+.room-live-tag {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--mg-yellow);
+    color: var(--mg-ink);
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    vertical-align: middle;
+}
+
 .room-meta {
     margin-top: 4px;
     display: flex;

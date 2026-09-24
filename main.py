@@ -791,6 +791,22 @@ class ConnectionManager:
         self.game_state["round_start_time"] = None
         self.game_state["round_duration_seconds"] = None
 
+    def all_non_drawer_players_have_guessed(self) -> bool:
+        if not self.game_state.get("is_round_active"):
+            return False
+
+        drawer_name = self.game_state.get("drawer_name")
+        non_drawer_names = [
+            name for name in self.active_connections.keys() if name != drawer_name
+        ]
+        if not non_drawer_names:
+            return False
+
+        correct_guessers = self.game_state.get("correct_guessers") or {}
+        return len(correct_guessers) >= len(non_drawer_names) and all(
+            name in correct_guessers for name in non_drawer_names
+        )
+
     def register_correct_guess(self, username: str) -> Optional[int]:
         """
         Award time-band points for a correct guess without ending the round.
@@ -1479,6 +1495,72 @@ class ConnectionManager:
         self.active_vote_kick = None
         self.active_vote_kick_db_id = None
 
+    async def finalize_round_end(self, reason: str = "timeout"):
+        if not self.game_state.get("is_round_active"):
+            return
+
+        if self.round_timer_task:
+            self.round_timer_task.cancel()
+            self.round_timer_task = None
+
+        self.game_state["is_round_active"] = False
+        correct = self.game_state.get("correct_guessers") or {}
+        anyone_correct = bool(correct)
+        if reason == "all_guessed":
+            if anyone_correct:
+                self.game_state["winner_announcement"] = (
+                    f"🎉 Everyone guessed it! {len(correct)} player(s) solved it."
+                )
+                winner_for_db = next(iter(correct))
+            else:
+                self.game_state["winner_announcement"] = "🎉 Everyone guessed it!"
+                winner_for_db = None
+        else:
+            if anyone_correct:
+                first_name = next(iter(correct))
+                self.game_state["winner_announcement"] = (
+                    f"⏰ Time's up! {len(correct)} player(s) guessed it."
+                )
+                winner_for_db = first_name
+            else:
+                self.game_state["winner_announcement"] = "⏰ Time's up!"
+                winner_for_db = None
+
+        self.game_state["revealed_movie"] = self.game_state["movie"]
+        self.game_state["word_guessed"] = anyone_correct
+        await self.record_current_movie_history()
+        self.finish_current_round(winner_for_db)
+        is_final_round = self.current_round >= self.total_rounds
+        scoreboard = self.get_player_data()
+        print(
+            f"[SCORE] round_end room={self.room_id} "
+            f"round={self.get_display_round()}/{self.get_display_total_rounds()} "
+            f"movie={self.game_state.get('movie')} "
+            f"correct_guessers={correct} "
+            f"reason={reason} totals={scoreboard}"
+        )
+        await self.broadcast({
+            "type": "player_list",
+            "players": scoreboard,
+        })
+        await self.broadcast({
+            "type": "announcement",
+            "message": self.game_state["winner_announcement"],
+            "reveal": self.game_state["revealed_movie"],
+            "word_guessed": anyone_correct,
+            "correct_guessers": correct,
+            "scores": scoreboard,
+            "is_final_round": is_final_round,
+            "round_number": self.get_display_round(),
+            "total_rounds": self.get_display_total_rounds(),
+        })
+        if is_final_round:
+            await asyncio.sleep(2)
+            await self.end_game()
+        else:
+            await asyncio.sleep(5)
+            await self.restart_game()
+
     async def start_round_timer(self, duration=None):
         if duration is None:
             duration = self.round_duration
@@ -1522,53 +1604,7 @@ class ConnectionManager:
                     await asyncio.sleep(1)
 
                 if self.game_state["is_round_active"]:
-                    self.game_state["is_round_active"] = False
-                    correct = self.game_state.get("correct_guessers") or {}
-                    anyone_correct = bool(correct)
-                    if anyone_correct:
-                        first_name = next(iter(correct))
-                        self.game_state["winner_announcement"] = (
-                            f"⏰ Time's up! {len(correct)} player(s) guessed it."
-                        )
-                        winner_for_db = first_name
-                    else:
-                        self.game_state["winner_announcement"] = "⏰ Time's up!"
-                        winner_for_db = None
-                    self.game_state["revealed_movie"] = self.game_state["movie"]
-                    self.game_state["word_guessed"] = anyone_correct
-                    await self.record_current_movie_history()
-                    self.finish_current_round(winner_for_db)
-                    is_final_round = self.current_round >= self.total_rounds
-                    scoreboard = self.get_player_data()
-                    print(
-                        f"[SCORE] round_end room={self.room_id} "
-                        f"round={self.get_display_round()}/{self.get_display_total_rounds()} "
-                        f"movie={self.game_state.get('movie')} "
-                        f"correct_guessers={correct} "
-                        f"totals={scoreboard}"
-                    )
-                    await self.broadcast({
-                        "type": "player_list",
-                        "players": scoreboard,
-                    })
-                    await self.broadcast({
-                        "type": "announcement",
-                        "message": self.game_state["winner_announcement"],
-                        "reveal": self.game_state["revealed_movie"],
-                        "word_guessed": anyone_correct,
-                        "correct_guessers": correct,
-                        "scores": scoreboard,
-                        "is_final_round": is_final_round,
-                        "round_number": self.get_display_round(),
-                        "total_rounds": self.get_display_total_rounds(),
-                    })
-                    if is_final_round:
-                        # Brief pause to show the reveal, then Quit / Continue UI
-                        await asyncio.sleep(2)
-                        await self.end_game()
-                    else:
-                        await asyncio.sleep(5)
-                        await self.restart_game()
+                    await self.finalize_round_end(reason="timeout")
             except asyncio.CancelledError:
                 
                 pass
@@ -2664,7 +2700,6 @@ async def websocket_endpoint(
                     "time_left": manager.round_duration 
                 })
             elif data["type"] == "won" and manager.game_state["is_round_active"]:
-                # Award time-band points; round continues until the full duration ends.
                 points = manager.register_correct_guess(username)
                 if points is not None:
                     await manager.broadcast({
@@ -2680,6 +2715,8 @@ async def websocket_endpoint(
                         ),
                         "message": f"{username} guessed it! (+{points})",
                     })
+                    if manager.all_non_drawer_players_have_guessed():
+                        await manager.finalize_round_end(reason="all_guessed")
             elif data["type"] == "restart":
                 # Ignore mid-click "next round" once the series is already complete
                 if manager.current_round >= manager.total_rounds or manager.game_complete:

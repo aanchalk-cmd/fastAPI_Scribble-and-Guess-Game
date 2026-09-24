@@ -2110,6 +2110,16 @@ body.mg-room .is-host-gameover .lb-category-options {
     margin-bottom: 24px;
 }
 
+/* Genre row (5 options) wraps; the type row below it stays one line */
+body.mg-room .is-host-gameover .lb-category-options.is-genres {
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+body.mg-room .is-host-gameover .lb-category-options.is-genres .lb-category-btn {
+    flex: 1 1 30%;
+}
+
 body.mg-room .is-host-gameover .lb-category-btn {
     flex: 1;
     min-width: 0;
@@ -2174,6 +2184,12 @@ body.mg-room .is-host-gameover .lb-cancel-btn:active {
 @media (max-width: 480px) {
     body.mg-room .is-host-gameover .lb-category-options {
         flex-direction: column;
+    }
+    body.mg-room .is-host-gameover .lb-category-options.is-genres {
+        flex-direction: row;
+    }
+    body.mg-room .is-host-gameover .lb-category-options.is-genres .lb-category-btn {
+        flex: 1 1 40%;
     }
 }
 

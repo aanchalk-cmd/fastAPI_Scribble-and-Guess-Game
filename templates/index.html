@@ -1180,9 +1180,53 @@
         })();
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
         let wordRanges = [], revealedWordKeys = new Set();
-        let roomCategory = "movies";
+        let roomCategory = "hollywood_movies";
         let currentHostName = null;
-        let availableCategories = ["movies", "characters"];
+        let availableCategories = ["hollywood_movies", "hollywood_characters"];
+
+        // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
+        const CATEGORY_GENRE_ORDER = ["bollywood", "hollywood", "asian_dramas", "anime", "cartoon"];
+        const CATEGORY_KIND_ORDER = ["movies", "characters"];
+        const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
+
+        function splitCategory(id) {
+            const value = LEGACY_CATEGORIES[id] || String(id || "");
+            const cut = value.lastIndexOf("_");
+            return cut > 0
+                ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
+                : { genre: value, kind: "" };
+        }
+
+        function titleizeCategoryPart(value) {
+            return String(value || "")
+                .split("_")
+                .filter(Boolean)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(" ");
+        }
+
+        function formatCategoryLabel(id) {
+            const { genre, kind } = splitCategory(id);
+            return kind
+                ? `${titleizeCategoryPart(genre)} · ${titleizeCategoryPart(kind)}`
+                : titleizeCategoryPart(genre);
+        }
+
+        function orderedCategoryParts(categories) {
+            const genres = [], kinds = [];
+            categories.map(splitCategory).forEach(({ genre, kind }) => {
+                if (genre && !genres.includes(genre)) genres.push(genre);
+                if (kind && !kinds.includes(kind)) kinds.push(kind);
+            });
+            const byOrder = (order) => (a, b) => {
+                const ia = order.indexOf(a), ib = order.indexOf(b);
+                return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+            };
+            return {
+                genres: genres.sort(byOrder(CATEGORY_GENRE_ORDER)),
+                kinds: kinds.sort(byOrder(CATEGORY_KIND_ORDER)),
+            };
+        }
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -1409,7 +1453,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
             }
@@ -1495,7 +1539,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
             }
@@ -1609,7 +1653,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
                 if (Array.isArray(data.categories) && data.categories.length) {
@@ -1831,7 +1875,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
                 showToast(data.message || "Continuing the game!");
@@ -2103,10 +2147,10 @@
                 if (isHost) {
                     hostWrap.classList.remove('hidden');
                     hostWrap.style.display = 'block';
-                    const cats = availableCategories.length ? availableCategories : ["movies", "characters"];
+                    const cats = availableCategories.length ? availableCategories : ["hollywood_movies", "hollywood_characters"];
                     hostSel.innerHTML = cats.map((cat) => {
                         const selected = cat === roomCategory ? " selected" : "";
-                        const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                        const label = formatCategoryLabel(cat);
                         return `<option value="${cat}"${selected}>${label}</option>`;
                     }).join("");
                 } else {
@@ -2247,8 +2291,8 @@
         function showFinalLeaderboard(finalScores, totalRoundsCompleted, options = {}) {
             closeFinalLeaderboard();
 
-            const categories = options.categories || availableCategories || ["movies", "characters"];
-            const category = options.category || roomCategory || "movies";
+            const categories = options.categories || availableCategories || ["hollywood_movies", "hollywood_characters"];
+            const category = options.category || roomCategory || "hollywood_movies";
             const hostName = options.hostName || currentHostName;
             const isHost = myName === hostName;
             const sorted = [...finalScores].sort((a, b) => b.score - a.score);
@@ -2266,17 +2310,24 @@
                     </div>
                 `).join("");
 
-                const categoryButtonsHTML = categories.map((cat) => {
-                    const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-                    const selected = cat === category ? " is-selected" : "";
-                    return `<button type="button" class="lb-category-btn${selected}" data-category="${cat}" onclick="selectLbCategory(this)">${escapeHtml(label)}</button>`;
+                // Two-step pick: genre, then type (movies / characters)
+                const current = splitCategory(category);
+                const parts = orderedCategoryParts(categories);
+                const genreButtonsHTML = parts.genres.map((genre) => {
+                    const selected = genre === current.genre ? " is-selected" : "";
+                    return `<button type="button" class="lb-category-btn${selected}" data-genre="${genre}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(genre))}</button>`;
+                }).join("");
+                const kindButtonsHTML = parts.kinds.map((kind) => {
+                    const selected = kind === current.kind ? " is-selected" : "";
+                    return `<button type="button" class="lb-category-btn${selected}" data-kind="${kind}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(kind))}</button>`;
                 }).join("");
 
                 modal.innerHTML = `
                     <h1 class="lb-title">Game Over</h1>
                     <div class="lb-list">${rowsHTML}</div>
                     <p class="lb-category-label">Choose category for next game</p>
-                    <div class="lb-category-options" role="group" aria-label="Category for next game">${categoryButtonsHTML}</div>
+                    <div class="lb-category-options is-genres" role="group" aria-label="Category for next game">${genreButtonsHTML}</div>
+                    <div class="lb-category-options" role="group" aria-label="Type for next game">${kindButtonsHTML}</div>
                     <div class="lb-actions">
                         <button type="button" class="lb-continue-btn" onclick="continueGame()">Continue Game</button>
                         <button type="button" class="lb-cancel-btn" onclick="closeFinalLeaderboard()">Cancel</button>
@@ -2323,12 +2374,16 @@
         }
 
         function continueGame() {
-            const selectedCategoryBtn = document.querySelector('.lb-category-btn.is-selected');
+            const selectedGenreBtn = document.querySelector('.lb-category-btn.is-selected[data-genre]');
+            const selectedKindBtn = document.querySelector('.lb-category-btn.is-selected[data-kind]');
             const categorySel =
                 document.getElementById("host-continue-category") ||
                 document.getElementById("host-end-category");
-            const nextCategory = selectedCategoryBtn
-                ? selectedCategoryBtn.dataset.category
+            const pickedCategory = selectedGenreBtn && selectedKindBtn
+                ? `${selectedGenreBtn.dataset.genre}_${selectedKindBtn.dataset.kind}`
+                : null;
+            const nextCategory = pickedCategory && availableCategories.includes(pickedCategory)
+                ? pickedCategory
                 : (categorySel && categorySel.value) ? categorySel.value : roomCategory;
             console.log("[DEBUG-FRONTEND] Continue game requested", { category: nextCategory });
             closeFinalLeaderboard();

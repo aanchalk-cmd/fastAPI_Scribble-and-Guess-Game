@@ -280,6 +280,17 @@ body.lobby-body {
     width: 100%;
 }
 
+/* Genre pills: five labels (e.g. "ASIAN DRAMAS") need to wrap on narrow screens */
+.pill-row-wrap {
+    flex-wrap: wrap;
+}
+.pill-row-wrap .pill {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 14px;
+    white-space: nowrap;
+}
+
 .mode-tab {
     flex: 1;
     border: none;

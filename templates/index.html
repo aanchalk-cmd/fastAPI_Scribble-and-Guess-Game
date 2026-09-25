@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play21">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play23">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -2175,28 +2175,18 @@
         }
         function hideEndGameActions() {
             const endActions = document.getElementById('end-game-actions');
-            const nextBtn = document.getElementById('next-round-btn');
             if (endActions) {
                 endActions.classList.add('hidden');
                 endActions.style.display = 'none';
-            }
-            if (nextBtn) {
-                nextBtn.classList.remove('hidden');
-                nextBtn.style.display = '';
             }
         }
 
         function showEndGameActions() {
             const endActions = document.getElementById('end-game-actions');
-            const nextBtn = document.getElementById('next-round-btn');
             const continueBtn = document.getElementById('continue-game-btn');
             const hostWrap = document.getElementById('host-end-category-wrap');
             const hostSel = document.getElementById('host-end-category');
             const isHost = myName === currentHostName;
-            if (nextBtn) {
-                nextBtn.classList.add('hidden');
-                nextBtn.style.display = 'none';
-            }
             if (endActions) {
                 endActions.classList.remove('hidden');
                 endActions.style.display = 'flex';
@@ -2298,15 +2288,13 @@
 
             const finalRound = dataRoundIsFinal(isFinalRound);
             if (finalRound) {
-                // All rounds done — Quit / Continue only (no Next Round)
+                // All rounds done — Quit / Continue
                 showEndGameActions();
             } else {
                 hideEndGameActions();
-                const restartBtn = document.getElementById('next-round-btn');
-                if (restartBtn) {
-                    restartBtn.innerText = `Start Round ${currentRound + 1}`;
-                }
             }
+            // No button / countdown: the server starts the next round a few
+            // seconds after this card appears.
             if (reveal) {
                 document.getElementById('movie-reveal').classList.remove('hidden');
                 document.getElementById('revealed-name').innerText = reveal;
@@ -2521,7 +2509,6 @@
                 });
             } catch (_) { /* ignore malformed or unavailable storage */ }
         }
-        function requestRestart() { ws.send(JSON.stringify({type: "restart"})); }
         function hostStartGame() {
             const playerCount = window.lastPlayerData ? window.lastPlayerData.length : 0;
             if (playerCount < 2) {

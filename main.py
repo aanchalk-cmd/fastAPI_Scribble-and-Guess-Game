@@ -194,6 +194,9 @@ reconnect_grace_timers: Dict[str, asyncio.Task] = {}
 RECONNECT_GRACE_SECONDS = 20
 
 LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
+# How long the round-result score card stays up before the next round (or the
+# final Game Over) starts on its own. There is no manual "Next Round" action.
+ROUND_RESULT_SECONDS = 5
 
 
 def reconnect_grace_key(room_id: str, username: str) -> str:
@@ -623,6 +626,8 @@ class ConnectionManager:
         
         self.round_timer_task = None
         self.selection_timer_task = None
+        # Pending auto-advance after a round result (see schedule_round_advance)
+        self.round_advance_task = None
         
         # Vote Kick State
         self.active_vote_kick = None  # Will store: {target_player, initiator, votes_yes, votes_no, voters, timeout_task}
@@ -648,6 +653,7 @@ class ConnectionManager:
             "correct_guessers": {},
             "round_start_time": None,
             "round_duration_seconds": None,
+            "next_round_at": None,
             "show_vowels": True   
         }
 
@@ -1032,6 +1038,10 @@ class ConnectionManager:
 
     async def reassign_drawer_after_removal(self):
         """Pick a new drawer from active players without advancing the round."""
+        if self.round_advance_task and not self.round_advance_task.done():
+            # Round is over and the next one is already scheduled — it will pick
+            # the next drawer from the rotation; don't replay this round.
+            return
         player_names = list(self.active_connections.keys())
         if not player_names:
             self.game_state["drawer_assigned"] = False
@@ -1685,9 +1695,13 @@ class ConnectionManager:
         if not self.game_state.get("is_round_active"):
             return
 
-        if self.round_timer_task:
-            self.round_timer_task.cancel()
-            self.round_timer_task = None
+        # When the round timer itself expires we are running *inside* that task:
+        # cancelling it here would abort the rest of this method (announcement /
+        # next round) at its next await, which left the game stuck after a timeout.
+        timer_task = self.round_timer_task
+        self.round_timer_task = None
+        if timer_task and timer_task is not asyncio.current_task():
+            timer_task.cancel()
 
         self.game_state["is_round_active"] = False
         correct = self.game_state.get("correct_guessers") or {}
@@ -1729,6 +1743,7 @@ class ConnectionManager:
             "type": "player_list",
             "players": scoreboard,
         })
+        self.schedule_round_advance(is_final_round)
         await self.broadcast({
             "type": "announcement",
             "message": self.game_state["winner_announcement"],
@@ -1740,12 +1755,51 @@ class ConnectionManager:
             "round_number": self.get_display_round(),
             "total_rounds": self.get_display_total_rounds(),
         })
-        if is_final_round:
-            await asyncio.sleep(2)
-            await self.end_game()
-        else:
-            await asyncio.sleep(5)
-            await self.restart_game()
+
+    def cancel_round_advance(self):
+        task = self.round_advance_task
+        self.round_advance_task = None
+        self.game_state["next_round_at"] = None
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+
+    def schedule_round_advance(self, is_final_round: bool):
+        """
+        Show the round-result card for ROUND_RESULT_SECONDS, then start the next
+        round (or show Game Over after the last one). Exactly one advance can be
+        pending; anything else that moves the game on cancels it.
+        """
+        self.cancel_round_advance()
+        self.game_state["next_round_at"] = time.time() + ROUND_RESULT_SECONDS
+        round_at_schedule = self.current_round
+
+        async def advance():
+            try:
+                await asyncio.sleep(ROUND_RESULT_SECONDS)
+                if self.round_advance_task is not asyncio.current_task():
+                    return
+                self.round_advance_task = None
+                self.game_state["next_round_at"] = None
+                # Something else already moved the game on.
+                if self.current_round != round_at_schedule or self.game_state.get("is_round_active"):
+                    return
+                room = self.room
+                if room and (
+                    room.status == "ENDED"
+                    or room.awaiting_rejoin_choice
+                    or room.rejoin_wait_deadline is not None
+                    or len(room.players) < 2
+                ):
+                    # Solo player: the End Game / Wait flow decides what happens next.
+                    return
+                if is_final_round:
+                    await self.end_game()
+                else:
+                    await self.restart_game()
+            except asyncio.CancelledError:
+                pass
+
+        self.round_advance_task = asyncio.create_task(advance())
 
     async def start_round_timer(self, duration=None):
         if duration is None:
@@ -1799,6 +1853,7 @@ class ConnectionManager:
 
     async def restart_game(self):
         """Start a new round. Handles both initial game start (from lobby) and between-round transitions."""
+        self.cancel_round_advance()
         print(f"[DEBUG-BACKEND] restart_game() called. drawer_assigned={self.game_state['drawer_assigned']}, active_connections={len(self.active_connections)}, current_round={self.current_round}, total_rounds={self.total_rounds}")
         
         # Check if all rounds are completed
@@ -1903,6 +1958,7 @@ class ConnectionManager:
             f"resetting rounds (was {self.current_round}/{self.total_rounds}) "
             f"category_req={category}"
         )
+        self.cancel_round_advance()
         self.game_complete = False
         self.round_display_offset += self.total_rounds
 
@@ -2188,6 +2244,7 @@ async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
     room.awaiting_rejoin_choice = False
     room.status = "ENDED"
     room.manager.game_complete = True
+    room.manager.cancel_round_advance()
     room.manager.cancel_selection_timer()
     if room.manager.round_timer_task:
         room.manager.round_timer_task.cancel()
@@ -2216,6 +2273,7 @@ async def resume_game_after_rejoin(room: GameRoom):
     cancel_rejoin_wait(room.room_id)
 
     # Drop leftover announcement / revealed word from the previous round.
+    manager.cancel_round_advance()
     manager.cancel_selection_timer()
     if manager.round_timer_task:
         manager.round_timer_task.cancel()
@@ -2927,12 +2985,9 @@ async def websocket_endpoint(
                     )
             elif data["type"] == "guess":
                 await manager.handle_guess(username, data.get("guess"))
-            elif data["type"] == "restart":
-                # Ignore mid-click "next round" once the series is already complete
-                if manager.current_round >= manager.total_rounds or manager.game_complete:
-                    await manager.end_game()
-                else:
-                    await manager.restart_game()
+            # There is no client "restart": rounds advance automatically after the
+            # result card (schedule_round_advance). Accepting it let any player
+            # skip rounds at will.
             elif data["type"] == "drawing":
                 manager.draw_history.append(data)
                 await manager.broadcast(data)

@@ -1180,6 +1180,17 @@
         try {
             if (myName) sessionStorage.setItem("movie_guess_player_name", myName);
         } catch (_) { /* ignore */ }
+        // Secret session token from /join — the only thing the server accepts as
+        // proof of which player this tab is. Kept per tab (sessionStorage) so two
+        // tabs of the same browser can still be two different players; the cookie
+        // only hands it over on the first load after /join.
+        const playerTokenKey = `movie_guess_player_token:${currentRoom || ""}`;
+        let playerToken = null;
+        try { playerToken = sessionStorage.getItem(playerTokenKey); } catch (_) { /* ignore */ }
+        if (!playerToken) {
+            playerToken = decodeURIComponent(getCookie(`player_token_${currentRoom}`) || "").replace(/^"|"$/g, "") || null;
+            try { if (playerToken) sessionStorage.setItem(playerTokenKey, playerToken); } catch (_) { /* ignore */ }
+        }
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1192,7 +1203,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&token=${encodeURIComponent(playerToken || "")}`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         (function initColorSwatch() {
             const picker = document.getElementById('colorPicker');
@@ -1423,6 +1434,15 @@
                 showToast("Name already taken — you are " + myName);
                 return;
             }
+            if (data.type === "session_replaced") {
+                // This player connected again from another tab/window.
+                publicRoomClosed = true;
+                stopTimer();
+                document.getElementById('disconnect-overlay').classList.remove('hidden');
+                const heading = document.querySelector('#disconnect-overlay h2');
+                if (heading) heading.innerText = "This room is open in another tab";
+                return;
+            }
             if (data.type === "room_closed") {
                 // Public room auto-discarded (nobody joined in time) — go back to
                 // the lobby with an explanation instead of "Connection lost".
@@ -1434,6 +1454,15 @@
             }
             if (data.type === "error") {
                 console.log(`[DEBUG-FRONTEND] Error from server: ${data.message}`);
+                if (data.code === "not_member") {
+                    // No valid session for this room (never joined here, left, or
+                    // the name was taken over by a new join) — go join properly.
+                    publicRoomClosed = true;
+                    try { sessionStorage.removeItem(playerTokenKey); } catch (_) { /* ignore */ }
+                    const invite = currentRoom ? `&invite=${encodeURIComponent(btoa(currentRoom))}` : "";
+                    window.location.replace(`/?error=rejoin${invite}`);
+                    return;
+                }
                 if (data.code === "banned") {
                     document.cookie = "room_id=; path=/; max-age=0";
                     showToast("🚫 " + data.message);

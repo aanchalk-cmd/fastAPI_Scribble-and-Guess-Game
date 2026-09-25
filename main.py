@@ -1,6 +1,7 @@
 import os
 import random
 import re
+import secrets
 import asyncio
 import time
 import string
@@ -79,6 +80,9 @@ class GameRoom:
         self.db_id = db_id
         self.player_db_ids: Dict[str, int] = {}
         self.player_guest_ids: Dict[str, str] = {}
+        # Secret per-player session tokens (token -> player name). The token, not a
+        # client-supplied name, is what proves which player a WebSocket belongs to.
+        self.player_tokens: Dict[str, str] = {}
         self.banned_guest_ids: Set[str] = set()
         self.players: List[str] = []
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
@@ -108,6 +112,22 @@ class GameRoom:
 
     def get_player_guest_id(self, name: str) -> Optional[str]:
         return self.player_guest_ids.get(name)
+
+    def issue_player_token(self, name: str) -> str:
+        """New session token for `name`; any older token for that name stops working."""
+        self.revoke_player_token(name)
+        token = secrets.token_urlsafe(32)
+        self.player_tokens[token] = name
+        return token
+
+    def resolve_player_token(self, token: Optional[str]) -> Optional[str]:
+        if not token:
+            return None
+        return self.player_tokens.get(token)
+
+    def revoke_player_token(self, name: str):
+        for token in [t for t, owner in self.player_tokens.items() if owner == name]:
+            del self.player_tokens[token]
 
     def ban_guest(self, guest_id: str):
         self.banned_guest_ids.add(guest_id)
@@ -284,6 +304,10 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
 
 def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
+
+
+def player_token_cookie_name(room_id: str) -> str:
+    return f"player_token_{room_id}"
 
 
 def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
@@ -467,13 +491,19 @@ async def join(
 
         log_room_state(room)
         await broadcast_lobby_update()
+    else:
+        return RedirectResponse(url="/", status_code=303)
 
     # The room is encoded directly in the redirect URL (not just the shared
     # `room_id` cookie) so that a later browser refresh keeps working even if
     # a *different* tab's /leave call clears that cookie — see /game below.
+    player_token = room.issue_player_token(name)
     response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
     response.set_cookie(player_cookie_name(room_code), name)
+    # Readable by the game page so each tab can keep its own copy (sessionStorage);
+    # the server only ever trusts this token, never the display name.
+    response.set_cookie(player_token_cookie_name(room_code), player_token, samesite="lax")
     response.set_cookie("guest_id", guest_id, max_age=31536000)
     return response
 
@@ -514,6 +544,7 @@ async def leave(
 
         was_host = username == room.host
         room.remove_player(username)
+        room.revoke_player_token(username)
         print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
         print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
@@ -1220,6 +1251,13 @@ class ConnectionManager:
         previous_websocket = self.active_connections.get(name)
         if previous_websocket and previous_websocket is not websocket:
             self.ws_to_name.pop(id(previous_websocket), None)
+            # Same player connected again (second tab / stale socket): close the
+            # old one instead of leaving it open but silently unmapped.
+            try:
+                await previous_websocket.send_json({"type": "session_replaced"})
+                await previous_websocket.close(code=4409)
+            except Exception:
+                pass
         self.active_connections[name] = websocket
         self.ws_to_name[ws_id] = name
         print(f"[WEBSOCKET] Player {name} connected. Total connections: {len(self.active_connections)}")
@@ -1567,6 +1605,8 @@ class ConnectionManager:
 
         if self.room and player_name in self.room.players:
             self.room.players.remove(player_name)
+        if self.room:
+            self.room.revoke_player_token(player_name)
 
         self.remove_from_drawer_queue(player_name)
 
@@ -2624,27 +2664,20 @@ async def broadcast_lobby():
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    username: str = Cookie(None),
     room_id: str = Cookie(None),
     guest_id: str = Cookie(None),
     player_name: str = Query(None),
     room_id_param: str = Query(None, alias="room_id"),
+    token_param: str = Query(None, alias="token"),
 ):
     # Same reasoning as /game: prefer the room_id the client sent explicitly
     # (from its own per-tab state) over the shared cookie, which a sibling
     # tab's /leave may have deleted without this tab's involvement.
     room_id = room_id_param or room_id
-    legacy_username = username
-    username = player_name or websocket.cookies.get(player_cookie_name(room_id)) or username
-    print(
-        f"[REFRESH-DEBUG] /ws room={room_id} requested_player={player_name!r} "
-        f"room_cookie={websocket.cookies.get(player_cookie_name(room_id))!r} "
-        f"legacy_cookie={legacy_username!r} resolved_player={username!r}"
-    )
     room = rooms.get(room_id)
 
     if room_id and room_id not in rooms and room_id in discarded_public_rooms:
-        print(f"[AUTO-DISCARD] {username} reconnected to discarded public room {room_id}")
+        print(f"[AUTO-DISCARD] reconnect to discarded public room {room_id}")
         await websocket.accept()
         await websocket.send_json({
             "type": "room_closed",
@@ -2653,34 +2686,36 @@ async def websocket_endpoint(
         await websocket.close()
         return
 
-    if not username or not room_id or room_id not in rooms:
-        print(f"[DEBUG] WS Connection Denied: Missing credentials or room {room_id} exists: {room_id in rooms}")
+    if not room_id or room_id not in rooms:
+        print(f"[DEBUG] WS Connection Denied: room {room_id!r} not found")
         await websocket.close()
         return
 
     validated_guest_id = validate_guest_id(guest_id)
     if not validated_guest_id:
-        print(f"[DEBUG] WS Connection Denied: Missing or invalid guest_id for {username}")
+        print(f"[DEBUG] WS Connection Denied: missing or invalid guest_id in room {room_id}")
         await websocket.close()
         return
 
-    # Duplicate names: /join renames a second "Sam" to "Sam(1)" and stores that in
-    # the room cookie, but a stale client may still ask for "Sam". Never let it take
-    # over a name that belongs to a different guest — use the name /join assigned.
-    requested_name = username
-    owner_guest_id = rooms[room_id].get_player_guest_id(username)
-    cookie_name = websocket.cookies.get(player_cookie_name(room_id))
-    if cookie_name:
-        cookie_name = cookie_name.strip('"')
-    if (
-        owner_guest_id
-        and owner_guest_id != validated_guest_id
-        and cookie_name
-        and cookie_name != username
-        and rooms[room_id].get_player_guest_id(cookie_name) == validated_guest_id
-    ):
-        print(f"[PLAYER_JOIN] {username!r} belongs to another guest; using assigned name {cookie_name!r}")
-        username = cookie_name
+    # Identity comes only from the secret token issued by /join — a client can
+    # not become another player just by sending their name. The per-tab token
+    # (query) wins over the shared cookie so two tabs can hold different players.
+    player_token = token_param or websocket.cookies.get(player_token_cookie_name(room_id))
+    username = rooms[room_id].resolve_player_token(player_token)
+    if not username:
+        print(
+            f"[DEBUG] WS Connection Denied: no valid player token for room {room_id} "
+            f"(requested name {player_name!r})"
+        )
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "code": "not_member",
+            "message": "Your session for this room has ended. Enter your name to join again.",
+        })
+        await websocket.close(code=4401)
+        return
+    requested_name = player_name or username
 
     room = rooms[room_id]
 

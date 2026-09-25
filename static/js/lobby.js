@@ -545,6 +545,11 @@
             // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
             // name from the join cookie and stores it for this tab's refreshes.
             sessionStorage.removeItem("movie_guess_player_name");
+            // A fresh /join issues a new session token; drop any old per-tab copies
+            // so the game page picks the new one up from the cookie.
+            Object.keys(sessionStorage)
+                .filter((key) => key.startsWith("movie_guess_player_token:"))
+                .forEach((key) => sessionStorage.removeItem(key));
             sessionStorage.setItem("movie_guess_player_room", state.roomCode);
         } catch (_) { /* ignore */ }
         if (state.pendingAction === "create" && state.copyLink) {
@@ -628,6 +633,7 @@
                 full: "This room is full. Try another room.",
                 ended: "This room has ended. Create or join another room.",
                 room_expired: "No one joined within 5 minutes, so your public room was closed.",
+                rejoin: "Your session for this room has ended. Enter your name to join again.",
             };
             showError(messages[error] || "Something went wrong.");
             if (error === "not_found" || error === "missing_code") {

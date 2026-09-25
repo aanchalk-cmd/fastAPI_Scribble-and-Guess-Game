@@ -7,7 +7,7 @@
     <title>Movie Guess</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/lobby.css">
 </head>
 <body class="lobby-body">
@@ -43,13 +43,21 @@
 
                             <div id="create-pane">
                                 <div>
-                                    <span class="field-label">Category</span>
-                                    <div id="category-pills" class="pill-row pill-row-wrap"></div>
-                                </div>
-
-                                <div>
-                                    <span class="field-label">Type</span>
-                                    <div id="kind-pills" class="pill-row"></div>
+                                    <span class="field-label" id="category-label">Category</span>
+                                    <div class="mg-select" id="category-select">
+                                        <button
+                                            type="button"
+                                            class="mg-select-trigger"
+                                            id="category-trigger"
+                                            aria-haspopup="listbox"
+                                            aria-expanded="false"
+                                            aria-labelledby="category-label category-trigger"
+                                        >
+                                            <span class="mg-select-value" id="category-value"></span>
+                                            <img class="mg-select-chevron" src="/static/img/icons/ic-chevron-down.svg" width="24" height="24" alt="">
+                                        </button>
+                                        <ul class="mg-select-list hidden" id="category-list" role="listbox" aria-labelledby="category-label" tabindex="-1"></ul>
+                                    </div>
                                 </div>
 
                                 <div>
@@ -75,10 +83,11 @@
 
                                 <div class="toggle-row">
                                     <label class="toggle">
-                                        <input type="checkbox" id="public-toggle">
-                                        <span class="toggle-ui"></span>
+                                        <input type="checkbox" id="public-toggle" aria-labelledby="public-toggle-label">
+                                        <img class="toggle-icon toggle-icon-on" src="/static/img/icons/ic-switch-on.svg" width="43.3333" height="35.2734" alt="">
+                                        <img class="toggle-icon toggle-icon-off" src="/static/img/icons/ic-switch-off.svg" width="43.3333" height="35.2734" alt="">
                                     </label>
-                                    <span class="toggle-label">Public Room</span>
+                                    <span class="toggle-label" id="public-toggle-label">Public Room</span>
                                 </div>
 
                                 <div id="max-players-wrap">

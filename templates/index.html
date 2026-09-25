@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play13">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play14">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -1063,8 +1063,10 @@
                         <span id="time-left">05 : 00</span>
                     </div>
                 </div>
-                <div class="game-canvas-wrap">
-                    <canvas id="canvas" width="800" height="500"></canvas>
+                <div class="game-canvas-slot">
+                    <div class="game-canvas-wrap">
+                        <canvas id="canvas" width="800" height="500"></canvas>
+                    </div>
                 </div>
                 <div id="movie-display" class="box-container"></div>
                 <div id="controls" class="toolbar hidden">
@@ -2511,10 +2513,21 @@
                     key: wordRanges.length
                 });
             }
+            // Letters are grouped per word so a word never breaks across lines;
+            // --word-len lets CSS shrink the boxes until the longest word fits.
+            const longestWord = wordRanges.reduce((max, r) => Math.max(max, r.end - r.start), 1);
+            container.style.setProperty('--word-len', longestWord);
+            let wordGroup = null;
             displayStr.split("").forEach((char, index) => {
                 if (char === " ") {
+                    wordGroup = null;
                     let div = document.createElement('div'); div.className = "space"; container.appendChild(div);
                 } else {
+                    if (!wordGroup) {
+                        wordGroup = document.createElement('div');
+                        wordGroup.className = "word-group";
+                        container.appendChild(wordGroup);
+                    }
                     let input = document.createElement('input');
                     input.className = "letter-input"; input.maxLength = 1; input.dataset.index = index;
                     if (char !== "_") { 
@@ -2547,7 +2560,7 @@
                             checkFullWord();
                         };
                     }
-                    container.appendChild(input);
+                    wordGroup.appendChild(input);
                 }
             });
             restoreGuessDraft();
@@ -2851,6 +2864,12 @@
         }
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
+            // Phone overlay starts just below the (wrapping) header so it never hides behind it
+            const header = document.querySelector('header.mg-header');
+            if (header) {
+                const top = Math.max(12, Math.round(header.getBoundingClientRect().bottom) + 8);
+                sidebar.style.setProperty('--overlay-top', `${top}px`);
+            }
             sidebar.classList.toggle('open-mobile');
             sidebar.classList.toggle('hidden-mobile');
         }

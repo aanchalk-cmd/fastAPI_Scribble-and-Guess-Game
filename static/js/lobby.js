@@ -20,8 +20,11 @@
     })();
 
     // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-    const GENRE_ORDER = ["bollywood", "hollywood", "asian_dramas", "anime", "cartoon"];
-    const KIND_ORDER = ["movies", "characters"];
+    const GENRE_ORDER = ["bollywood", "hollywood", "anime", "asian_dramas", "cartoon"];
+    const KIND_ORDER = ["characters", "movies"];
+    // Dropdown wording from the design ("Asian Drama Character", "Hollywood Movies").
+    const GENRE_OPTION_LABELS = { asian_dramas: "Asian Drama" };
+    const KIND_OPTION_LABELS = { characters: "Character", movies: "Movies", mix: "Mix" };
     const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
 
     function splitCategory(id) {
@@ -75,8 +78,10 @@
         brand: document.getElementById("brand-title"),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
-        categoryRow: document.getElementById("category-pills"),
-        kindRow: document.getElementById("kind-pills"),
+        categorySelect: document.getElementById("category-select"),
+        categoryTrigger: document.getElementById("category-trigger"),
+        categoryValue: document.getElementById("category-value"),
+        categoryList: document.getElementById("category-list"),
         roundsRow: document.getElementById("rounds-pills"),
         duration: document.getElementById("duration-slider"),
         durationVal: document.getElementById("duration-val"),
@@ -274,46 +279,105 @@
         return categories.includes("hollywood_movies") ? "hollywood_movies" : (categories[0] || "hollywood_movies");
     }
 
-    function makePill(label, active, onClick) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "pill" + (active ? " is-active" : "");
-        btn.textContent = label;
-        btn.addEventListener("click", onClick);
-        return btn;
+    // One dropdown entry per genre + type, plus "<Genre> Mix" (random of the two) when a genre has both.
+    const categoryOptions = (() => {
+        const options = [];
+        genres.forEach((genre) => {
+            const kinds = kindsFor(genre);
+            const withMix = kinds.length >= 2 ? kinds.concat("mix") : kinds;
+            withMix.forEach((kind) => {
+                const genreLabel = GENRE_OPTION_LABELS[genre] || titleize(genre);
+                const kindLabel = KIND_OPTION_LABELS[kind] || titleize(kind);
+                options.push({ genre, kind, label: `${genreLabel} ${kindLabel}`.toUpperCase() });
+            });
+        });
+        return options;
+    })();
+
+    let categoryOpen = false;
+    let categoryHighlight = -1;
+
+    function isSelectedOption(option) {
+        return option.genre === state.genre && option.kind === state.kind;
     }
 
-    function renderCategoryPills() {
-        // Step 1: genre (Bollywood, Hollywood, Asian Dramas, Anime, Cartoon)
-        if (!genres.includes(state.genre)) state.genre = genres[0] || "hollywood";
-        els.categoryRow.innerHTML = "";
-        genres.forEach((genre) => {
-            els.categoryRow.appendChild(makePill(titleize(genre).toUpperCase(), state.genre === genre, () => {
-                state.genre = genre;
-                saveDraft();
-                render();
-            }));
-        });
+    // Options shown in the open list: everything except the current choice (design).
+    function visibleCategoryOptions() {
+        return categoryOptions.filter((option) => !isSelectedOption(option));
+    }
 
-        // Step 2: type within that genre (Movies, Characters, Mix = random of the two)
-        if (!els.kindRow) return;
-        const kinds = kindsFor(state.genre);
-        if (state.kind !== "mix" && !kinds.includes(state.kind)) state.kind = kinds[0] || "movies";
-        els.kindRow.innerHTML = "";
-        kinds.forEach((kind) => {
-            els.kindRow.appendChild(makePill(titleize(kind).toUpperCase(), state.kind === kind, () => {
-                state.kind = kind;
-                saveDraft();
-                render();
-            }));
-        });
-        if (kinds.length >= 2) {
-            els.kindRow.appendChild(makePill("MIX", state.kind === "mix", () => {
-                state.kind = "mix";
-                saveDraft();
-                render();
-            }));
+    function renderCategorySelect() {
+        if (!categoryOptions.some(isSelectedOption)) {
+            const fallback = categoryOptions.find((o) => o.genre === state.genre) || categoryOptions[0];
+            if (fallback) {
+                state.genre = fallback.genre;
+                state.kind = fallback.kind;
+            }
         }
+        const selected = categoryOptions.find(isSelectedOption);
+        els.categoryValue.textContent = selected ? selected.label : "";
+
+        els.categoryTrigger.setAttribute("aria-expanded", String(categoryOpen));
+        els.categorySelect.classList.toggle("is-open", categoryOpen);
+        els.categoryList.classList.toggle("hidden", !categoryOpen);
+        els.categoryList.innerHTML = "";
+        if (!categoryOpen) return;
+
+        visibleCategoryOptions().forEach((option, index) => {
+            const item = document.createElement("li");
+            item.className = "mg-select-option" + (index === categoryHighlight ? " is-highlighted" : "");
+            item.id = `category-option-${index}`;
+            item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", "false");
+            item.textContent = option.label;
+            item.addEventListener("mouseenter", () => setCategoryHighlight(index));
+            item.addEventListener("click", () => chooseCategory(option));
+            els.categoryList.appendChild(item);
+        });
+        const active = els.categoryList.querySelector(".is-highlighted");
+        if (active) {
+            els.categoryList.setAttribute("aria-activedescendant", active.id);
+            active.scrollIntoView({ block: "nearest" });
+        } else {
+            els.categoryList.removeAttribute("aria-activedescendant");
+        }
+    }
+
+    function setCategoryHighlight(index) {
+        if (index === categoryHighlight) return;
+        categoryHighlight = index;
+        els.categoryList.querySelectorAll(".mg-select-option").forEach((item, i) => {
+            item.classList.toggle("is-highlighted", i === index);
+        });
+        const active = els.categoryList.children[index];
+        if (active) {
+            els.categoryList.setAttribute("aria-activedescendant", active.id);
+            active.scrollIntoView({ block: "nearest" });
+        }
+    }
+
+    function setCategoryOpen(open) {
+        categoryOpen = open;
+        categoryHighlight = open ? 0 : -1;
+        renderCategorySelect();
+        if (open) els.categoryList.focus();
+    }
+
+    function chooseCategory(option) {
+        state.genre = option.genre;
+        state.kind = option.kind;
+        categoryOpen = false;
+        categoryHighlight = -1;
+        saveDraft();
+        render();
+        els.categoryTrigger.focus();
+    }
+
+    function setSliderFill(slider) {
+        const min = Number(slider.min) || 0;
+        const max = Number(slider.max) || 100;
+        const pct = max > min ? ((Number(slider.value) - min) / (max - min)) * 100 : 0;
+        slider.style.setProperty("--fill", `${pct}%`);
     }
 
     function renderRounds() {
@@ -391,9 +455,11 @@
         });
 
         els.duration.value = state.duration;
+        setSliderFill(els.duration);
         els.durationVal.textContent = `${state.duration} MIN`;
         els.publicToggle.checked = state.publicRoom;
         els.maxPlayers.value = state.maxPlayers;
+        setSliderFill(els.maxPlayers);
         els.maxPlayersVal.textContent = String(state.maxPlayers);
         els.maxPlayersWrap.classList.toggle("hidden", !state.publicRoom && false);
         // Max players still useful for private rooms — keep visible.
@@ -447,7 +513,7 @@
             els.nameSubmit.classList.remove("btn-yellow");
         }
 
-        renderCategoryPills();
+        renderCategorySelect();
         renderRounds();
         if (state.screen === "public") renderRooms();
     }
@@ -639,6 +705,37 @@
         } else {
             setScreen("create");
         }
+    });
+
+    els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));
+
+    els.categoryTrigger.addEventListener("keydown", (event) => {
+        if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setCategoryOpen(true);
+        }
+    });
+
+    els.categoryList.addEventListener("keydown", (event) => {
+        const options = visibleCategoryOptions();
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setCategoryHighlight(Math.min(options.length - 1, categoryHighlight + 1));
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setCategoryHighlight(Math.max(0, categoryHighlight - 1));
+        } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (options[categoryHighlight]) chooseCategory(options[categoryHighlight]);
+        } else if (event.key === "Escape" || event.key === "Tab") {
+            if (event.key === "Escape") event.preventDefault();
+            setCategoryOpen(false);
+            if (event.key === "Escape") els.categoryTrigger.focus();
+        }
+    });
+
+    document.addEventListener("click", (event) => {
+        if (categoryOpen && !els.categorySelect.contains(event.target)) setCategoryOpen(false);
     });
 
     els.duration.addEventListener("input", () => {

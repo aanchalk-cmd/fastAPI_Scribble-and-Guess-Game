@@ -4,14 +4,21 @@
     --mg-bg: #ffffff;
     --mg-ink: #111111;
     --mg-card: #0d0d0d;
-    --mg-red: #e10600;
-    --mg-yellow: #f5c518;
+    --mg-red: #c92208;
+    --mg-yellow: #feba00;
     --mg-grey: #d9d9d9;
     --mg-grey-2: #c8c8c8;
-    --font-display: "Nunito", system-ui, -apple-system, sans-serif;
-    /* Larger film strip box (user request: increase height + width) */
-    --card-w: min(520px, calc(100vw - 48px));
-    --card-min-h: min(720px, calc(100dvh - 120px));
+    --mg-tabs-bg: rgba(255, 255, 255, 0.5);
+    --mg-slider-fill: #fbcd16;
+    --mg-slider-track: #6e5800;
+    --mg-option-hover: #ffeab2;
+    --font-display: "Bowlby One", system-ui, -apple-system, sans-serif;
+    /* Figma "Create Room" frame: 788px film card, 60px sprocket strips, 30px padding */
+    --card-w: min(788px, calc(100vw - 48px));
+    --card-min-h: min(906px, calc(100dvh - 180px));
+    --film-strip-h: 60px;
+    --film-pad: 30px;
+    --radius-ctl: 18px;
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     /* Hard white offset + press travel (brutalist 3D) */
@@ -35,6 +42,8 @@ body.lobby-body {
     color: var(--mg-ink);
     font-family: var(--font-display);
     -webkit-font-smoothing: antialiased;
+    /* Bowlby One ships a single weight — never fake bold */
+    font-synthesis: none;
     overflow-x: hidden;
     background-color: #fff;
 }
@@ -45,25 +54,22 @@ body.lobby-body {
     min-height: 100vh;
     min-height: 100dvh;
     padding:
-        calc(14px + var(--safe-top))
-        12px
-        calc(16px + var(--safe-bottom));
+        calc(43px + var(--safe-top))
+        30px
+        calc(24px + var(--safe-bottom));
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
 }
 
-/* Stage: left props | film card | right props — keeps all 6 images in view */
+/* Stage: film card centred; cinema props hug the viewport edges (Figma frame) */
 .lobby-stage {
     width: 100%;
-    max-width: 1280px;
     flex: 1;
-    display: grid;
-    grid-template-columns: minmax(96px, 168px) minmax(0, var(--card-w)) minmax(96px, 168px);
+    display: flex;
     justify-content: center;
-    align-items: stretch;
-    gap: 18px 28px;
+    align-items: flex-start;
     min-height: 0;
 }
 
@@ -72,94 +78,80 @@ body.lobby-body {
     justify-content: center;
     align-items: stretch;
     min-width: 0;
-    width: 100%;
+    width: var(--card-w);
 }
 
+/* Props are exported edge-cropped at 1920px; size them in vw so they keep that
+   proportion, but never wider than the gutter beside the card. */
 .decor-rail {
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
-    padding: 8px 0 12px;
-    min-height: 0;
-    height: 100%;
-    max-height: var(--card-min-h);
-    align-self: center;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: max(0px, calc((100vw - var(--card-w)) / 2 - 16px));
     pointer-events: none;
     user-select: none;
+    z-index: 0;
 }
+.decor-rail-left { left: 0; }
+.decor-rail-right { right: 0; }
 
 .decor-img {
+    position: absolute;
     display: block;
-    width: 100%;
-    max-width: 150px;
     height: auto;
-    max-height: 28%;
-    object-fit: contain;
-    /* PNGs exported on black — drop black over white page */
-    mix-blend-mode: screen;
+    max-width: 100%;
 }
 
-.decor-img-ticket,
-.decor-img-popcorn {
-    max-width: 130px;
-}
+.decor-rail-left .decor-img { left: 0; }
+.decor-rail-right .decor-img { right: 0; }
 
-.decor-img-soda,
-.decor-img-camera {
-    max-width: 140px;
-    max-height: 26%;
-}
+.decor-img-clap { top: 16.5%; width: 9.74vw; }
+.decor-img-ticket { top: 58%; width: 10.16vw; }
+.decor-img-soda { bottom: 0; width: 10.68vw; }
+.decor-img-reel { top: 17.4%; width: 12.76vw; }
+.decor-img-popcorn { top: 55.3%; width: 10.42vw; }
+.decor-img-camera { bottom: 0; width: 10.63vw; }
 
 /* ---------- header ---------- */
 .lobby-top {
     position: relative;
-    width: min(1200px, 100%);
-    min-height: 64px;
+    z-index: 3;
+    width: 100%;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 18px;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 37px;
 }
 
 .brand-title {
     margin: 0;
-    font-weight: 900;
-    font-size: clamp(2rem, 4.5vw, 2.85rem);
-    letter-spacing: -0.03em;
+    font-weight: 400;
+    font-size: clamp(2.25rem, 4.2vw, 64px);
     line-height: 1;
     color: var(--mg-ink);
-    text-align: center;
+    text-align: left;
 }
 
 .top-btn {
-    position: absolute;
-    right: 0;
-    top: 50%;
-    z-index: 3;
+    flex-shrink: 0;
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-ctl);
     background: var(--mg-yellow);
     color: var(--mg-ink);
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 0.78rem;
-    letter-spacing: 0.06em;
-    padding: 13px 20px;
+    font-weight: 400;
+    font-size: 24px;
+    line-height: normal;
+    padding: 18px;
     cursor: pointer;
-    min-height: 44px;
     touch-action: manipulation;
-    /* On white page, black pop so the offset stays visible */
-    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 #111111;
-    transform: translateY(-50%);
-    transition: transform 0.08s ease, box-shadow 0.08s ease;
+    text-transform: uppercase;
+    transition: transform 0.08s ease, filter 0.08s ease;
 }
 
-.top-btn:hover { filter: brightness(1.02); }
-.top-btn:active {
-    transform: translateY(-50%) translate(var(--btn-pop-x), var(--btn-pop-y));
-    box-shadow: 0 0 0 #111111;
-}
+.top-btn:hover { filter: brightness(1.04); }
+.top-btn:active { transform: scale(0.97); }
 
 /* ---------- screens ---------- */
 .screen {
@@ -177,41 +169,38 @@ body.lobby-body {
     width: 100%;
     max-width: var(--card-w);
     min-height: var(--card-min-h);
-    height: 90%;
-    background: var(--mg-card);
+    background: #000;
     color: #fff;
-    border-radius: 14px;
+    border: 1px solid #fff;
+    border-radius: var(--radius-ctl);
     position: relative;
-    padding: 34px 32px 36px 28px;
-    box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28);
+    padding: calc(var(--film-strip-h) + var(--film-pad)) var(--film-pad);
     /* allow white button offset to show past the card edge */
     overflow: visible;
     display: flex;
     flex-direction: column;
 }
 
-/* film sprocket borders — white squares on black strip */
+/* film sprocket strips — 30px white squares, 18px apart, 20px inset (Figma) */
 .film-card::before,
 .film-card::after {
     content: "";
     position: absolute;
     left: 0;
     right: 0;
-    height: 18px;
-    border-radius: inherit;
-    background:
-        repeating-linear-gradient(
-            90deg,
-            #fff 0 12px,
-            var(--mg-card) 12px 20px
-        );
+    height: var(--film-strip-h);
+    background-color: #000;
+    background-image: repeating-linear-gradient(90deg, #fff 0 30px, transparent 30px 48px);
+    background-size: calc(100% - 20px) 30px;
+    background-position: 20px center;
+    background-repeat: no-repeat;
     pointer-events: none;
 }
-.film-card::before { top: 0; border-radius: 14px 14px 0 0; }
-.film-card::after { bottom: 0; border-radius: 0 0 14px 14px; }
+.film-card::before { top: 0; border-radius: var(--radius-ctl) var(--radius-ctl) 0 0; }
+.film-card::after { bottom: 0; border-radius: 0 0 var(--radius-ctl) var(--radius-ctl); }
 
 .film-inner {
-    padding: 14px 10px 16px 2px;
+    padding: 0;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -220,27 +209,37 @@ body.lobby-body {
 .stack {
     display: flex;
     flex-direction: column;
-    gap: 26px;
+    gap: 24px;
     flex: 1;
 }
 
 #create-pane {
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 24px;
     flex: 1;
 }
 
 #create-pane .btn-primary {
     margin-top: auto;
+    align-self: center;
+    width: min(400px, calc(100% - 8px));
+    border-radius: var(--radius-ctl);
+    padding: 18px;
+    font-size: 24px;
+    line-height: normal;
+    letter-spacing: 0;
+    min-height: 0;
+    --btn-pop-x: 8px;
+    --btn-pop-y: 8px;
 }
 
 .field-label {
     display: block;
-    margin: 0 0 10px;
-    font-weight: 900;
-    font-size: 0.82rem;
-    letter-spacing: 0.08em;
+    margin: 0 0 18px;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.5;
     color: #fff;
     text-transform: uppercase;
 }
@@ -250,58 +249,48 @@ body.lobby-body {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 18px;
 }
 
 .field-row .field-label { margin: 0; }
 
 .field-value {
-    font-weight: 900;
-    font-size: 0.98rem;
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 1.5;
     color: var(--mg-yellow);
-    letter-spacing: 0.04em;
+    text-transform: uppercase;
 }
 
-/* tabs — single grey outer pill, two inner segments (design) */
+/* tabs — translucent outer track, two inner segments (design) */
 .mode-tabs {
     display: flex;
-    gap: 0;
-    margin-bottom: 12px;
-    padding: 6px;
-    background: var(--mg-grey);
-    border-radius: 999px;
+    gap: 24px;
+    padding: 8px;
+    background: var(--mg-tabs-bg);
+    border-radius: 26px;
 }
 
 .pill-row {
     display: flex;
     flex-wrap: nowrap;
-    gap: 10px;
+    gap: 16px;
     align-items: stretch;
     width: 100%;
 }
 
-/* Genre pills: five labels (e.g. "ASIAN DRAMAS") need to wrap on narrow screens */
-.pill-row-wrap {
-    flex-wrap: wrap;
-}
-.pill-row-wrap .pill {
-    flex: 1 1 auto;
-    min-height: 44px;
-    padding: 10px 14px;
-    white-space: nowrap;
-}
-
 .mode-tab {
     flex: 1;
+    min-width: 0;
     border: none;
-    border-radius: 999px;
-    padding: 16px 12px;
+    border-radius: var(--radius-ctl);
+    padding: 18px;
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
+    font-weight: 400;
+    font-size: 24px;
+    line-height: normal;
+    white-space: nowrap;
     cursor: pointer;
-    min-height: 56px;
     touch-action: manipulation;
     background: transparent;
     color: var(--mg-ink);
@@ -372,13 +361,12 @@ body.lobby-body {
 .pill {
     flex: 1;
     border: none;
-    border-radius: 999px;
-    padding: 14px 16px;
-    min-height: 50px;
+    border-radius: var(--radius-ctl);
+    padding: 12px 18px;
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
+    font-weight: 400;
+    font-size: 24px;
+    line-height: 1.5;
     background: #fff;
     color: var(--mg-ink);
     cursor: pointer;
@@ -394,35 +382,101 @@ body.lobby-body {
 .pill.is-active { background: var(--mg-yellow); }
 
 .pill-round {
-    flex: 1;
-    max-width: 72px;
-    min-width: 52px;
-    width: auto;
-    height: auto;
-    min-height: 50px;
-    aspect-ratio: 1;
-    padding: 0;
-    display: inline-grid;
-    place-items: center;
-    font-size: 1.1rem;
+    min-width: 0;
 }
 
-/* sliders — popcorn thumb from design asset */
+/* category dropdown (Figma: white field + chevron, overlay list) */
+.mg-select {
+    position: relative;
+}
+
+.mg-select-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: none;
+    border-radius: var(--radius-ctl);
+    background: #fff;
+    color: var(--mg-ink);
+    padding: 12px 18px;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 24px;
+    line-height: 1.5;
+    text-align: left;
+    text-transform: uppercase;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+.mg-select-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mg-select-chevron {
+    flex-shrink: 0;
+    display: block;
+}
+
+.mg-select-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 10;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: #fff;
+    border-radius: var(--radius-ctl);
+    max-height: calc(7 * 60px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    outline: none;
+}
+
+.mg-select-option {
+    display: flex;
+    align-items: center;
+    height: 60px;
+    padding: 12px 18px;
+    color: var(--mg-ink);
+    font-size: 24px;
+    line-height: 1.5;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.mg-select-option.is-highlighted { background: var(--mg-option-hover); }
+
+/* sliders — 9px track, yellow fill up to the value, popcorn thumb from design asset */
 .mg-slider {
     -webkit-appearance: none;
     appearance: none;
+    display: block;
     width: 100%;
-    height: 10px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, var(--mg-yellow) 0%, #2a2a2a 100%);
+    height: 9px;
+    margin: 11px 0 12px;
+    border-radius: 8px;
+    background: linear-gradient(
+        90deg,
+        var(--mg-slider-fill) 0 var(--fill, 50%),
+        var(--mg-slider-track) var(--fill, 50%) 100%
+    );
     outline: none;
 }
 
 .mg-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 42px;
-    height: 50px;
+    width: 50px;
+    height: 56px;
     border: none;
     background: url("/static/img/lobby/popcorn.png") center / contain no-repeat;
     background-color: transparent;
@@ -431,8 +485,8 @@ body.lobby-body {
 }
 
 .mg-slider::-moz-range-thumb {
-    width: 42px;
-    height: 50px;
+    width: 50px;
+    height: 56px;
     border: none;
     border-radius: 0;
     background: url("/static/img/lobby/popcorn.png") center / contain no-repeat;
@@ -440,18 +494,24 @@ body.lobby-body {
     cursor: pointer;
 }
 
-/* toggle */
+/* toggle — Figma switch icons in a 52px hit area */
 .toggle-row {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 18px;
 }
+
+/* Figma groups the public toggle and its max-player slider 18px apart */
+.toggle-row + #max-players-wrap { margin-top: -6px; }
 
 .toggle {
     position: relative;
-    width: 54px;
-    height: 30px;
+    width: 52px;
+    height: 52px;
     flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
 }
 
 .toggle input {
@@ -461,37 +521,22 @@ body.lobby-body {
     position: absolute;
 }
 
-.toggle-ui {
-    position: absolute;
-    inset: 0;
-    background: #3a3a3a;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-}
+.toggle-icon { display: block; }
+.toggle-icon-on,
+.toggle input:checked ~ .toggle-icon-off { display: none; }
+.toggle input:checked ~ .toggle-icon-on { display: block; }
 
-.toggle-ui::after {
-    content: "";
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
-    background: #9a9a9a;
-    transition: transform 0.15s ease, background 0.15s ease;
-}
-
-.toggle input:checked + .toggle-ui { background: #2f2f2f; }
-.toggle input:checked + .toggle-ui::after {
-    transform: translateX(22px);
-    background: var(--mg-yellow);
+.toggle input:focus-visible ~ .toggle-icon {
+    outline: 2px solid var(--mg-yellow);
+    outline-offset: 3px;
+    border-radius: 10px;
 }
 
 .toggle-label {
-    font-weight: 900;
-    font-size: 0.82rem;
-    letter-spacing: 0.06em;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.8);
     text-transform: uppercase;
 }
 
@@ -754,53 +799,122 @@ body.lobby-body {
 
 .hidden { display: none !important; }
 
-@media (min-width: 1100px) {
+@media (max-width: 1100px) {
     :root {
-        --card-w: min(560px, 42vw);
-        --card-min-h: min(740px, calc(100dvh - 100px));
+        --card-w: min(788px, calc(100vw - 220px));
     }
-    .lobby-stage {
-        grid-template-columns: minmax(120px, 180px) minmax(0, var(--card-w)) minmax(120px, 180px);
-        gap: 20px 36px;
-    }
+    .top-btn { font-size: 18px; padding: 14px 16px; }
 }
 
-@media (max-width: 980px) {
-    .lobby-stage {
-        grid-template-columns: minmax(72px, 110px) minmax(0, var(--card-w)) minmax(72px, 110px);
-        gap: 10px 14px;
-    }
-    .decor-img { max-width: 100px; }
+@media (max-width: 860px) {
+    .mode-tab,
+    .pill,
+    .mg-select-trigger,
+    .mg-select-option,
+    #create-pane .btn-primary { font-size: 18px; }
+    .mode-tabs { gap: 8px; }
+}
+
+/* Shorter desktop screens (e.g. 1440×900): tighten the Figma rhythm so the card fits */
+@media (min-width: 721px) and (max-height: 960px) {
     :root {
-        --card-w: min(480px, calc(100vw - 180px));
-        --card-min-h: min(660px, calc(100dvh - 100px));
+        --film-strip-h: 44px;
+        --film-pad: 22px;
+        --card-min-h: auto;
     }
+    .lobby-shell { padding-top: calc(24px + var(--safe-top)); }
+    .lobby-top { margin-bottom: 20px; }
+    .film-card::before,
+    .film-card::after {
+        background-image: repeating-linear-gradient(90deg, #fff 0 22px, transparent 22px 36px);
+        background-size: calc(100% - 16px) 22px;
+        background-position: 16px center;
+    }
+    .stack, #create-pane { gap: 16px; }
+    .field-label { margin-bottom: 10px; }
+    .field-row { margin-bottom: 10px; }
+    .mode-tab { padding: 14px 18px; }
+    .pill, .mg-select-trigger { padding-top: 8px; padding-bottom: 8px; }
+    .toggle-row + #max-players-wrap { margin-top: -6px; }
+}
+
+/* Laptop heights (1280×720, 1024×768): one step tighter so Create stays above the fold */
+@media (min-width: 721px) and (max-height: 800px) {
+    :root {
+        --film-strip-h: 34px;
+        --film-pad: 18px;
+    }
+    .lobby-shell { padding-top: calc(16px + var(--safe-top)); padding-bottom: 16px; }
+    .lobby-top { margin-bottom: 14px; }
+    .brand-title { font-size: 48px; }
+    .top-btn { font-size: 18px; padding: 12px 16px; }
+    .film-card::before,
+    .film-card::after {
+        background-image: repeating-linear-gradient(90deg, #fff 0 18px, transparent 18px 30px);
+        background-size: calc(100% - 14px) 18px;
+        background-position: 14px center;
+    }
+    .stack, #create-pane { gap: 12px; }
+    .mode-tab,
+    .pill,
+    .mg-select-trigger,
+    .mg-select-option,
+    #create-pane .btn-primary { font-size: 20px; }
+    .mode-tab { padding: 12px 18px; }
+    .pill, .mg-select-trigger { padding-top: 6px; padding-bottom: 6px; }
+    #create-pane .btn-primary { padding: 14px 18px; }
+    .mg-select-option { height: 48px; }
+    .mg-select-list { max-height: calc(7 * 48px); }
+    .field-label { font-size: 14px; margin-bottom: 8px; }
+    .field-row { margin-bottom: 8px; }
+    .field-value { font-size: 16px; }
+    .toggle { height: 44px; }
+    .toggle-row + #max-players-wrap { margin-top: -2px; }
 }
 
 @media (max-width: 720px) {
-    .lobby-stage {
-        grid-template-columns: 1fr;
-        gap: 0;
+    .lobby-shell {
+        padding:
+            calc(14px + var(--safe-top))
+            12px
+            calc(16px + var(--safe-bottom));
     }
     .decor-rail { display: none; }
     .top-btn {
-        font-size: 0.62rem;
+        font-size: 12px;
         padding: 10px 12px;
-        min-height: 38px;
+        border-radius: 12px;
     }
-    .brand-title { font-size: 1.55rem; padding: 0 96px 0 0; text-align: left; width: 100%; }
-    .lobby-top { justify-content: flex-start; margin-bottom: 12px; }
+    .brand-title { font-size: 1.55rem; }
+    .lobby-top { align-items: center; margin-bottom: 12px; }
     :root {
         --card-w: calc(100vw - 28px);
         --card-min-h: min(640px, calc(100dvh - 100px));
+        --film-strip-h: 40px;
+        --film-pad: 18px;
     }
-    .film-card { padding: 28px 18px 24px; border-radius: 12px; }
+    .film-card::before,
+    .film-card::after {
+        background-image: repeating-linear-gradient(90deg, #fff 0 18px, transparent 18px 30px);
+        background-size: calc(100% - 12px) 18px;
+        background-position: 12px center;
+    }
     .stack, #create-pane { gap: 18px; }
+    .mode-tab,
+    .pill,
+    .mg-select-trigger,
+    .mg-select-option,
+    #create-pane .btn-primary { font-size: 16px; }
+    .mode-tab { padding: 14px 8px; }
+    .mg-select-option { height: 48px; }
+    .mg-select-list { max-height: calc(7 * 48px); }
+    .field-label, .toggle-label { font-size: 13px; }
+    .field-value { font-size: 15px; }
 }
 
 @media (max-width: 420px) {
-    .brand-title { padding-right: 108px; font-size: 1.4rem; }
-    .mode-tab { font-size: 0.68rem; min-height: 48px; }
+    .brand-title { font-size: 1.4rem; }
+    .mode-tab { font-size: 13px; }
     :root {
         --card-min-h: auto;
     }

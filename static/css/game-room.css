@@ -1307,6 +1307,11 @@ body.mg-room #congrats-area {
     position: absolute;
     inset: 0;
     z-index: 6;
+    /* legacy rules cap it at 900px (pushing the card left of the stage centre)
+       and give it a green outline */
+    width: auto;
+    max-width: none;
+    border: none;
     margin: 0;
     padding: 24px;
     background: #fff;
@@ -1319,11 +1324,62 @@ body.mg-room #congrats-text {
     display: none;
 }
 
-body.mg-room .round-result-scores {
-    margin: 10px auto 0;
+/* ---------- Round result card (Figma "Winner Declaration" 7:1187 / 7:1682) ----------
+   20%-yellow card, 4px black border, 80/160 padding, 24px between sections:
+   movie reveal -> "Round N" + score rows (name ↔ points, 384px wide).
+   The popcorn buckets overlap its bottom corners, sticking out ~78px sideways,
+   so the card leaves room for them inside #congrats-area. */
+body.mg-room .round-result-card {
+    --popcorn-scale: 1;
+    --popcorn-tuck: 0px;
+    --popcorn-overhang: 86px;
+    --card-w: min(704px, 100cqw - 2 * var(--popcorn-overhang));
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    width: var(--card-w);
+    background: var(--mg-yellow-soft);
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    padding:
+        clamp(32px, 10cqh, 80px)
+        clamp(20px, (var(--card-w) - 384px) / 2 - var(--mg-border), 160px);
+    box-sizing: border-box;
+    text-align: center;
+}
+
+body.mg-room #movie-reveal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+body.mg-room #movie-reveal.hidden {
+    display: none;
+}
+
+body.mg-room .round-result-round {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
     width: 100%;
-    max-width: 340px;
-    text-align: left;
+}
+
+body.mg-room .round-result-scores {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(384px, 100%);
+    max-width: none;
+    margin: 0;
     position: relative;
     z-index: 2;
 }
@@ -1334,74 +1390,135 @@ body.mg-room .round-result-scores.hidden {
 
 body.mg-room .round-result-score-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    padding: 10px 14px;
-    margin-top: 8px;
-    border-radius: 12px;
-    background: #fff;
-    border: 2px solid var(--mg-line);
+    gap: 16px;
+    /* reset the legacy dark-theme chip styling from index.html */
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-weight: 400;
     font-family: var(--mg-font);
-    font-weight: 800;
-    font-size: 0.95rem;
+    font-size: 18px;
+    line-height: normal;
+    text-transform: uppercase;
     color: var(--mg-ink);
 }
 
 body.mg-room .round-result-score-name {
     color: var(--mg-ink);
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
 }
 
 body.mg-room .round-result-score-pts {
-    color: #1f7a3a;
-    margin-right: 8px;
+    flex-shrink: 0;
+    color: var(--mg-ink);
 }
 
-body.mg-room .round-result-score-total {
-    color: #666;
-    font-size: 0.78rem;
-    font-weight: 700;
+/* With a score list the design shows just "Round N" + rows; the winner /
+   "time's up" line stays as the fallback when nobody scored. */
+body.mg-room #congrats-area.has-scores #congrats-kind-sep,
+body.mg-room #congrats-area.has-scores #congrats-kind-label,
+body.mg-room #congrats-area.has-scores .round-result-winner {
+    display: none;
 }
 
-body.mg-room .round-result-card {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    width: calc(100% - 48px);
-    max-width: 560px;
-    background: var(--mg-cream);
-    border: var(--mg-border) solid var(--mg-line);
-    border-radius: var(--mg-radius);
-    padding: 36px 32px;
-    box-sizing: border-box;
-}
-
+/* Popcorn buckets — Figma Group 63 (left) / Group 64 (right): the bucket SVG
+   plus nine kernel SVGs, positioned exactly as in the design. Coordinates are
+   in the 272x146 / 280x143 component boxes; the box is anchored so its
+   transform-origin sits on the card's bottom corner, which lets the whole
+   cluster scale down on small screens without drifting off the card. */
 body.mg-room .round-result-popcorn {
     position: absolute;
-    /* This bucket art (static/img/lobby/celeb-popcorn.png) is a tall, narrow
-       67x104 crop — noticeably slimmer than the old popcorn.png it replaced —
-       so it's sized/offset differently to avoid dwarfing the card. */
-    bottom: -22px;
-    width: min(80px, 16vw);
+    /* offsets are from the card's outer edge in Figma; CSS measures from inside the border */
+    left: calc(-89px - var(--mg-border) + var(--popcorn-tuck));
+    bottom: calc(49px - var(--mg-border));
+    width: 272px;
+    height: 146px;
+    transform-origin: 89px 195px;
+    scale: var(--popcorn-scale);
     pointer-events: none;
     user-select: none;
-    z-index: 1;
-}
-
-body.mg-room .round-result-popcorn.is-left {
-    left: -26px;
-    transform: rotate(-8deg);
+    z-index: 3;
 }
 
 body.mg-room .round-result-popcorn.is-right {
-    right: -26px;
-    transform: scaleX(-1) rotate(-8deg);
+    left: auto;
+    right: calc(-89px - var(--mg-border) + var(--popcorn-tuck));
+    bottom: calc(51px - var(--mg-border));
+    width: 280px;
+    height: 143px;
+    transform-origin: 191px 194px;
 }
+
+body.mg-room .popcorn-bucket,
+body.mg-room .popcorn-kernel {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.mg-room .popcorn-bucket img,
+body.mg-room .popcorn-kernel img {
+    display: block;
+    flex: none;
+    max-width: none;
+}
+
+body.mg-room .round-result-popcorn.is-left .popcorn-bucket {
+    left: 15px;
+    top: 100px;
+    width: 124.37px;
+    height: 128.405px;
+}
+body.mg-room .round-result-popcorn.is-left .popcorn-bucket img {
+    transform: rotate(24.68deg);
+}
+
+body.mg-room .round-result-popcorn.is-right .popcorn-bucket {
+    left: 141.05px;
+    top: 99px;
+    width: 128.028px;
+    height: 128.405px;
+}
+body.mg-room .round-result-popcorn.is-right .popcorn-bucket img {
+    transform: rotate(155.95deg) scale(1, -1) skewX(1.26deg);
+}
+
+body.mg-room .popcorn-kernels {
+    position: absolute;
+    inset: 0;
+}
+
+/* Group 64's kernel component is a mirrored instance of Group 63's */
+body.mg-room .round-result-popcorn.is-right .popcorn-kernels {
+    transform: scaleX(-1);
+}
+
+body.mg-room .pk-4  { left: 93.06px;  top: 100.61px; width: 37.916px; height: 35.718px; }
+body.mg-room .pk-11 { left: 94.86px;  top: 63.25px;  width: 29.712px; height: 26.726px; }
+body.mg-room .pk-1  { left: 48.11px;  top: 78.29px;  width: 37.916px; height: 35.718px; }
+body.mg-room .pk-5  { left: 64.16px;  top: 60.63px;  width: 41.765px; height: 43.964px; }
+body.mg-room .pk-7  { left: 88.24px;  top: 78.33px;  width: 37.916px; height: 35.718px; }
+body.mg-room .pk-8  { left: 111.96px; top: 85.87px;  width: 29.98px;  height: 33.685px; }
+body.mg-room .pk-6  { left: 114.55px; top: 108px;    width: 35.718px; height: 37.916px; }
+body.mg-room .pk-10 { left: 106.53px; top: 64.38px;  width: 38.508px; height: 39.338px; }
+body.mg-room .pk-3  { left: 68.62px;  top: 88.65px;  width: 41.404px; height: 39.222px; }
+
+body.mg-room .pk-4 img,
+body.mg-room .pk-1 img  { transform: rotate(24.68deg); }
+body.mg-room .pk-11 img,
+body.mg-room .pk-7 img  { transform: rotate(-155.32deg); }
+body.mg-room .pk-5 img,
+body.mg-room .pk-6 img  { transform: rotate(-65.32deg) scale(1, -1); }
+body.mg-room .pk-8 img  { transform: rotate(80.83deg); }
+body.mg-room .pk-10 img { transform: rotate(-127.47deg) scale(1, -1); }
+body.mg-room .pk-3 img  { transform: rotate(-21.04deg); }
 
 /* Kernel-burst flourish (real Figma-exported sprites) that pops briefly out of
    each bucket's mouth as the card settles in, then fades — purely decorative.
@@ -1414,20 +1531,27 @@ body.mg-room #congrats-area:not(.has-winner) .round-result-burst {
 
 body.mg-room .round-result-burst {
     position: absolute;
-    bottom: 26px;
-    width: min(150px, 30vw);
+    bottom: calc(120px * var(--popcorn-scale));
+    width: calc(150px * var(--popcorn-scale));
     pointer-events: none;
     user-select: none;
-    z-index: 2;
+    z-index: 4;
     opacity: 0;
 }
 
+/* Buttons stay above the flying kernels (they cross the button on phones) */
+body.mg-room #congrats-area .btn-restart,
+body.mg-room #end-game-actions {
+    position: relative;
+    z-index: 5;
+}
+
 body.mg-room .round-result-burst.is-left {
-    left: -46px;
+    left: calc(-70px * var(--popcorn-scale) + var(--popcorn-tuck));
 }
 
 body.mg-room .round-result-burst.is-right {
-    right: -46px;
+    right: calc(-70px * var(--popcorn-scale) + var(--popcorn-tuck));
 }
 
 /* ---------- Round result entrance animation ----------
@@ -1447,16 +1571,10 @@ body.mg-room .round-result-burst.is-right {
     to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes roundResultPopcornInLeft {
-    0%   { opacity: 0; transform: rotate(-8deg) scale(0.4) translateY(30px); }
-    70%  { opacity: 1; transform: rotate(-8deg) scale(1.08) translateY(-4px); }
-    100% { opacity: 1; transform: rotate(-8deg) scale(1) translateY(0); }
-}
-
-@keyframes roundResultPopcornInRight {
-    0%   { opacity: 0; transform: scaleX(-1) rotate(-8deg) scale(0.4) translateY(30px); }
-    70%  { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1.08) translateY(-4px); }
-    100% { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1) translateY(0); }
+@keyframes roundResultPopcornPop {
+    0%   { opacity: 0; transform: scale(0.4) translateY(30px); }
+    70%  { opacity: 1; transform: scale(1.08) translateY(-4px); }
+    100% { opacity: 1; transform: none; }
 }
 
 /* Timing lifted directly from the Figma prototype's own interaction spec for
@@ -1491,13 +1609,8 @@ body.mg-room .round-result-winner { animation-delay: 0.16s; }
 body.mg-room #movie-reveal:not(.hidden) { animation-delay: 0.22s; }
 body.mg-room #congrats-area .btn-restart { animation-delay: 0.28s; }
 
-body.mg-room .round-result-popcorn.is-left {
-    animation: roundResultPopcornInLeft 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-    animation-delay: 0.08s;
-}
-
-body.mg-room .round-result-popcorn.is-right {
-    animation: roundResultPopcornInRight 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+body.mg-room .round-result-popcorn {
+    animation: roundResultPopcornPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     animation-delay: 0.08s;
 }
 
@@ -1534,8 +1647,9 @@ body.mg-room #congrats-area.no-anim * {
 
 body.mg-room .round-result-eyebrow {
     margin: 0;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--mg-muted);
 }
@@ -1545,8 +1659,8 @@ body.mg-room #congrats-kind-sep.hidden {
 }
 
 body.mg-room .round-result-winner {
-    margin: 4px 0 0;
-    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    margin: 0;
+    font-size: clamp(1.4rem, 3vw, 2rem);
     line-height: 1.15;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -1558,28 +1672,23 @@ body.mg-room .round-result-winner.hidden {
     display: none;
 }
 
-body.mg-room #movie-reveal {
-    margin-top: 14px;
-}
-
-body.mg-room #movie-reveal.hidden {
-    display: none;
-}
-
 body.mg-room .round-result-movie-label {
     margin: 0;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--mg-muted);
 }
 
-body.mg-room .round-result-movie-value {
-    margin: 2px 0 0;
-    font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+body.mg-room .round-result-movie-value,
+body.mg-room #revealed-name {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.5;
     letter-spacing: 0;
     text-transform: uppercase;
-    font-weight: 700;
+    font-weight: 400;
     color: var(--mg-ink);
     word-break: break-word;
 }
@@ -1616,17 +1725,30 @@ body.mg-room #congrats-area #quit-game-btn.btn-danger {
     text-transform: uppercase;
 }
 
-@media (max-width: 720px) {
+/* Short stages (1280x720 etc.): tighter vertical rhythm so a full 7-row card still fits */
+@media (max-height: 800px) {
     body.mg-room .round-result-card {
-        padding: 28px 20px;
-        max-width: 340px;
+        gap: 16px;
+        padding-top: clamp(24px, 6cqh, 56px);
+        padding-bottom: clamp(24px, 6cqh, 56px);
     }
-    body.mg-room .round-result-popcorn {
-        width: min(58px, 15vw);
-        bottom: -14px;
+    body.mg-room .round-result-round {
+        gap: 12px;
     }
-    body.mg-room .round-result-popcorn.is-left { left: -14px; }
-    body.mg-room .round-result-popcorn.is-right { right: -14px; }
+}
+
+@media (max-width: 720px) {
+    /* Buckets at ~55% and tucked over the card's corners so the card keeps its width */
+    body.mg-room .round-result-card {
+        --popcorn-scale: 0.55;
+        --popcorn-tuck: 26px;
+        --popcorn-overhang: 22px;
+        gap: 18px;
+    }
+    body.mg-room .round-result-movie-label,
+    body.mg-room .round-result-eyebrow { font-size: 14px; }
+    body.mg-room .round-result-movie-value,
+    body.mg-room .round-result-score-row { font-size: 16px; }
 }
 
 body.mg-room .game-play-head {
@@ -2356,6 +2478,8 @@ body.mg-room #movie-display .space {
    fits, the position and entrance animation are exactly as before. */
 body.mg-room #congrats-area {
     container-type: size;
+    /* popcorn buckets may poke past the sides on narrow screens — clip, never scroll sideways */
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -2369,6 +2493,37 @@ body.mg-room .round-result-card {
 @keyframes roundResultCardInSafe {
     from { opacity: 0; transform: translate(-50%, var(--card-shift-y)) scale(0.82) translateY(14px); }
     to   { opacity: 1; transform: translate(-50%, var(--card-shift-y)) scale(1) translateY(0); }
+}
+
+/* Stacked layouts (tablet / phone / short landscape): the stage is only as tall
+   as the canvas, so while the result is showing it takes the stage over and
+   sits in the page flow — the page grows to fit the card instead of the card
+   scrolling inside a short box. JS still only toggles #congrats-area's inline
+   display, so this switches off by itself when the next round starts. */
+@media (max-width: 900px), (max-height: 599px) {
+    body.mg-room #game-area:has(> #congrats-area[style*="display: block"]) > :not(#congrats-area) {
+        display: none;
+    }
+    body.mg-room #congrats-area[style*="display: block"] {
+        position: relative;
+        inset: auto;
+        container-type: inline-size;
+        overflow: visible;
+        padding: 16px 0 40px;
+    }
+    body.mg-room #congrats-area[style*="display: block"] .round-result-card {
+        position: relative;
+        top: auto;
+        left: auto;
+        margin: 0 auto;
+        transform: none;
+        animation-name: roundResultCardInFlow;
+    }
+}
+
+@keyframes roundResultCardInFlow {
+    from { opacity: 0; transform: scale(0.82) translateY(14px); }
+    to   { opacity: 1; transform: none; }
 }
 
 /* ---------- Laptop / small desktop: compact header so the game keeps its height ---------- */

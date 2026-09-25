@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play14">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=play21">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -580,11 +580,6 @@
         }
         .round-result-score-name { color: #fff; }
         .round-result-score-pts { color: #4ade80; white-space: nowrap; }
-        .round-result-score-total {
-            color: var(--text-dim);
-            font-size: 0.78rem;
-            font-weight: 700;
-        }
         #movie-reveal {
             margin-top: 8px;
             color: var(--text-dim);
@@ -1029,21 +1024,49 @@
             <div id="game-area" class="hidden">
                 <div id="congrats-area" style="display: none;">
                     <div class="round-result-card">
-                        <img class="round-result-popcorn is-left" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
-                        <img class="round-result-popcorn is-right" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
+                        <!-- Figma "Winner Declaration" (7:1187 / 7:1682): popcorn buckets Group 63 / Group 64 -->
+                        <div class="round-result-popcorn is-left" aria-hidden="true">
+                            <span class="popcorn-bucket"><img src="/static/img/round-result/bucket-left.svg" width="91.1963" height="99.4102" alt="" draggable="false"></span>
+                            <span class="popcorn-kernels">
+                                <span class="popcorn-kernel pk-4"><img src="/static/img/round-result/popcorn-4.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-11"><img src="/static/img/round-result/popcorn-11.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-1"><img src="/static/img/round-result/popcorn-1.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-5"><img src="/static/img/round-result/popcorn-5.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-7"><img src="/static/img/round-result/popcorn-7.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-8"><img src="/static/img/round-result/popcorn-8.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-6"><img src="/static/img/round-result/popcorn-6.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-10"><img src="/static/img/round-result/popcorn-10.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-3"><img src="/static/img/round-result/popcorn-3.svg" alt="" draggable="false"></span>
+                            </span>
+                        </div>
+                        <div class="round-result-popcorn is-right" aria-hidden="true">
+                            <span class="popcorn-bucket"><img src="/static/img/round-result/bucket-right.svg" width="93.4164" height="99.9259" alt="" draggable="false"></span>
+                            <span class="popcorn-kernels">
+                                <span class="popcorn-kernel pk-4"><img src="/static/img/round-result/popcorn-4.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-11"><img src="/static/img/round-result/popcorn-11.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-1"><img src="/static/img/round-result/popcorn-1.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-5"><img src="/static/img/round-result/popcorn-5.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-7"><img src="/static/img/round-result/popcorn-7.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-8"><img src="/static/img/round-result/popcorn-8.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-6"><img src="/static/img/round-result/popcorn-6.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-10"><img src="/static/img/round-result/popcorn-10.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-3"><img src="/static/img/round-result/popcorn-3.svg" alt="" draggable="false"></span>
+                            </span>
+                        </div>
                         <img class="round-result-burst is-left" src="/static/img/lobby/popcorn-burst-left-scatter.png" alt="" aria-hidden="true">
                         <img class="round-result-burst is-right" src="/static/img/lobby/popcorn-burst-right-scatter.png" alt="" aria-hidden="true">
-                        <p class="round-result-eyebrow">
-                            <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
-                        </p>
-                        <h2 id="congrats-winner-name" class="round-result-winner"></h2>
-                        <div id="congrats-text"></div>
-                        <div id="congrats-score-list" class="round-result-scores hidden" aria-live="polite"></div>
                         <div id="movie-reveal" class="hidden">
                             <p class="round-result-movie-label">Movie</p>
                             <p class="round-result-movie-value" id="revealed-name"></p>
                         </div>
-                        <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
+                        <div class="round-result-round">
+                            <p class="round-result-eyebrow">
+                                <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
+                            </p>
+                            <h2 id="congrats-winner-name" class="round-result-winner"></h2>
+                            <div id="congrats-text"></div>
+                            <div id="congrats-score-list" class="round-result-scores hidden" aria-live="polite"></div>
+                        </div>
                         <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
                             <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
                                 <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
@@ -2179,7 +2202,9 @@
 
             const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
             const winnerMatch = /^(.*?)\s+guessed it first!?$/i.exec(cleaned);
-            const multiMatch = /(\d+)\s+player\(s\)\s+guessed it/i.exec(cleaned);
+            // Server sends "Everyone guessed it! N player(s) solved it." or
+            // "Time's up! N player(s) guessed it." when someone got it right.
+            const multiMatch = /(\d+)\s+player\(s\)\s+(?:guessed|solved) it/i.exec(cleaned);
             // has-winner gates the popcorn burst (see game-room.css): it should only
             // celebrate actual correct guesses, never a lonely "time's up" with nobody.
             const hasWinner = Boolean(winnerMatch) || Boolean(multiMatch);
@@ -2206,30 +2231,21 @@
             const gained = correctGuessers && typeof correctGuessers === "object"
                 ? Object.entries(correctGuessers)
                 : [];
+            // With a score list the card shows just "Round N" + rows (Figma); the
+            // winner / "time's up" line is only shown when nobody scored.
+            document.getElementById('congrats-area')?.classList.toggle('has-scores', gained.length > 0);
             if (!gained.length) {
                 listEl.innerHTML = "";
                 listEl.classList.add('hidden');
                 return;
             }
 
-            const totals = {};
-            (Array.isArray(scores) ? scores : []).forEach((p) => {
-                if (p && p.name != null) totals[p.name] = p.score;
-            });
-
             gained.sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
             listEl.innerHTML = gained.map(([name, points]) => {
-                const total = totals[name];
-                const totalHtml = total == null
-                    ? ""
-                    : `<span class="round-result-score-total">total ${total}</span>`;
                 return `
                     <div class="round-result-score-row">
                         <span class="round-result-score-name"></span>
-                        <span>
-                            <span class="round-result-score-pts">+${points}</span>
-                            ${totalHtml}
-                        </span>
+                        <span class="round-result-score-pts">${points}</span>
                     </div>
                 `;
             }).join("");

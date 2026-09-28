@@ -12,42 +12,16 @@ jobs:
     steps:
       - name: Deploy latest code
         shell: bash
+        env:
+          PROJECT_DIR: /home/hardik/projects/fastAPI_Scribble-and-Guess-Game
+          SERVICE_NAME: scribble.service
+          HEALTH_URL: http://127.0.0.1:8000/
+          STARTUP_TIMEOUT: "60"
+        # Run the script from the freshly fetched checkout; it fetches/resets itself,
+        # runs preflight checks, restarts the service and waits for it to be healthy.
         run: |
-          set -e
-
-          PROJECT_DIR="/home/hardik/projects/fastAPI_Scribble-and-Guess-Game"
-
-          echo "======================================"
-          echo "Starting Scribble deployment"
-          echo "======================================"
-
+          set -euo pipefail
           cd "$PROJECT_DIR"
-
-          echo "Fetching latest code..."
           git fetch origin main
-
-          echo "Updating working tree..."
-          git reset --hard origin/main
-
-          echo "Activating virtual environment..."
-          source .venv/bin/activate
-
-          echo "Installing dependencies..."
-          python -m pip install -r requirements.txt
-
-          echo "Restarting FastAPI service..."
-          sudo -n systemctl restart scribble.service
-
-          echo "Waiting for application..."
-          sleep 5
-
-          echo "Checking service..."
-          sudo -n systemctl is-active --quiet scribble.service
-
-          echo "Checking HTTP endpoint..."
-          curl --fail --silent --show-error \
-            http://127.0.0.1:8000 > /dev/null
-
-          echo "======================================"
-          echo "Deployment successful!"
-          echo "======================================"
+          git show origin/main:scripts/deploy.sh > /tmp/scribble-deploy.sh
+          bash /tmp/scribble-deploy.sh

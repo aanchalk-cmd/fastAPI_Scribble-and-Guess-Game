@@ -6,9 +6,6 @@ Movie_Names_Dataset.csv.xlsx
 Documentation
 .env
 .env.*.env
-static/img/lobby
-static/img/icons
 /tests
 #testing
-static/img/round-result/static/img/round-result/
-/static/img/round-result/
+.DS_Store

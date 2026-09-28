@@ -10,6 +10,7 @@ static/img/lobby
 static/img/icons
 /tests
 #testing
-app/data
+# app/data/words.json is required at startup and must be committed (the deploy
+# resets to origin/main, so an ignored copy on the server gets deleted).
 static/img/round-result/static/img/round-result/
 /static/img/round-result/

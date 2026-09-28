@@ -1564,38 +1564,42 @@ body.mg-room .pk-8 img  { transform: rotate(80.83deg); }
 body.mg-room .pk-10 img { transform: rotate(-127.47deg) scale(1, -1); }
 body.mg-room .pk-3 img  { transform: rotate(-21.04deg); }
 
-/* Kernel-burst flourish (real Figma-exported sprites) that pops briefly out of
-   each bucket's mouth as the card settles in, then fades — purely decorative.
-   Only plays when this round actually has a winner (see #congrats-area.has-winner,
-   toggled in populateRoundResultCard()) — a "time's up, nobody guessed" round
-   never fires the "first correct guess" moment this celebrates. */
-body.mg-room #congrats-area:not(.has-winner) .round-result-burst {
-    display: none;
+/* Scattered-popcorn frame (Figma component variant "scattered"): the kernels
+   thrown out of the bucket, filling the same 272x146 / 280x143 component box
+   as the pile. The prototype loops pile <-> scattered (see
+   roundResultPopcornScatter below); when the animation is off (refresh /
+   reduced motion) the scattered frame shows statically. Only for rounds with
+   a winner (#congrats-area.has-winner, set in
+   populateRoundResultCard()); a "time's up, nobody guessed" round keeps the pile. */
+body.mg-room .popcorn-scatter {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    max-width: none;
+    opacity: 0;
+    /* grows out of the bucket's mouth */
+    transform-origin: 77px 100px;
 }
 
-body.mg-room .round-result-burst {
-    position: absolute;
-    bottom: calc(120px * var(--popcorn-scale));
-    width: calc(150px * var(--popcorn-scale));
-    pointer-events: none;
-    user-select: none;
-    z-index: 4;
+body.mg-room .round-result-popcorn.is-right .popcorn-scatter {
+    left: 8px;
+    transform-origin: 197px 99px;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-scatter {
+    opacity: 1;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-kernels {
     opacity: 0;
 }
 
-/* Buttons stay above the flying kernels (they cross the button on phones) */
+/* Buttons stay above the scattered kernels (they cross the button on phones) */
 body.mg-room #congrats-area .btn-restart,
 body.mg-room #end-game-actions {
     position: relative;
     z-index: 5;
-}
-
-body.mg-room .round-result-burst.is-left {
-    left: calc(-70px * var(--popcorn-scale) + var(--popcorn-tuck));
-}
-
-body.mg-room .round-result-burst.is-right {
-    right: calc(-70px * var(--popcorn-scale) + var(--popcorn-tuck));
 }
 
 /* ---------- Round result entrance animation ----------
@@ -1621,20 +1625,39 @@ body.mg-room .round-result-burst.is-right {
     100% { opacity: 1; transform: none; }
 }
 
-/* Timing lifted directly from the Figma prototype's own interaction spec for
-   this popcorn burst: "After delay 800ms -> Change to [scattered frame],
-   Smart animate, Gentle easing, 800ms duration". That single documented
-   transition is encoded below as the first half (0% -> 50%) of a 1.6s
-   keyframe animation — the kernels ease from hidden into the scattered
-   "popped" arrangement over exactly that 800ms. The second half (50% ->
-   100%) settles them back out of view over a matching 800ms so the flourish
-   has a clean end state; Figma's own recording wasn't accessible to confirm
-   this return leg, so it mirrors the documented leg's timing/easing rather
-   than inventing a different one. */
-@keyframes roundResultBurst {
-    0%   { opacity: 0; transform: scale(0.55) rotate(-6deg) translateY(10px); }
-    50%  { opacity: 1; transform: scale(1) rotate(2deg) translateY(-14px); }
-    100% { opacity: 0; transform: scale(0.85) rotate(6deg) translateY(-26px); }
+/* Prototype loop read from the Figma popcorn components (Component 3 / 4,
+   variants "pile" 7:1066 and "scattered" 7:1095):
+     pile      --after 0.8s--> scattered  Smart animate, Bouncy, 0.958s
+     scattered --after 0.8s--> pile       Smart animate, Gentle, 1.022s
+   and round again. One cycle = 0.8 + 0.958 + 0.8 + 1.022 = 3.58s, so the
+   keyframe stops are 0.8/3.58 = 22.35%, 1.758/3.58 = 49.11%,
+   2.558/3.58 = 71.45%. The pile sinks into the bucket while the scattered
+   kernels burst out of its mouth, then they fall back. Per-segment easing:
+   Bouncy ~ overshooting bezier, Gentle ~ soft ease-out. Uses the standalone
+   `scale`/`translate` properties so the right pile's mirroring `transform`
+   is kept. */
+@keyframes roundResultPopcornPile {
+    0%, 22.35% {
+        opacity: 1; scale: 1; translate: 0 0;
+        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    49.11%, 71.45% {
+        opacity: 0; scale: 0.6; translate: 0 14px;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    100% { opacity: 1; scale: 1; translate: 0 0; }
+}
+
+@keyframes roundResultPopcornScatter {
+    0%, 22.35% {
+        opacity: 0; scale: 0.2;
+        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    49.11%, 71.45% {
+        opacity: 1; scale: 1;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    100% { opacity: 0; scale: 0.2; }
 }
 
 body.mg-room .round-result-card {
@@ -1658,11 +1681,18 @@ body.mg-room .round-result-popcorn {
     animation-delay: 0.08s;
 }
 
-body.mg-room .round-result-burst {
-    /* 1.6s = the Figma-specified 800ms "gentle" ease in, then a matching
-       800ms back out (see the roundResultBurst keyframes above). */
-    animation: roundResultBurst 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: 0.8s;
+body.mg-room #congrats-area.has-winner .popcorn-kernels {
+    transform-origin: 77px 100px;
+    animation: roundResultPopcornPile 3.58s linear infinite;
+}
+
+/* Keep the mirror axis on the box centre (280 / 2) */
+body.mg-room #congrats-area.has-winner .round-result-popcorn.is-right .popcorn-kernels {
+    transform-origin: 140px 99px;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-scatter {
+    animation: roundResultPopcornScatter 3.58s linear infinite;
 }
 
 /* Set by populateRoundResultCard()/showAnnouncement() when the round-result
@@ -1684,7 +1714,8 @@ body.mg-room #congrats-area.no-anim * {
     body.mg-room #congrats-area .btn-restart,
     body.mg-room .round-result-popcorn.is-left,
     body.mg-room .round-result-popcorn.is-right,
-    body.mg-room .round-result-burst {
+    body.mg-room .round-result-popcorn .popcorn-kernels,
+    body.mg-room .round-result-popcorn .popcorn-scatter {
         animation: none !important;
     }
 }

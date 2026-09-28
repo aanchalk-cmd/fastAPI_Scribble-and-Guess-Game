@@ -19,6 +19,12 @@
     --mg-font: "Bowlby One", "Nunito", system-ui, -apple-system, sans-serif;
     --mg-radius: 18px;
     --mg-border: 4px;
+    /* App shell spacing (Figma 10:300 @1920: 30px margins/gutters, 24px side
+       panels, 30px stage) — scales down with the viewport width */
+    --mg-gutter: clamp(14px, 1.5625vw, 30px);
+    --mg-pad-panel: clamp(16px, 1.25vw, 24px);
+    --mg-pad-stage: clamp(18px, 1.5625vw, 30px);
+    --mg-pill-h: 64px;
 }
 
 body.mg-room {
@@ -96,7 +102,7 @@ body.mg-room > header.mg-header {
     flex-wrap: wrap;
     background: transparent !important;
     border-bottom: none !important;
-    padding: 16px 22px 10px !important;
+    padding: var(--mg-gutter) var(--mg-gutter) 0 !important;
     position: relative;
     z-index: 5;
 }
@@ -113,7 +119,7 @@ body.mg-room .mg-brand {
 body.mg-room .mg-header-right {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 30px;
     flex-wrap: wrap;
     margin-left: auto;
 }
@@ -243,25 +249,57 @@ body.mg-room #sidebar-toggle.mg-header-btn-ghost {
     }
 }
 
-/* ---------- Left sidebar: players + chat ---------- */
+/* ---------- App shell: players | stage | chat (Figma 10:300) ---------- */
 body.mg-room .main-container {
     background: transparent;
-    gap: 20px;
-    padding: 8px 22px 22px;
+    gap: var(--mg-gutter);
+    padding: var(--mg-gutter);
     align-items: stretch;
     min-height: 0;
 }
 
-/* The room is a fixed-height app shell so the panels fill the viewport */
-@media (min-width: 901px) {
+/* Secondary panels under players / chat only exist in the desktop shell */
+body.mg-room .mg-panel.mg-panel-aux {
+    display: none;
+}
+
+/* The room is a fixed-height app shell so the panels fill the viewport — only when
+   there is enough height for it; short/landscape screens scroll the stacked layout.
+   Columns keep Figma's 456 : 864 : 480 split; rows are cut so players (425px),
+   chat (611px) and the right secondary panel (265px) keep their proportions:
+     left   = players  / aux-left
+     right  = chat     / aux-right              */
+@media (min-width: 901px) and (min-height: 600px) {
     body.mg-room {
         height: 100vh;
         height: 100dvh;
         overflow: hidden;
     }
-    body.mg-room .main-container {
+    body.mg-room .main-container.mg-shell {
         flex: 1 1 auto;
+        display: grid;
+        grid-template-columns: minmax(240px, 456fr) minmax(0, 864fr) minmax(260px, 480fr);
+        grid-template-rows: minmax(0, 425fr) minmax(0, 156fr) minmax(0, 265fr);
+        grid-template-areas:
+            "players stage chat"
+            "aux-l   stage chat"
+            "aux-l   stage aux-r";
     }
+    /* Players + chat live in #sidebar for the phone drawer; here they are grid items */
+    body.mg-room .mg-shell > #sidebar {
+        display: contents;
+    }
+    body.mg-room .mg-shell .mg-panel-players { grid-area: players; min-height: 0; }
+    body.mg-room .mg-shell .mg-panel-chat { grid-area: chat; min-height: 0; }
+    body.mg-room .mg-shell > #content { grid-area: stage; }
+    body.mg-room .mg-shell > .mg-panel.mg-panel-aux { display: flex; }
+    body.mg-room .mg-shell > .mg-panel-aux-left { grid-area: aux-l; }
+    body.mg-room .mg-shell > .mg-panel-aux-right { grid-area: aux-r; }
+}
+
+/* Figma groups Round + Room 20px apart, 30px from the buttons */
+@media (min-width: 1281px) and (min-height: 801px) {
+    body.mg-room #round-badge { margin-right: -10px; }
 }
 
 body.mg-room #sidebar {
@@ -290,7 +328,7 @@ body.mg-room .mg-panel {
     flex-direction: column;
     min-height: 0;
     box-shadow: none;
-    padding: 18px;
+    padding: var(--mg-pad-panel);
 }
 
 body.mg-room .mg-panel-players {
@@ -301,7 +339,7 @@ body.mg-room .mg-panel-players {
 body.mg-room .mg-panel-chat {
     flex: 1;
     min-height: 260px;
-    gap: 12px;
+    gap: 16px;
 }
 
 /* Yellow rail scrollbars (track #ffeab2, thumb #feba00) */
@@ -327,14 +365,14 @@ body.mg-room .chat-messages::-webkit-scrollbar-thumb {
 }
 
 body.mg-room #player-list {
-    padding: 0 18px 0 0;
+    padding: 0 24px 0 0;
     /* always show the yellow rail like the design */
     overflow-y: scroll;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 17px;
+    gap: 16px;
 }
 
 body.mg-room .player-item {
@@ -355,23 +393,42 @@ body.mg-room .player-item.is-me {
 }
 
 body.mg-room .player-name {
-    font-size: 1.05rem;
+    font-size: 18px;
     text-transform: uppercase;
     letter-spacing: 0;
     color: var(--mg-ink);
     display: inline-flex;
     align-items: center;
-    gap: 9px;
+    gap: 12px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
+/* Name + "(you)" tag: the name truncates, the tag always stays visible */
+body.mg-room .player-label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3em;
+    min-width: 0;
+}
+
+body.mg-room .player-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.mg-room .player-you {
+    flex-shrink: 0;
+    color: var(--mg-yellow);
+}
+
 body.mg-room .player-drawer-icon {
     flex-shrink: 0;
-    width: 22px;
-    height: 22px;
+    width: 40px;
+    height: 40px;
     display: inline-grid;
     place-items: center;
     line-height: 0;
@@ -387,7 +444,7 @@ body.mg-room .mg-icon {
 body.mg-room .player-right {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     flex-shrink: 0;
 }
 
@@ -396,17 +453,17 @@ body.mg-room .player-score {
     color: var(--mg-ink) !important;
     border: none !important;
     border-radius: var(--mg-radius) !important;
-    padding: 6px 12px !important;
-    font-size: 0.8rem !important;
-    min-width: 48px;
+    padding: 8px 16px !important;
+    font-size: 16px !important;
+    min-width: 68px;
     text-align: center;
     justify-content: center;
     line-height: 1.5;
 }
 
 body.mg-room .kick-btn {
-    width: 28px !important;
-    height: 28px !important;
+    width: 40px !important;
+    height: 40px !important;
     min-height: 0 !important;
     padding: 0 !important;
     border: none !important;
@@ -436,23 +493,25 @@ body.mg-room .kick-btn:not(.is-static):active {
 body.mg-room .chat-messages {
     flex: 1;
     overflow-y: scroll;
-    padding: 0 18px 0 0;
+    padding: 0 24px 0 0;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 8px;
     min-height: 0;
 }
 
 body.mg-room .chat-row {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     max-width: 78%;
 }
 
 body.mg-room .chat-row.is-me {
     align-self: flex-end;
     align-items: flex-end;
+    /* legacy .is-me highlight in index.html is meant for the old player list */
+    background: transparent;
 }
 body.mg-room .chat-row.is-other {
     align-self: flex-start;
@@ -460,18 +519,18 @@ body.mg-room .chat-row.is-other {
 }
 
 body.mg-room .chat-author {
-    font-size: 0.75rem;
-    letter-spacing: 1.2px;
+    font-size: 14px;
+    letter-spacing: 1.4px;
     text-transform: uppercase;
     color: var(--mg-muted-soft);
 }
 
 body.mg-room .chat-bubble {
     border: none;
-    padding: 11px 12px;
-    font-size: 0.8rem;
+    padding: 16px;
+    font-size: 14px;
     line-height: 1.3;
-    letter-spacing: 1.2px;
+    letter-spacing: 1.4px;
     text-transform: uppercase;
     color: var(--mg-ink);
     word-break: break-word;
@@ -491,7 +550,8 @@ body.mg-room .chat-compose {
     align-items: center;
     gap: 8px;
     margin: 0;
-    padding: 7px 7px 7px 17px;
+    min-height: 72px;
+    padding: 8px 8px 8px 24px;
     border: none;
     background: var(--mg-panel);
     border-radius: var(--mg-radius);
@@ -504,8 +564,8 @@ body.mg-room .chat-compose input {
     background: transparent;
     padding: 8px 0;
     font-family: var(--mg-font);
-    font-size: 0.8rem;
-    letter-spacing: 1.2px;
+    font-size: 16px;
+    letter-spacing: 1.6px;
     text-transform: uppercase;
     outline: none;
     color: var(--mg-ink);
@@ -517,8 +577,8 @@ body.mg-room .chat-compose input::placeholder {
 }
 
 body.mg-room .chat-send {
-    width: 40px;
-    height: 40px;
+    width: 56px;
+    height: 56px;
     flex-shrink: 0;
     border: none;
     border-radius: 12px;
@@ -531,8 +591,8 @@ body.mg-room .chat-send {
 }
 
 body.mg-room .chat-send img {
-    width: 18px;
-    height: 18px;
+    width: 24px;
+    height: 24px;
     display: block;
     /* design flips the arrow to point right */
     transform: scaleX(-1);
@@ -542,23 +602,26 @@ body.mg-room .chat-send:active {
     transform: scale(0.94);
 }
 
+/* Narrower desktops: same rows, smaller score pill / icons so names still fit */
+@media (min-width: 901px) and (max-width: 1280px) {
+    body.mg-room #player-list { padding-right: 12px; gap: 12px; }
+    body.mg-room .player-name { font-size: 15px; gap: 6px; }
+    body.mg-room .player-drawer-icon { width: 28px; height: 28px; }
+    body.mg-room .player-right { gap: 4px; }
+    body.mg-room .player-score {
+        min-width: 44px;
+        padding: 4px 10px !important;
+        font-size: 13px !important;
+    }
+    body.mg-room .kick-btn { width: 28px !important; height: 28px !important; }
+    body.mg-room .chat-messages { padding-right: 12px; }
+}
+
 /* Overrides for the legacy dark-theme ID rules still living in index.html */
 body.mg-room #round-display,
 body.mg-room #room-display {
     color: var(--mg-ink);
     letter-spacing: 0;
-}
-
-body.mg-room #lobby-timer-display.lobby-timer-pill,
-body.mg-room #lobby-timer-display.timer-low {
-    display: inline-flex;
-    margin-top: 0;
-    color: var(--mg-ink);
-    background: var(--mg-yellow-soft);
-    border: none;
-    border-radius: var(--mg-radius);
-    padding: 9px 15px;
-    font-size: 0.8rem;
 }
 
 body.mg-room #lobby-waiting-area h2 {
@@ -610,15 +673,95 @@ body.mg-room #setup-area {
     min-height: 0;
 }
 
+/* ---------- Shared stage (centre panel, Figma 10:568) ----------
+   Every game state renders inside one of these: the lobby card, the
+   pick-a-movie / guesser-waiting card (#setup-area outside the lobby) and the
+   play area. Same card, same 30px padding, same top row. */
+body.mg-room .mg-stage,
+body.mg-room #setup-area:not(.is-lobby) {
+    background: #fff !important;
+    border: var(--mg-border) solid var(--mg-line) !important;
+    border-radius: var(--mg-radius) !important;
+    padding: var(--mg-pad-stage) !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+}
+
+/* Top row: state pill on the left, timer pill on the right */
+body.mg-room .mg-stage-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 30px;
+    flex-shrink: 0;
+    width: 100%;
+}
+
+body.mg-room .mg-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--mg-pill-h);
+    margin: 0 !important;
+    padding: 20px;
+    background: var(--mg-yellow-soft) !important;
+    border: none;
+    border-radius: var(--mg-radius) !important;
+    font-family: var(--mg-font);
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+    letter-spacing: 0 !important;
+    text-transform: uppercase;
+    color: var(--mg-muted);
+    box-sizing: border-box;
+}
+
+body.mg-room .mg-timer,
+body.mg-room .mg-timer.timer-low {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+    min-height: var(--mg-pill-h);
+    margin: 0 !important;
+    padding: 12px 20px !important;
+    background: var(--mg-yellow-soft) !important;
+    border: none !important;
+    border-radius: var(--mg-radius) !important;
+    font-family: var(--mg-font);
+    font-size: 16px !important;
+    font-weight: 400 !important;
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: var(--mg-ink) !important;
+    animation: none !important;
+    box-sizing: border-box;
+}
+
+body.mg-room .mg-timer.hidden {
+    display: none !important;
+}
+
+body.mg-room .mg-timer-icon {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+body.mg-room .mg-timer-icon img {
+    display: block;
+}
+
 body.mg-room #lobby-waiting-area {
     flex: 1;
     width: 100%;
     max-width: none;
-    background: #fff !important;
-    border: var(--mg-border) solid var(--mg-line) !important;
-    border-radius: var(--mg-radius) !important;
-    padding: 22px !important;
-    box-shadow: none !important;
     text-align: left !important;
     display: flex;
     flex-direction: column;
@@ -629,47 +772,8 @@ body.mg-room #lobby-waiting-area {
 body.mg-room #lobby-waiting-area.hidden { display: none !important; }
 
 body.mg-room .lobby-top-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 10px;
     flex-wrap: wrap;
 }
-
-body.mg-room .lobby-status-pill {
-    display: inline-flex;
-    align-items: center;
-    background: var(--mg-yellow-soft);
-    border: none;
-    border-radius: var(--mg-radius);
-    padding: 15px;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    letter-spacing: 0;
-    text-transform: uppercase;
-    color: var(--mg-muted);
-}
-
-body.mg-room .lobby-timer-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    background: var(--mg-yellow-soft);
-    border: none;
-    border-radius: var(--mg-radius);
-    padding: 9px 15px;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: var(--mg-ink);
-}
-
-body.mg-room .lobby-timer-pill img {
-    width: 26px;
-    height: 26px;
-    display: block;
-}
-
-body.mg-room .lobby-timer-pill.hidden { display: none !important; }
 
 body.mg-room .lobby-hero {
     flex: 1;
@@ -882,10 +986,6 @@ body.mg-room #setup-area.is-lobby .drawer-card-body {
 
 /* ---------- Drawer pick-a-movie card (Figma 405:1436) ---------- */
 body.mg-room #setup-area:not(.is-lobby) {
-    background: #fff;
-    border: var(--mg-border) solid var(--mg-line);
-    border-radius: var(--mg-radius);
-    padding: 30px;
     gap: 40px;
 }
 
@@ -899,24 +999,12 @@ body.mg-room .drawer-card-body {
     overflow: hidden;
 }
 
-body.mg-room .drawer-role-row {
-    display: flex;
-    align-items: stretch;
-    gap: 30px;
-    width: 100%;
-}
-
+/* Role pill stretches across the row (label left, role right) */
 body.mg-room .drawer-role-bar {
     flex: 1;
     min-width: 0;
-    display: flex;
-    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    background: var(--mg-yellow-soft);
-    border-radius: var(--mg-radius);
-    padding: 20px;
-    min-height: 64px;
 }
 
 body.mg-room .drawer-role-label,
@@ -939,44 +1027,6 @@ body.mg-room #role-display {
     color: var(--mg-ink) !important;
 }
 
-body.mg-room .drawer-timer,
-body.mg-room #selection-timer-display.drawer-timer {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    background: var(--mg-yellow-soft) !important;
-    border-radius: var(--mg-radius) !important;
-    padding: 12px 20px !important;
-    min-height: 64px;
-    font-size: 16px !important;
-    font-weight: inherit !important;
-    line-height: 1.5;
-    text-transform: uppercase;
-    color: var(--mg-ink) !important;
-    border: none !important;
-    animation: none !important;
-}
-
-body.mg-room #selection-timer-display.drawer-timer.hidden {
-    display: none !important;
-}
-
-body.mg-room #selection-timer-display.timer-low {
-    color: var(--mg-ink) !important;
-    background: var(--mg-yellow-soft) !important;
-    animation: none !important;
-}
-
-body.mg-room .drawer-timer-icon {
-    width: 40px;
-    height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    overflow: hidden;
-}
 
 body.mg-room #drawer-input {
     width: 100%;
@@ -1283,12 +1333,7 @@ body.mg-room #game-area {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    background: #fff;
-    border: var(--mg-border) solid var(--mg-line);
-    border-radius: var(--mg-radius);
-    padding: 24px 28px 20px;
     gap: 16px;
-    box-sizing: border-box;
     position: relative;
     overflow: hidden;
 }
@@ -1306,6 +1351,11 @@ body.mg-room #congrats-area {
     position: absolute;
     inset: 0;
     z-index: 6;
+    /* legacy rules cap it at 900px (pushing the card left of the stage centre)
+       and give it a green outline */
+    width: auto;
+    max-width: none;
+    border: none;
     margin: 0;
     padding: 24px;
     background: #fff;
@@ -1318,7 +1368,16 @@ body.mg-room #congrats-text {
     display: none;
 }
 
+/* ---------- Round result card (Figma "Winner Declaration" 7:1187 / 7:1682) ----------
+   20%-yellow card, 4px black border, 80/160 padding, 24px between sections:
+   movie reveal -> "Round N" + score rows (name ↔ points, 384px wide).
+   The popcorn buckets overlap its bottom corners, sticking out ~78px sideways,
+   so the card leaves room for them inside #congrats-area. */
 body.mg-room .round-result-card {
+    --popcorn-scale: 1;
+    --popcorn-tuck: 0px;
+    --popcorn-overhang: 86px;
+    --card-w: min(704px, 100cqw - 2 * var(--popcorn-overhang));
     position: absolute;
     top: 50%;
     left: 50%;
@@ -1326,63 +1385,221 @@ body.mg-room .round-result-card {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    width: calc(100% - 48px);
-    max-width: 560px;
-    background: var(--mg-cream);
+    gap: 24px;
+    width: var(--card-w);
+    background: var(--mg-yellow-soft);
     border: var(--mg-border) solid var(--mg-line);
     border-radius: var(--mg-radius);
-    padding: 36px 32px;
+    padding:
+        clamp(32px, 10cqh, 80px)
+        clamp(20px, (var(--card-w) - 384px) / 2 - var(--mg-border), 160px);
     box-sizing: border-box;
+    text-align: center;
 }
 
-body.mg-room .round-result-popcorn {
-    position: absolute;
-    /* This bucket art (static/img/lobby/celeb-popcorn.png) is a tall, narrow
-       67x104 crop — noticeably slimmer than the old popcorn.png it replaced —
-       so it's sized/offset differently to avoid dwarfing the card. */
-    bottom: -22px;
-    width: min(80px, 16vw);
-    pointer-events: none;
-    user-select: none;
-    z-index: 1;
+body.mg-room #movie-reveal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
 }
 
-body.mg-room .round-result-popcorn.is-left {
-    left: -26px;
-    transform: rotate(-8deg);
-}
-
-body.mg-room .round-result-popcorn.is-right {
-    right: -26px;
-    transform: scaleX(-1) rotate(-8deg);
-}
-
-/* Kernel-burst flourish (real Figma-exported sprites) that pops briefly out of
-   each bucket's mouth as the card settles in, then fades — purely decorative.
-   Only plays when this round actually has a winner (see #congrats-area.has-winner,
-   toggled in populateRoundResultCard()) — a "time's up, nobody guessed" round
-   never fires the "first correct guess" moment this celebrates. */
-body.mg-room #congrats-area:not(.has-winner) .round-result-burst {
+body.mg-room #movie-reveal.hidden {
     display: none;
 }
 
-body.mg-room .round-result-burst {
+body.mg-room .round-result-round {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+}
+
+body.mg-room .round-result-scores {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(384px, 100%);
+    max-width: none;
+    margin: 0;
+    position: relative;
+    z-index: 2;
+}
+
+body.mg-room .round-result-scores.hidden {
+    display: none;
+}
+
+body.mg-room .round-result-score-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    /* reset the legacy dark-theme chip styling from index.html */
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 0;
+    font-weight: 400;
+    font-family: var(--mg-font);
+    font-size: 18px;
+    line-height: normal;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+}
+
+body.mg-room .round-result-score-name {
+    color: var(--mg-ink);
+    min-width: 0;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+body.mg-room .round-result-score-pts {
+    flex-shrink: 0;
+    color: var(--mg-ink);
+}
+
+/* With a score list the design shows just "Round N" + rows; the winner /
+   "time's up" line stays as the fallback when nobody scored. */
+body.mg-room #congrats-area.has-scores #congrats-kind-sep,
+body.mg-room #congrats-area.has-scores #congrats-kind-label,
+body.mg-room #congrats-area.has-scores .round-result-winner {
+    display: none;
+}
+
+/* Popcorn buckets — Figma Group 63 (left) / Group 64 (right): the bucket SVG
+   plus nine kernel SVGs, positioned exactly as in the design. Coordinates are
+   in the 272x146 / 280x143 component boxes; the box is anchored so its
+   transform-origin sits on the card's bottom corner, which lets the whole
+   cluster scale down on small screens without drifting off the card. */
+body.mg-room .round-result-popcorn {
     position: absolute;
-    bottom: 26px;
-    width: min(150px, 30vw);
+    /* offsets are from the card's outer edge in Figma; CSS measures from inside the border */
+    left: calc(-89px - var(--mg-border) + var(--popcorn-tuck));
+    bottom: calc(49px - var(--mg-border));
+    width: 272px;
+    height: 146px;
+    transform-origin: 89px 195px;
+    scale: var(--popcorn-scale);
     pointer-events: none;
     user-select: none;
-    z-index: 2;
+    z-index: 3;
+}
+
+body.mg-room .round-result-popcorn.is-right {
+    left: auto;
+    right: calc(-89px - var(--mg-border) + var(--popcorn-tuck));
+    bottom: calc(51px - var(--mg-border));
+    width: 280px;
+    height: 143px;
+    transform-origin: 191px 194px;
+}
+
+body.mg-room .popcorn-bucket,
+body.mg-room .popcorn-kernel {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.mg-room .popcorn-bucket img,
+body.mg-room .popcorn-kernel img {
+    display: block;
+    flex: none;
+    max-width: none;
+}
+
+body.mg-room .round-result-popcorn.is-left .popcorn-bucket {
+    left: 15px;
+    top: 100px;
+    width: 124.37px;
+    height: 128.405px;
+}
+body.mg-room .round-result-popcorn.is-left .popcorn-bucket img {
+    transform: rotate(24.68deg);
+}
+
+body.mg-room .round-result-popcorn.is-right .popcorn-bucket {
+    left: 141.05px;
+    top: 99px;
+    width: 128.028px;
+    height: 128.405px;
+}
+body.mg-room .round-result-popcorn.is-right .popcorn-bucket img {
+    transform: rotate(155.95deg) scale(1, -1) skewX(1.26deg);
+}
+
+body.mg-room .popcorn-kernels {
+    position: absolute;
+    inset: 0;
+}
+
+/* Group 64's kernel component is a mirrored instance of Group 63's */
+body.mg-room .round-result-popcorn.is-right .popcorn-kernels {
+    transform: scaleX(-1);
+}
+
+body.mg-room .pk-4  { left: 93.06px;  top: 100.61px; width: 37.916px; height: 35.718px; }
+body.mg-room .pk-11 { left: 94.86px;  top: 63.25px;  width: 29.712px; height: 26.726px; }
+body.mg-room .pk-1  { left: 48.11px;  top: 78.29px;  width: 37.916px; height: 35.718px; }
+body.mg-room .pk-5  { left: 64.16px;  top: 60.63px;  width: 41.765px; height: 43.964px; }
+body.mg-room .pk-7  { left: 88.24px;  top: 78.33px;  width: 37.916px; height: 35.718px; }
+body.mg-room .pk-8  { left: 111.96px; top: 85.87px;  width: 29.98px;  height: 33.685px; }
+body.mg-room .pk-6  { left: 114.55px; top: 108px;    width: 35.718px; height: 37.916px; }
+body.mg-room .pk-10 { left: 106.53px; top: 64.38px;  width: 38.508px; height: 39.338px; }
+body.mg-room .pk-3  { left: 68.62px;  top: 88.65px;  width: 41.404px; height: 39.222px; }
+
+body.mg-room .pk-4 img,
+body.mg-room .pk-1 img  { transform: rotate(24.68deg); }
+body.mg-room .pk-11 img,
+body.mg-room .pk-7 img  { transform: rotate(-155.32deg); }
+body.mg-room .pk-5 img,
+body.mg-room .pk-6 img  { transform: rotate(-65.32deg) scale(1, -1); }
+body.mg-room .pk-8 img  { transform: rotate(80.83deg); }
+body.mg-room .pk-10 img { transform: rotate(-127.47deg) scale(1, -1); }
+body.mg-room .pk-3 img  { transform: rotate(-21.04deg); }
+
+/* Scattered-popcorn frame (Figma component variant "scattered"): the kernels
+   thrown out of the bucket, filling the same 272x146 / 280x143 component box
+   as the pile. The prototype loops pile <-> scattered (see
+   roundResultPopcornScatter below); when the animation is off (refresh /
+   reduced motion) the scattered frame shows statically. Only for rounds with
+   a winner (#congrats-area.has-winner, set in
+   populateRoundResultCard()); a "time's up, nobody guessed" round keeps the pile. */
+body.mg-room .popcorn-scatter {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    max-width: none;
+    opacity: 0;
+    /* grows out of the bucket's mouth */
+    transform-origin: 77px 100px;
+}
+
+body.mg-room .round-result-popcorn.is-right .popcorn-scatter {
+    left: 8px;
+    transform-origin: 197px 99px;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-scatter {
+    opacity: 1;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-kernels {
     opacity: 0;
 }
 
-body.mg-room .round-result-burst.is-left {
-    left: -46px;
-}
-
-body.mg-room .round-result-burst.is-right {
-    right: -46px;
+/* Buttons stay above the scattered kernels (they cross the button on phones) */
+body.mg-room #congrats-area .btn-restart,
+body.mg-room #end-game-actions {
+    position: relative;
+    z-index: 5;
 }
 
 /* ---------- Round result entrance animation ----------
@@ -1402,32 +1619,45 @@ body.mg-room .round-result-burst.is-right {
     to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes roundResultPopcornInLeft {
-    0%   { opacity: 0; transform: rotate(-8deg) scale(0.4) translateY(30px); }
-    70%  { opacity: 1; transform: rotate(-8deg) scale(1.08) translateY(-4px); }
-    100% { opacity: 1; transform: rotate(-8deg) scale(1) translateY(0); }
+@keyframes roundResultPopcornPop {
+    0%   { opacity: 0; transform: scale(0.4) translateY(30px); }
+    70%  { opacity: 1; transform: scale(1.08) translateY(-4px); }
+    100% { opacity: 1; transform: none; }
 }
 
-@keyframes roundResultPopcornInRight {
-    0%   { opacity: 0; transform: scaleX(-1) rotate(-8deg) scale(0.4) translateY(30px); }
-    70%  { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1.08) translateY(-4px); }
-    100% { opacity: 1; transform: scaleX(-1) rotate(-8deg) scale(1) translateY(0); }
+/* Prototype loop read from the Figma popcorn components (Component 3 / 4,
+   variants "pile" 7:1066 and "scattered" 7:1095):
+     pile      --after 0.8s--> scattered  Smart animate, Bouncy, 0.958s
+     scattered --after 0.8s--> pile       Smart animate, Gentle, 1.022s
+   and round again. One cycle = 0.8 + 0.958 + 0.8 + 1.022 = 3.58s, so the
+   keyframe stops are 0.8/3.58 = 22.35%, 1.758/3.58 = 49.11%,
+   2.558/3.58 = 71.45%. The pile sinks into the bucket while the scattered
+   kernels burst out of its mouth, then they fall back. Per-segment easing:
+   Bouncy ~ overshooting bezier, Gentle ~ soft ease-out. Uses the standalone
+   `scale`/`translate` properties so the right pile's mirroring `transform`
+   is kept. */
+@keyframes roundResultPopcornPile {
+    0%, 22.35% {
+        opacity: 1; scale: 1; translate: 0 0;
+        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    49.11%, 71.45% {
+        opacity: 0; scale: 0.6; translate: 0 14px;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    100% { opacity: 1; scale: 1; translate: 0 0; }
 }
 
-/* Timing lifted directly from the Figma prototype's own interaction spec for
-   this popcorn burst: "After delay 800ms -> Change to [scattered frame],
-   Smart animate, Gentle easing, 800ms duration". That single documented
-   transition is encoded below as the first half (0% -> 50%) of a 1.6s
-   keyframe animation — the kernels ease from hidden into the scattered
-   "popped" arrangement over exactly that 800ms. The second half (50% ->
-   100%) settles them back out of view over a matching 800ms so the flourish
-   has a clean end state; Figma's own recording wasn't accessible to confirm
-   this return leg, so it mirrors the documented leg's timing/easing rather
-   than inventing a different one. */
-@keyframes roundResultBurst {
-    0%   { opacity: 0; transform: scale(0.55) rotate(-6deg) translateY(10px); }
-    50%  { opacity: 1; transform: scale(1) rotate(2deg) translateY(-14px); }
-    100% { opacity: 0; transform: scale(0.85) rotate(6deg) translateY(-26px); }
+@keyframes roundResultPopcornScatter {
+    0%, 22.35% {
+        opacity: 0; scale: 0.2;
+        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    49.11%, 71.45% {
+        opacity: 1; scale: 1;
+        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    100% { opacity: 0; scale: 0.2; }
 }
 
 body.mg-room .round-result-card {
@@ -1446,21 +1676,23 @@ body.mg-room .round-result-winner { animation-delay: 0.16s; }
 body.mg-room #movie-reveal:not(.hidden) { animation-delay: 0.22s; }
 body.mg-room #congrats-area .btn-restart { animation-delay: 0.28s; }
 
-body.mg-room .round-result-popcorn.is-left {
-    animation: roundResultPopcornInLeft 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+body.mg-room .round-result-popcorn {
+    animation: roundResultPopcornPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     animation-delay: 0.08s;
 }
 
-body.mg-room .round-result-popcorn.is-right {
-    animation: roundResultPopcornInRight 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-    animation-delay: 0.08s;
+body.mg-room #congrats-area.has-winner .popcorn-kernels {
+    transform-origin: 77px 100px;
+    animation: roundResultPopcornPile 3.58s linear infinite;
 }
 
-body.mg-room .round-result-burst {
-    /* 1.6s = the Figma-specified 800ms "gentle" ease in, then a matching
-       800ms back out (see the roundResultBurst keyframes above). */
-    animation: roundResultBurst 1.6s cubic-bezier(0.22, 1, 0.36, 1) both;
-    animation-delay: 0.8s;
+/* Keep the mirror axis on the box centre (280 / 2) */
+body.mg-room #congrats-area.has-winner .round-result-popcorn.is-right .popcorn-kernels {
+    transform-origin: 140px 99px;
+}
+
+body.mg-room #congrats-area.has-winner .popcorn-scatter {
+    animation: roundResultPopcornScatter 3.58s linear infinite;
 }
 
 /* Set by populateRoundResultCard()/showAnnouncement() when the round-result
@@ -1482,15 +1714,17 @@ body.mg-room #congrats-area.no-anim * {
     body.mg-room #congrats-area .btn-restart,
     body.mg-room .round-result-popcorn.is-left,
     body.mg-room .round-result-popcorn.is-right,
-    body.mg-room .round-result-burst {
+    body.mg-room .round-result-popcorn .popcorn-kernels,
+    body.mg-room .round-result-popcorn .popcorn-scatter {
         animation: none !important;
     }
 }
 
 body.mg-room .round-result-eyebrow {
     margin: 0;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--mg-muted);
 }
@@ -1500,8 +1734,8 @@ body.mg-room #congrats-kind-sep.hidden {
 }
 
 body.mg-room .round-result-winner {
-    margin: 4px 0 0;
-    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    margin: 0;
+    font-size: clamp(1.4rem, 3vw, 2rem);
     line-height: 1.15;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -1513,28 +1747,23 @@ body.mg-room .round-result-winner.hidden {
     display: none;
 }
 
-body.mg-room #movie-reveal {
-    margin-top: 14px;
-}
-
-body.mg-room #movie-reveal.hidden {
-    display: none;
-}
-
 body.mg-room .round-result-movie-label {
     margin: 0;
-    font-size: 0.85rem;
-    letter-spacing: 0.5px;
+    font-size: 16px;
+    line-height: 1.5;
+    letter-spacing: 0;
     text-transform: uppercase;
     color: var(--mg-muted);
 }
 
-body.mg-room .round-result-movie-value {
-    margin: 2px 0 0;
-    font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+body.mg-room .round-result-movie-value,
+body.mg-room #revealed-name {
+    margin: 0;
+    font-size: 18px;
+    line-height: 1.5;
     letter-spacing: 0;
     text-transform: uppercase;
-    font-weight: 700;
+    font-weight: 400;
     color: var(--mg-ink);
     word-break: break-word;
 }
@@ -1571,40 +1800,40 @@ body.mg-room #congrats-area #quit-game-btn.btn-danger {
     text-transform: uppercase;
 }
 
-@media (max-width: 720px) {
+/* Short stages (1280x720 etc.): tighter vertical rhythm so a full 7-row card still fits */
+@media (max-height: 800px) {
     body.mg-room .round-result-card {
-        padding: 28px 20px;
-        max-width: 340px;
+        gap: 16px;
+        padding-top: clamp(24px, 6cqh, 56px);
+        padding-bottom: clamp(24px, 6cqh, 56px);
     }
-    body.mg-room .round-result-popcorn {
-        width: min(58px, 15vw);
-        bottom: -14px;
+    body.mg-room .round-result-round {
+        gap: 12px;
     }
-    body.mg-room .round-result-popcorn.is-left { left: -14px; }
-    body.mg-room .round-result-popcorn.is-right { right: -14px; }
 }
 
+@media (max-width: 720px) {
+    /* Buckets at ~55% and tucked over the card's corners so the card keeps its width */
+    body.mg-room .round-result-card {
+        --popcorn-scale: 0.55;
+        --popcorn-tuck: 26px;
+        --popcorn-overhang: 22px;
+        gap: 18px;
+    }
+    body.mg-room .round-result-movie-label,
+    body.mg-room .round-result-eyebrow { font-size: 14px; }
+    body.mg-room .round-result-movie-value,
+    body.mg-room .round-result-score-row { font-size: 16px; }
+}
+
+/* Only the drawer sees the movie pill; keep the timer on the right either way */
 body.mg-room .game-play-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-shrink: 0;
-    min-height: 48px;
+    justify-content: flex-end;
 }
 
 body.mg-room #drawer-movie {
-    margin: 0;
-    padding: 10px 18px;
-    background: var(--mg-cream);
-    border-radius: var(--mg-radius);
+    margin-right: auto !important;
     color: var(--mg-ink) !important;
-    font-family: var(--mg-font);
-    font-size: 16px;
-    font-weight: 400;
-    line-height: 1.4;
-    letter-spacing: 0;
-    text-transform: uppercase;
     text-align: left;
     max-width: min(68%, 640px);
     overflow: hidden;
@@ -1616,56 +1845,22 @@ body.mg-room #drawer-movie:empty {
     display: none;
 }
 
-body.mg-room #timer-display.play-timer {
-    display: inline-flex !important;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-    margin: 0;
-    background: var(--mg-cream) !important;
-    border: none !important;
-    border-radius: var(--mg-radius) !important;
-    padding: 8px 16px !important;
-    min-height: 48px;
-    font-family: var(--mg-font);
-    font-size: 16px !important;
-    font-weight: 400 !important;
-    line-height: 1.4;
-    letter-spacing: 0;
-    text-transform: uppercase;
-    color: var(--mg-ink) !important;
-    animation: none !important;
-}
-
-body.mg-room #timer-display.play-timer.hidden {
-    display: none !important;
-}
-
-body.mg-room #timer-display.play-timer.timer-low {
-    animation: none !important;
-    color: var(--mg-ink) !important;
-    background: var(--mg-cream) !important;
-}
-
-body.mg-room .play-timer-icon {
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
+/* The canvas bitmap is a fixed 800x500 (drawing coordinates are synced in that
+   space), so the bordered box keeps the same 8:5 ratio and is scaled to the
+   largest size that fits the slot — strokes never get stretched on any screen. */
+body.mg-room .game-canvas-slot {
+    flex: 1 1 0;
+    min-height: 160px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
-}
-
-body.mg-room .play-timer-icon img {
-    width: 28px;
-    height: 32px;
-    display: block;
-    object-fit: contain;
+    container-type: size;
 }
 
 body.mg-room .game-canvas-wrap {
-    flex: 1;
-    min-height: 220px;
+    box-sizing: content-box;
+    width: min(100cqw - 2 * var(--mg-border), (100cqh - 2 * var(--mg-border)) * 1.6);
+    aspect-ratio: 8 / 5;
     border: var(--mg-border) solid var(--mg-line);
     border-radius: var(--mg-radius);
     overflow: hidden;
@@ -1677,6 +1872,8 @@ body.mg-room #canvas {
     width: 100%;
     height: 100%;
     max-width: none;
+    /* legacy 45vh/38vh caps would squash the 8:5 board */
+    max-height: none;
     background: #fff;
     box-shadow: none;
     border-radius: 0;
@@ -1813,19 +2010,17 @@ body.mg-room .toast {
 
 @media (max-width: 1100px) {
     body.mg-room #game-area {
-        padding: 18px 20px 16px;
         gap: 12px;
     }
-    body.mg-room #drawer-movie,
-    body.mg-room #timer-display.play-timer,
+    body.mg-room .mg-pill,
+    body.mg-room .mg-timer,
     body.mg-room .draw-tool {
-        font-size: 14px;
+        font-size: 14px !important;
     }
     body.mg-room #controls.toolbar {
         gap: 28px;
     }
     body.mg-room #setup-area:not(.is-lobby) {
-        padding: 22px;
         gap: 24px;
     }
     body.mg-room .drawer-card-body {
@@ -1843,7 +2038,7 @@ body.mg-room .toast {
 }
 
 
-@media (max-width: 900px) {
+@media (max-width: 900px), (max-height: 599px) {
     body.mg-room .main-container {
         flex-direction: column;
     }
@@ -1857,24 +2052,20 @@ body.mg-room .toast {
         flex: 1;
         min-height: 240px;
     }
-    body.mg-room #sidebar-toggle {
-        display: inline-flex !important;
-    }
     body.mg-room .drawer-role-row {
         gap: 12px;
     }
     body.mg-room .drawer-pick-title {
         font-size: 20px;
     }
+    body.mg-room {
+        --mg-pad-stage: 14px;
+    }
     body.mg-room #game-area {
-        padding: 14px;
         gap: 10px;
     }
     body.mg-room #controls.toolbar {
         gap: 18px;
-    }
-    body.mg-room .game-canvas-wrap {
-        min-height: 180px;
     }
 }
 
@@ -2066,6 +2257,16 @@ body.mg-room .is-host-gameover .lb-category-options {
     margin-bottom: 24px;
 }
 
+/* Genre row (5 options) wraps; the type row below it stays one line */
+body.mg-room .is-host-gameover .lb-category-options.is-genres {
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+body.mg-room .is-host-gameover .lb-category-options.is-genres .lb-category-btn {
+    flex: 1 1 30%;
+}
+
 body.mg-room .is-host-gameover .lb-category-btn {
     flex: 1;
     min-width: 0;
@@ -2131,6 +2332,12 @@ body.mg-room .is-host-gameover .lb-cancel-btn:active {
     body.mg-room .is-host-gameover .lb-category-options {
         flex-direction: column;
     }
+    body.mg-room .is-host-gameover .lb-category-options.is-genres {
+        flex-direction: row;
+    }
+    body.mg-room .is-host-gameover .lb-category-options.is-genres .lb-category-btn {
+        flex: 1 1 40%;
+    }
 }
 
 @media (max-width: 720px) {
@@ -2156,7 +2363,6 @@ body.mg-room .is-host-gameover .lb-cancel-btn:active {
         transform: none !important;
     }
     body.mg-room #setup-area:not(.is-lobby) {
-        padding: 16px;
         gap: 18px;
     }
     body.mg-room .drawer-card-body,
@@ -2165,14 +2371,22 @@ body.mg-room .is-host-gameover .lb-cancel-btn:active {
     body.mg-room #guesser-waiting {
         gap: 18px;
     }
+    body.mg-room {
+        --mg-pill-h: 52px;
+    }
+    body.mg-room .mg-stage-head {
+        gap: 12px;
+    }
+    body.mg-room .mg-pill,
+    body.mg-room .mg-timer {
+        padding: 12px 16px !important;
+    }
     body.mg-room .drawer-role-row {
         flex-direction: column;
     }
     body.mg-room .drawer-role-bar,
     body.mg-room .drawer-timer {
         width: 100%;
-        min-height: 52px;
-        padding: 12px 16px;
     }
     body.mg-room .drawer-pick-title {
         font-size: 18px;
@@ -2213,5 +2427,235 @@ body.mg-room .is-host-gameover .lb-cancel-btn:active {
         font-size: 1rem;
         min-width: 0;
         overflow-wrap: anywhere;
+    }
+}
+
+/* =====================================================================
+   Responsive layout
+   Three layouts, chosen by the space actually available:
+   - Desktop shell  (>900px wide and >=600px tall): sidebar left, game right,
+     everything fits the viewport and inner panels scroll.
+   - Stacked        (<=900px wide, or shorter than 600px): game first, then
+     players + chat side by side; the page scrolls.
+   - Phone          (<=720px wide): players + chat move behind the header's
+     "Players" button (overlay), as before.
+   The legacy rules in index.html use 1024px/768px breakpoints for an older
+   layout; the overrides below keep them from fighting these ones.
+   ===================================================================== */
+
+/* Legacy 1024px rule stacks the room and caps the sidebar at 240px — the desktop
+   shell keeps its side-by-side layout down to 901px. */
+body.mg-room .main-container {
+    flex-direction: row;
+}
+
+body.mg-room #sidebar {
+    max-height: none;
+}
+
+body.mg-room .mg-brand {
+    overflow: visible;
+}
+
+/* Long lobby cards (e.g. 1024x768) scroll instead of pushing Start Game off-screen */
+body.mg-room #lobby-waiting-area {
+    overflow-y: auto;
+}
+
+/* ---------- Guess boxes: whole words wrap, boxes shrink so the longest word fits ---------- */
+body.mg-room #movie-display {
+    --gap: 8px;
+    container-type: inline-size;
+    gap: 12px var(--gap);
+    align-items: center;
+}
+
+body.mg-room .word-group {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--gap);
+}
+
+body.mg-room .letter-input {
+    --box: clamp(20px, calc((100cqw - (var(--word-len, 1) - 1) * var(--gap)) / var(--word-len, 1)), 42px);
+    width: var(--box);
+    height: calc(var(--box) * 1.24);
+    font-size: calc(var(--box) * 0.52);
+    padding: 0;
+    flex-shrink: 0;
+}
+
+body.mg-room #movie-display .space {
+    width: calc(var(--gap) * 2);
+    height: auto;
+}
+
+/* ---------- Round result card: centred, but scrolls instead of being clipped ----------
+   The card is centred with top/left 50% + translate(-50%, -50%), which cut off its
+   top and bottom (incl. the host's Continue / Quit buttons) whenever the game area
+   was shorter than the card — landscape phones, 1024x600, etc. The vertical shift
+   is now clamped so the card's top never rises above the area (50cqh = half the
+   area's height); any extra height scrolls inside #congrats-area. When the card
+   fits, the position and entrance animation are exactly as before. */
+body.mg-room #congrats-area {
+    container-type: size;
+    /* popcorn buckets may poke past the sides on narrow screens — clip, never scroll sideways */
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+body.mg-room .round-result-card {
+    --card-shift-y: max(-50%, 12px - 50cqh);
+    transform: translate(-50%, var(--card-shift-y));
+    animation-name: roundResultCardInSafe;
+}
+
+@keyframes roundResultCardInSafe {
+    from { opacity: 0; transform: translate(-50%, var(--card-shift-y)) scale(0.82) translateY(14px); }
+    to   { opacity: 1; transform: translate(-50%, var(--card-shift-y)) scale(1) translateY(0); }
+}
+
+/* Stacked layouts (tablet / phone / short landscape): the stage is only as tall
+   as the canvas, so while the result is showing it takes the stage over and
+   sits in the page flow — the page grows to fit the card instead of the card
+   scrolling inside a short box. JS still only toggles #congrats-area's inline
+   display, so this switches off by itself when the next round starts. */
+@media (max-width: 900px), (max-height: 599px) {
+    body.mg-room #game-area:has(> #congrats-area[style*="display: block"]) > :not(#congrats-area) {
+        display: none;
+    }
+    body.mg-room #congrats-area[style*="display: block"] {
+        position: relative;
+        inset: auto;
+        container-type: inline-size;
+        overflow: visible;
+        padding: 16px 0 40px;
+    }
+    body.mg-room #congrats-area[style*="display: block"] .round-result-card {
+        position: relative;
+        top: auto;
+        left: auto;
+        margin: 0 auto;
+        transform: none;
+        animation-name: roundResultCardInFlow;
+    }
+}
+
+@keyframes roundResultCardInFlow {
+    from { opacity: 0; transform: scale(0.82) translateY(14px); }
+    to   { opacity: 1; transform: none; }
+}
+
+/* ---------- Laptop / small desktop: compact header so the game keeps its height ---------- */
+@media (min-width: 721px) and (max-width: 1280px), (min-width: 721px) and (max-height: 800px) {
+    body.mg-room .mg-header-right {
+        gap: 14px;
+    }
+    body.mg-room .mg-badge {
+        padding: 6px 14px;
+        gap: 2px;
+    }
+    body.mg-room .mg-badge-label {
+        font-size: 0.8rem;
+    }
+    body.mg-room .mg-badge-value {
+        font-size: 1.2rem;
+    }
+    body.mg-room .mg-badge-row {
+        gap: 16px;
+    }
+    body.mg-room .mg-header-btn {
+        font-size: 1.1rem;
+        padding: 12px 16px;
+        box-shadow: 6px 6px 0 var(--mg-line);
+    }
+    body.mg-room .mg-header-btn:active {
+        transform: translate(6px, 6px);
+    }
+}
+
+/* ---------- Stacked layout ---------- */
+@media (max-width: 900px), (max-height: 599px) {
+    body.mg-room .main-container {
+        flex-direction: column;
+    }
+    /* Game first, players + chat underneath */
+    body.mg-room #content {
+        order: 1;
+    }
+    /* Undo the legacy 768px off-canvas drawer: in-flow panels until the phone layout */
+    body.mg-room #sidebar {
+        order: 2;
+        position: static;
+        transform: none;
+        top: auto;
+        left: auto;
+        width: 100%;
+        max-width: none;
+        height: auto;
+        max-height: 280px;
+        min-width: 0;
+    }
+    body.mg-room #game-area {
+        flex: none;
+    }
+    /* No definite height here: size the canvas from the width, capped so the whole
+       board fits on screen in landscape. */
+    body.mg-room .game-canvas-slot {
+        flex: none;
+        min-height: 0;
+        container-type: inline-size;
+    }
+    body.mg-room .game-canvas-wrap {
+        width: min(100cqw - 2 * var(--mg-border), (100svh - 160px) * 1.6);
+        min-width: min(100cqw - 2 * var(--mg-border), 240px);
+    }
+}
+
+/* ---------- Phone ---------- */
+@media (max-width: 720px) {
+    body.mg-room .main-container {
+        padding: 8px 12px 16px;
+    }
+    /* Legacy 480px rule hides the h1 — keep the brand */
+    body.mg-room .mg-brand {
+        display: block;
+    }
+    body.mg-room #sidebar.open-mobile {
+        inset: var(--overlay-top, 60px) 12px 12px;
+        /* base #sidebar rule forces a transparent background with !important */
+        background: #fff !important;
+    }
+    /* Keeps Players / Round / Room on one row down to 360px */
+    body.mg-room .mg-badge-row {
+        gap: 10px;
+    }
+    /* The drawer must be able to read the whole title on a phone */
+    body.mg-room #drawer-movie {
+        flex: 1 1 auto;
+        max-width: none;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    body.mg-room #movie-display {
+        --gap: 5px;
+    }
+    body.mg-room #controls.toolbar {
+        flex-wrap: wrap;
+        gap: 6px 20px;
+    }
+    body.mg-room .draw-tool {
+        min-height: 44px;
+        font-size: 13px;
+    }
+}
+
+/* ---------- Short screens: modals scroll inside the viewport ---------- */
+@media (max-height: 700px) {
+    body.mg-room .modal-card {
+        max-height: calc(100dvh - 24px);
+        overflow-y: auto !important;
     }
 }

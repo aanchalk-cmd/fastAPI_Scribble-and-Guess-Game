@@ -25,8 +25,40 @@ class CategoryNotFoundError(KeyError):
         super().__init__(msg)
 
 
+# Old flat category ids (pre genre/type split) that rooms or clients may still send.
+CATEGORY_ALIASES = {
+    "movies": "hollywood_movies",
+    "characters": "hollywood_characters",
+}
+
+
+def _clean_words(words) -> List[str]:
+    """Preserve order, drop blanks/duplicates (case-insensitive)."""
+    seen = set()
+    cleaned: List[str] = []
+    for word in words:
+        if not isinstance(word, str):
+            continue
+        text = word.strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(text)
+    return cleaned
+
+
 class WordManager:
-    """In-memory word pool loaded once from words.json."""
+    """
+    In-memory word pool loaded once from words.json.
+
+    words.json is grouped as {genre: {type: [words]}}, e.g.
+    {"bollywood": {"movies": [...], "characters": [...]}}. Each genre/type pair
+    becomes a flat category id "<genre>_<type>" (e.g. "bollywood_movies").
+    A plain {category: [words]} entry is still accepted as a flat category.
+    """
 
     def __init__(self, words_path: Optional[Path] = None):
         if words_path is None:
@@ -49,25 +81,17 @@ class WordManager:
                 raise ValueError("words.json must be a JSON object of category -> word list")
 
             categories: Dict[str, List[str]] = {}
-            for category, words in raw.items():
-                if not isinstance(words, list):
-                    continue
-                # Preserve order, drop blanks/duplicates (case-insensitive)
-                seen = set()
-                cleaned: List[str] = []
-                for word in words:
-                    if not isinstance(word, str):
-                        continue
-                    text = word.strip()
-                    if not text:
-                        continue
-                    key = text.lower()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    cleaned.append(text)
-                if cleaned:
-                    categories[str(category)] = cleaned
+            for name, value in raw.items():
+                if isinstance(value, dict):
+                    for kind, words in value.items():
+                        if isinstance(words, list):
+                            cleaned = _clean_words(words)
+                            if cleaned:
+                                categories[f"{name}_{kind}"] = cleaned
+                elif isinstance(value, list):
+                    cleaned = _clean_words(value)
+                    if cleaned:
+                        categories[str(name)] = cleaned
 
             if not categories:
                 raise ValueError("words.json contained no valid categories")
@@ -85,7 +109,12 @@ class WordManager:
         with self._lock:
             return sorted(self._categories.keys())
 
+    @staticmethod
+    def resolve_alias(category: Optional[str]) -> Optional[str]:
+        return CATEGORY_ALIASES.get(category, category) if category else category
+
     def _require_category(self, category: str) -> List[str]:
+        category = self.resolve_alias(category)
         with self._lock:
             if category not in self._categories:
                 raise CategoryNotFoundError(category, self.get_categories())
@@ -114,12 +143,14 @@ class WordManager:
 
     def has_category(self, category: str) -> bool:
         with self._lock:
-            return category in self._categories
+            return self.resolve_alias(category) in self._categories
 
-    def normalize_category(self, category: Optional[str], default: str = "movies") -> str:
+    def normalize_category(self, category: Optional[str], default: str = "hollywood_movies") -> str:
         """
         Validate a category name; fall back to default (or first available) if invalid.
         """
+        category = self.resolve_alias(category)
+        default = self.resolve_alias(default)
         with self._lock:
             if category and category in self._categories:
                 return category

@@ -1,11 +1,15 @@
+import base64
+import os
 import random
 import re
+import secrets
 import asyncio
 import time
 import string
+import unicodedata
 import uuid
 import fakeredis
-from urllib.parse import urlencode
+from urllib.parse import quote, unquote, urlencode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -78,6 +82,9 @@ class GameRoom:
         self.db_id = db_id
         self.player_db_ids: Dict[str, int] = {}
         self.player_guest_ids: Dict[str, str] = {}
+        # Secret per-player session tokens (token -> player name). The token, not a
+        # client-supplied name, is what proves which player a WebSocket belongs to.
+        self.player_tokens: Dict[str, str] = {}
         self.banned_guest_ids: Set[str] = set()
         self.players: List[str] = []
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
@@ -107,6 +114,22 @@ class GameRoom:
 
     def get_player_guest_id(self, name: str) -> Optional[str]:
         return self.player_guest_ids.get(name)
+
+    def issue_player_token(self, name: str) -> str:
+        """New session token for `name`; any older token for that name stops working."""
+        self.revoke_player_token(name)
+        token = secrets.token_urlsafe(32)
+        self.player_tokens[token] = name
+        return token
+
+    def resolve_player_token(self, token: Optional[str]) -> Optional[str]:
+        if not token:
+            return None
+        return self.player_tokens.get(token)
+
+    def revoke_player_token(self, name: str):
+        for token in [t for t, owner in self.player_tokens.items() if owner == name]:
+            del self.player_tokens[token]
 
     def ban_guest(self, guest_id: str):
         self.banned_guest_ids.add(guest_id)
@@ -159,6 +182,12 @@ class GameRoom:
 public_rooms: Dict[str, GameRoom] = {} 
 lobby_connections: List[WebSocket] = [] 
 public_room_timers: Dict[str, asyncio.Task] = {}
+# Public rooms removed by the auto-discard timer, so a later refresh can be told
+# the room expired instead of silently dropping the socket.
+discarded_public_rooms: Set[str] = set()
+PUBLIC_ROOM_CLOSED_MESSAGE = "No one joined within 5 minutes, so this public room was closed."
+# Env override exists only to make the discard path testable without a 5-minute wait.
+PUBLIC_ROOM_DISCARD_SECONDS = int(os.getenv("PUBLIC_ROOM_DISCARD_SECONDS", "300"))
 private_room_timers: Dict[str, asyncio.Task] = {}
 rejoin_wait_timers: Dict[str, asyncio.Task] = {}
 REJOIN_WAIT_SECONDS = 300
@@ -167,6 +196,9 @@ reconnect_grace_timers: Dict[str, asyncio.Task] = {}
 RECONNECT_GRACE_SECONDS = 20
 
 LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
+# How long the round-result score card stays up before the next round (or the
+# final Game Over) starts on its own. There is no manual "Next Round" action.
+ROUND_RESULT_SECONDS = 5
 
 
 def reconnect_grace_key(room_id: str, username: str) -> str:
@@ -275,8 +307,41 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
     return validated if validated else str(uuid.uuid4())
 
 
+# Same limit as the name inputs on the landing page (lobby.js NAME_MAX).
+PLAYER_NAME_MAX = 10
+_PLAYER_NAME_EXTRA_CHARS = frozenset(" _.'-")
+
+
+def clean_player_name(raw) -> Optional[str]:
+    """
+    Normalise a display name, or return None if it is not allowed.
+
+    Allowed: letters and combining marks in any script (so names like "प्रिया"
+    work), digits, and space _ . ' -; must contain a letter or digit.
+    Everything else — < > " & \\ emoji, control characters — is rejected, so a
+    name can never carry markup into other players' pages.
+    """
+    name = " ".join(str(raw or "").split())
+    if not 1 <= len(name) <= PLAYER_NAME_MAX:
+        return None
+    has_letter_or_digit = False
+    for ch in name:
+        if ch in _PLAYER_NAME_EXTRA_CHARS:
+            continue
+        kind = unicodedata.category(ch)[0]
+        if kind not in ("L", "M", "N"):
+            return None
+        if kind in ("L", "N"):
+            has_letter_or_digit = True
+    return name if has_letter_or_digit else None
+
+
 def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
+
+
+def player_token_cookie_name(room_id: str) -> str:
+    return f"player_token_{room_id}"
 
 
 def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
@@ -303,9 +368,19 @@ async def join(
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
+    cleaned_name = clean_player_name(name)
+    if not cleaned_name:
+        print(f"[MATCHMAKING] Rejected invalid player name {name!r}")
+        query = {"error": "invalid_name"}
+        if action == "join" and room_code and room_code.strip():
+            # Send them back to the "I have a code" tab with the code filled in.
+            query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
+        return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
+    name = cleaned_name
     print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(10, max_players))
+        duration = max(2, min(5, duration))
         # Validate: only 1, 3, or 5 rounds allowed
         if rounds not in [1, 3, 5]:
             rounds = 3  # Default to 3 if invalid
@@ -459,13 +534,21 @@ async def join(
 
         log_room_state(room)
         await broadcast_lobby_update()
+    else:
+        return RedirectResponse(url="/", status_code=303)
 
     # The room is encoded directly in the redirect URL (not just the shared
     # `room_id` cookie) so that a later browser refresh keeps working even if
     # a *different* tab's /leave call clears that cookie — see /game below.
+    player_token = room.issue_player_token(name)
     response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
-    response.set_cookie(player_cookie_name(room_code), name)
+    # URL-encoded: cookie values must be Latin-1, and names may be in any script
+    # (e.g. "प्रिया"). The game page decodes it with decodeURIComponent.
+    response.set_cookie(player_cookie_name(room_code), quote(name, safe=""))
+    # Readable by the game page so each tab can keep its own copy (sessionStorage);
+    # the server only ever trusts this token, never the display name.
+    response.set_cookie(player_token_cookie_name(room_code), player_token, samesite="lax")
     response.set_cookie("guest_id", guest_id, max_age=31536000)
     return response
 
@@ -475,7 +558,8 @@ async def leave(
     player_name: str = Query(None),
     room_id: str = Cookie(None),
 ):
-    username = player_name or (request.cookies.get(player_cookie_name(room_id)) if room_id else None)
+    cookie_name = request.cookies.get(player_cookie_name(room_id)) if room_id else None
+    username = player_name or (unquote(cookie_name) if cookie_name else None)
     if room_id in rooms and username:
         room = rooms[room_id]
         manager = room.manager
@@ -506,6 +590,7 @@ async def leave(
 
         was_host = username == room.host
         room.remove_player(username)
+        room.revoke_player_token(username)
         print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
         print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
@@ -543,6 +628,7 @@ async def leave(
                 del public_rooms[room_id]
             await broadcast_lobby_update()
         else:
+            restart_public_room_timer_if_alone(room)
             # Running public rooms with a free slot reappear in wait lobby via broadcast
             await broadcast_lobby_update()
 
@@ -583,6 +669,8 @@ class ConnectionManager:
         
         self.round_timer_task = None
         self.selection_timer_task = None
+        # Pending auto-advance after a round result (see schedule_round_advance)
+        self.round_advance_task = None
         
         # Vote Kick State
         self.active_vote_kick = None  # Will store: {target_player, initiator, votes_yes, votes_no, voters, timeout_task}
@@ -604,7 +692,11 @@ class ConnectionManager:
             "winner_announcement": None,
             "revealed_movie": None,
             "word_guessed": False,
-            "revealed_words": [],
+            "revealed_words": {},
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
+            "next_round_at": None,
             "show_vowels": True   
         }
 
@@ -612,17 +704,65 @@ class ConnectionManager:
         movie = self.game_state.get("movie") or ""
         return [match.group(0).upper() for match in re.finditer(r"\S+", movie)]
 
-    def reveal_word_if_valid(self, word: str) -> Optional[str]:
+    @staticmethod
+    def normalize_guess(text) -> str:
+        return re.sub(r"\s+", "", str(text or "")).upper()
+
+    def answer_for(self, username: Optional[str]) -> Optional[str]:
+        """
+        The hidden answer, only for players allowed to see it: the drawer, anyone
+        who has already guessed it, or everyone once the round result is revealed.
+        """
+        movie = self.game_state.get("movie")
+        if not movie or not username:
+            return None
+        if username == self.game_state.get("drawer_name"):
+            return movie
+        if username in (self.game_state.get("correct_guessers") or {}):
+            return movie
+        if self.game_state.get("revealed_movie"):
+            return movie
+        return None
+
+    def reveal_word_if_valid(self, username: str, index, word) -> Optional[str]:
+        """
+        Confirm one word of a multi-word answer for this guesser only. The
+        confirmed word is recorded per player and never shared with others.
+        """
         words = self.movie_word_list()
-        if len(words) < 2:
+        if len(words) < 2 or not self.game_state.get("is_round_active"):
             return None
-        token = (word or "").strip().upper()
-        if not token or token not in words:
+        if not username or username == self.game_state.get("drawer_name"):
             return None
-        revealed = self.game_state.setdefault("revealed_words", [])
-        if token not in revealed:
-            revealed.append(token)
-        return token
+        try:
+            index = int(index)
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= index < len(words):
+            return None
+        if self.normalize_guess(word) != words[index]:
+            return None
+        by_player = self.game_state.get("revealed_words")
+        if not isinstance(by_player, dict):
+            by_player = self.game_state["revealed_words"] = {}
+        revealed = by_player.setdefault(username, [])
+        if index not in revealed:
+            revealed.append(index)
+        return words[index]
+
+    def revealed_words_for(self, username: Optional[str]) -> List[dict]:
+        """Words this player has already solved in the active round (for refresh)."""
+        if not self.game_state.get("is_round_active"):
+            return []
+        by_player = self.game_state.get("revealed_words")
+        if not isinstance(by_player, dict):
+            return []
+        words = self.movie_word_list()
+        return [
+            {"index": i, "word": words[i]}
+            for i in by_player.get(username, [])
+            if 0 <= i < len(words)
+        ]
 
     def get_player_score(self, name: str):
         score = r.get(f"score:{self.room_id}:{name}")
@@ -704,6 +844,10 @@ class ConnectionManager:
         current_score = self.get_player_score(name)
         new_score = current_score + points
         r.set(f"score:{self.room_id}:{name}", new_score)
+        print(
+            f"[SCORE] room={self.room_id} player={name} "
+            f"+{points} → total={new_score}"
+        )
 
         if not self.room or not self.room.db_id:
             return
@@ -753,6 +897,171 @@ class ConnectionManager:
             return max(0, remaining)
         return 0
 
+    def get_elapsed_time(self) -> float:
+        """Seconds since the active round started (backend clock)."""
+        start = self.game_state.get("round_start_time")
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        if start is None:
+            remaining = self.get_remaining_time()
+            return float(max(0, duration - remaining))
+        elapsed = time.time() - float(start)
+        if duration > 0:
+            return max(0.0, min(float(duration), elapsed))
+        return max(0.0, elapsed)
+
+    def points_for_elapsed(self, elapsed: Optional[float] = None) -> int:
+        """Time-band points: first 50%→100, next 30%→80, final 20%→50."""
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        if elapsed is None:
+            elapsed = self.get_elapsed_time()
+        return points_for_elapsed_time(elapsed, duration)
+
+    def clear_round_guess_state(self):
+        self.game_state["word_guessed"] = False
+        self.game_state["revealed_words"] = {}
+        self.game_state["correct_guessers"] = {}
+        self.game_state["round_start_time"] = None
+        self.game_state["round_duration_seconds"] = None
+
+    def all_non_drawer_players_have_guessed(self) -> bool:
+        if not self.game_state.get("is_round_active"):
+            return False
+
+        drawer_name = self.game_state.get("drawer_name")
+        non_drawer_names = [
+            name for name in self.active_connections.keys() if name != drawer_name
+        ]
+        if not non_drawer_names:
+            return False
+
+        correct_guessers = self.game_state.get("correct_guessers") or {}
+        return len(correct_guessers) >= len(non_drawer_names) and all(
+            name in correct_guessers for name in non_drawer_names
+        )
+
+    def register_correct_guess(self, username: str) -> Optional[int]:
+        """
+        Award time-band points for a correct guess without ending the round.
+        Returns points awarded, or None if the guess is rejected.
+        """
+        if not self.game_state.get("is_round_active"):
+            return None
+        if not username or username == self.game_state.get("drawer_name"):
+            return None
+        guessers = self.game_state.setdefault("correct_guessers", {})
+        if username in guessers:
+            return None
+        if self.get_remaining_time() <= 0:
+            return None
+
+        points = self.points_for_elapsed()
+        elapsed = self.get_elapsed_time()
+        duration = int(
+            self.game_state.get("round_duration_seconds") or self.round_duration or 0
+        )
+        guessers[username] = points
+        self.set_player_score(username, points)
+        print(
+            f"[SCORE] correct_guess room={self.room_id} player={username} "
+            f"elapsed={elapsed:.1f}s/{duration}s points=+{points} "
+            f"correct_guessers={guessers}"
+        )
+        return points
+
+    async def begin_round(self, movie: str, show_vowels: bool = True):
+        """
+        Start the guessing phase for `movie`. Guessers only get the masked
+        display; the answer itself is sent to players allowed to see it.
+        """
+        self.cancel_selection_timer()
+        state = self.game_state
+        state["movie"] = (movie or "").strip().upper()
+        state["show_vowels"] = show_vowels
+        state["word_guessed"] = False
+        state["revealed_movie"] = None
+        state["revealed_words"] = {}
+        state["correct_guessers"] = {}
+        state["display_name"] = process_movie(state["movie"], show_vowels)
+        self.persist_round_word(state["movie"])
+
+        await self.start_round_timer(duration=self.round_duration)
+
+        await self.broadcast({
+            "type": "movie_selected",
+            "drawer_name": state["drawer_name"],
+        })
+        for name, ws in list(self.active_connections.items()):
+            payload = {
+                "type": "game_start",
+                "display": state["display_name"],
+                "drawer_name": state["drawer_name"],
+                "time_left": self.round_duration,
+            }
+            answer = self.answer_for(name)
+            if answer:
+                payload["full_movie"] = answer
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                continue
+
+    async def handle_guess(self, username: str, guess) -> Optional[int]:
+        """
+        Validate a guess on the server. A correct guesser privately receives the
+        answer; everyone else only learns *who* guessed it, never the word.
+        """
+        ws = self.active_connections.get(username)
+        movie = self.game_state.get("movie")
+        if not ws or not movie or not self.game_state.get("is_round_active"):
+            return None
+        if username == self.game_state.get("drawer_name"):
+            return None
+        if username in (self.game_state.get("correct_guessers") or {}):
+            return None
+        if self.normalize_guess(guess) != self.normalize_guess(movie):
+            await ws.send_json({"type": "guess_result", "correct": False})
+            return None
+
+        points = self.register_correct_guess(username)
+        if points is None:
+            return None
+        await ws.send_json({
+            "type": "guess_result",
+            "correct": True,
+            "answer": movie,
+            "points": points,
+        })
+        await self.broadcast({
+            "type": "player_list",
+            "players": self.get_player_data(),
+        })
+        await self.broadcast({
+            "type": "correct_guess",
+            "name": username,
+            "points": points,
+            "correct_guessers": dict(self.game_state.get("correct_guessers") or {}),
+            "message": f"{username} guessed it! (+{points})",
+        })
+        if self.all_non_drawer_players_have_guessed():
+            await self.finalize_round_end(reason="all_guessed")
+        return points
+
+    async def handle_word_check(self, username: str, index, word) -> Optional[str]:
+        """Confirm one solved word to this guesser only (multi-word answers)."""
+        token = self.reveal_word_if_valid(username, index, word)
+        ws = self.active_connections.get(username)
+        if token and ws:
+            await ws.send_json({
+                "type": "word_revealed",
+                "index": int(index),
+                "word": token,
+            })
+        return token
+
     def get_selection_time_left(self):
         selection_end = r.get(f"selection_end_time:{id(self)}")
         if selection_end:
@@ -772,6 +1081,10 @@ class ConnectionManager:
 
     async def reassign_drawer_after_removal(self):
         """Pick a new drawer from active players without advancing the round."""
+        if self.round_advance_task and not self.round_advance_task.done():
+            # Round is over and the next one is already scheduled — it will pick
+            # the next drawer from the rotation; don't replay this round.
+            return
         player_names = list(self.active_connections.keys())
         if not player_names:
             self.game_state["drawer_assigned"] = False
@@ -784,6 +1097,8 @@ class ConnectionManager:
             self.round_timer_task = None
 
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "",
             "display_name": "",
@@ -791,7 +1106,10 @@ class ConnectionManager:
             "winner_announcement": None,
             "revealed_movie": None,
             "word_guessed": False,
-            "revealed_words": [],
+            "revealed_words": {},
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
         })
         self.draw_history = []
 
@@ -986,6 +1304,13 @@ class ConnectionManager:
         previous_websocket = self.active_connections.get(name)
         if previous_websocket and previous_websocket is not websocket:
             self.ws_to_name.pop(id(previous_websocket), None)
+            # Same player connected again (second tab / stale socket): close the
+            # old one instead of leaving it open but silently unmapped.
+            try:
+                await previous_websocket.send_json({"type": "session_replaced"})
+                await previous_websocket.close(code=4409)
+            except Exception:
+                pass
         self.active_connections[name] = websocket
         self.ws_to_name[ws_id] = name
         print(f"[WEBSOCKET] Player {name} connected. Total connections: {len(self.active_connections)}")
@@ -1333,6 +1658,8 @@ class ConnectionManager:
 
         if self.room and player_name in self.room.players:
             self.room.players.remove(player_name)
+        if self.room:
+            self.room.revoke_player_token(player_name)
 
         self.remove_from_drawer_queue(player_name)
 
@@ -1407,6 +1734,116 @@ class ConnectionManager:
         self.active_vote_kick = None
         self.active_vote_kick_db_id = None
 
+    async def finalize_round_end(self, reason: str = "timeout"):
+        if not self.game_state.get("is_round_active"):
+            return
+
+        # When the round timer itself expires we are running *inside* that task:
+        # cancelling it here would abort the rest of this method (announcement /
+        # next round) at its next await, which left the game stuck after a timeout.
+        timer_task = self.round_timer_task
+        self.round_timer_task = None
+        if timer_task and timer_task is not asyncio.current_task():
+            timer_task.cancel()
+
+        self.game_state["is_round_active"] = False
+        correct = self.game_state.get("correct_guessers") or {}
+        anyone_correct = bool(correct)
+        if reason == "all_guessed":
+            if anyone_correct:
+                self.game_state["winner_announcement"] = (
+                    f"🎉 Everyone guessed it! {len(correct)} player(s) solved it."
+                )
+                winner_for_db = next(iter(correct))
+            else:
+                self.game_state["winner_announcement"] = "🎉 Everyone guessed it!"
+                winner_for_db = None
+        else:
+            if anyone_correct:
+                first_name = next(iter(correct))
+                self.game_state["winner_announcement"] = (
+                    f"⏰ Time's up! {len(correct)} player(s) guessed it."
+                )
+                winner_for_db = first_name
+            else:
+                self.game_state["winner_announcement"] = "⏰ Time's up!"
+                winner_for_db = None
+
+        self.game_state["revealed_movie"] = self.game_state["movie"]
+        self.game_state["word_guessed"] = anyone_correct
+        await self.record_current_movie_history()
+        self.finish_current_round(winner_for_db)
+        is_final_round = self.current_round >= self.total_rounds
+        scoreboard = self.get_player_data()
+        print(
+            f"[SCORE] round_end room={self.room_id} "
+            f"round={self.get_display_round()}/{self.get_display_total_rounds()} "
+            f"movie={self.game_state.get('movie')} "
+            f"correct_guessers={correct} "
+            f"reason={reason} totals={scoreboard}"
+        )
+        await self.broadcast({
+            "type": "player_list",
+            "players": scoreboard,
+        })
+        self.schedule_round_advance(is_final_round)
+        await self.broadcast({
+            "type": "announcement",
+            "message": self.game_state["winner_announcement"],
+            "reveal": self.game_state["revealed_movie"],
+            "word_guessed": anyone_correct,
+            "correct_guessers": correct,
+            "scores": scoreboard,
+            "is_final_round": is_final_round,
+            "round_number": self.get_display_round(),
+            "total_rounds": self.get_display_total_rounds(),
+        })
+
+    def cancel_round_advance(self):
+        task = self.round_advance_task
+        self.round_advance_task = None
+        self.game_state["next_round_at"] = None
+        if task and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+
+    def schedule_round_advance(self, is_final_round: bool):
+        """
+        Show the round-result card for ROUND_RESULT_SECONDS, then start the next
+        round (or show Game Over after the last one). Exactly one advance can be
+        pending; anything else that moves the game on cancels it.
+        """
+        self.cancel_round_advance()
+        self.game_state["next_round_at"] = time.time() + ROUND_RESULT_SECONDS
+        round_at_schedule = self.current_round
+
+        async def advance():
+            try:
+                await asyncio.sleep(ROUND_RESULT_SECONDS)
+                if self.round_advance_task is not asyncio.current_task():
+                    return
+                self.round_advance_task = None
+                self.game_state["next_round_at"] = None
+                # Something else already moved the game on.
+                if self.current_round != round_at_schedule or self.game_state.get("is_round_active"):
+                    return
+                room = self.room
+                if room and (
+                    room.status == "ENDED"
+                    or room.awaiting_rejoin_choice
+                    or room.rejoin_wait_deadline is not None
+                    or len(room.players) < 2
+                ):
+                    # Solo player: the End Game / Wait flow decides what happens next.
+                    return
+                if is_final_round:
+                    await self.end_game()
+                else:
+                    await self.restart_game()
+            except asyncio.CancelledError:
+                pass
+
+        self.round_advance_task = asyncio.create_task(advance())
+
     async def start_round_timer(self, duration=None):
         if duration is None:
             duration = self.round_duration
@@ -1418,11 +1855,19 @@ class ConnectionManager:
             self.round_timer_task.cancel()
         
         end_timestamp = time.time() + duration
+        start_timestamp = end_timestamp - duration
 
         r.set(f"round_end_time:{id(self)}", end_timestamp)
         r.set("round_end_time", end_timestamp)
-        
+        r.set(f"round_start_time:{id(self)}", start_timestamp)
+
         self.game_state["is_round_active"] = True
+        self.game_state["round_start_time"] = start_timestamp
+        self.game_state["round_duration_seconds"] = int(duration)
+        self.game_state["correct_guessers"] = {}
+        self.game_state["word_guessed"] = False
+        self.game_state["winner_announcement"] = None
+        self.game_state["revealed_movie"] = None
 
         
 
@@ -1442,28 +1887,7 @@ class ConnectionManager:
                     await asyncio.sleep(1)
 
                 if self.game_state["is_round_active"]:
-                    self.game_state["is_round_active"] = False
-                    self.game_state["winner_announcement"] = "⏰ Time's up!"
-                    self.game_state["revealed_movie"] = self.game_state["movie"]
-                    await self.record_current_movie_history()
-                    self.finish_current_round()
-                    is_final_round = self.current_round >= self.total_rounds
-                    await self.broadcast({
-                        "type": "announcement",
-                        "message": self.game_state["winner_announcement"],
-                        "reveal": self.game_state["revealed_movie"],
-                        "word_guessed": False,
-                        "is_final_round": is_final_round,
-                        "round_number": self.get_display_round(),
-                        "total_rounds": self.get_display_total_rounds(),
-                    })
-                    if is_final_round:
-                        # Brief pause to show the reveal, then Quit / Continue UI
-                        await asyncio.sleep(2)
-                        await self.end_game()
-                    else:
-                        await asyncio.sleep(5)
-                        await self.restart_game()
+                    await self.finalize_round_end(reason="timeout")
             except asyncio.CancelledError:
                 
                 pass
@@ -1472,6 +1896,7 @@ class ConnectionManager:
 
     async def restart_game(self):
         """Start a new round. Handles both initial game start (from lobby) and between-round transitions."""
+        self.cancel_round_advance()
         print(f"[DEBUG-BACKEND] restart_game() called. drawer_assigned={self.game_state['drawer_assigned']}, active_connections={len(self.active_connections)}, current_round={self.current_round}, total_rounds={self.total_rounds}")
         
         # Check if all rounds are completed
@@ -1494,11 +1919,16 @@ class ConnectionManager:
             self.round_timer_task = None
         
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "", "display_name": "", "is_round_active": False,
             "winner_announcement": None, "revealed_movie": None,
             "word_guessed": False,
-            "revealed_words": [],
+            "revealed_words": {},
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
         })
         self.history_recorded_for_round = False
         self.draw_history = []
@@ -1571,6 +2001,7 @@ class ConnectionManager:
             f"resetting rounds (was {self.current_round}/{self.total_rounds}) "
             f"category_req={category}"
         )
+        self.cancel_round_advance()
         self.game_complete = False
         self.round_display_offset += self.total_rounds
 
@@ -1585,6 +2016,8 @@ class ConnectionManager:
             self.round_timer_task.cancel()
             self.round_timer_task = None
         r.delete("round_end_time")
+        r.delete(f"round_end_time:{id(self)}")
+        r.delete(f"round_start_time:{id(self)}")
         self.game_state.update({
             "movie": "",
             "display_name": "",
@@ -1592,7 +2025,10 @@ class ConnectionManager:
             "winner_announcement": None,
             "revealed_movie": None,
             "word_guessed": False,
-            "revealed_words": [],
+            "revealed_words": {},
+            "correct_guessers": {},
+            "round_start_time": None,
+            "round_duration_seconds": None,
             "drawer_assigned": False,
             "drawer_name": None,
             "is_selecting": False,
@@ -1646,7 +2082,10 @@ class ConnectionManager:
         })
 
     async def handle_voluntary_leave(self, name: str, preserve_game: bool = False):
-        await self.record_current_movie_history()
+        # Only record once the round is over; mid-round this would broadcast
+        # the live answer to everyone still guessing.
+        if not self.game_state.get("is_round_active"):
+            await self.record_current_movie_history()
 
         if name in self.active_connections:
             ws = self.active_connections.pop(name)
@@ -1671,6 +2110,27 @@ class ConnectionManager:
             
             await self.broadcast({"type": "player_list", "players": self.get_player_data()})
 manager = ConnectionManager()
+
+def points_for_elapsed_time(elapsed: float, duration: int) -> int:
+    """
+    Award points from how far into the round the correct guess happened.
+
+    Bands (dynamic for any duration):
+    - first 50% of duration → 100
+    - next 30% (50%–80%) → 80
+    - final 20% → 50
+
+    Exact boundaries use the later band (e.g. elapsed == 50% → 80).
+    """
+    if duration <= 0:
+        return 50
+    elapsed = max(0.0, float(elapsed))
+    if elapsed < duration * 0.5:
+        return 100
+    if elapsed < duration * 0.8:
+        return 80
+    return 50
+
 
 def _vowel_hints_allowed(movie: str) -> bool:
     letters = [char for char in movie if char.isalpha()]
@@ -1773,6 +2233,7 @@ async def finalize_player_disconnect(room: GameRoom, username: str):
                 "type": "host_transferred",
                 "new_host": new_host,
             })
+        restart_public_room_timer_if_alone(room)
         log_wait_lobby_eligibility(room)
         await broadcast_lobby_update()
 
@@ -1826,6 +2287,7 @@ async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
     room.awaiting_rejoin_choice = False
     room.status = "ENDED"
     room.manager.game_complete = True
+    room.manager.cancel_round_advance()
     room.manager.cancel_selection_timer()
     if room.manager.round_timer_task:
         room.manager.round_timer_task.cancel()
@@ -1854,6 +2316,7 @@ async def resume_game_after_rejoin(room: GameRoom):
     cancel_rejoin_wait(room.room_id)
 
     # Drop leftover announcement / revealed word from the previous round.
+    manager.cancel_round_advance()
     manager.cancel_selection_timer()
     if manager.round_timer_task:
         manager.round_timer_task.cancel()
@@ -1869,7 +2332,10 @@ async def resume_game_after_rejoin(room: GameRoom):
         "winner_announcement": None,
         "revealed_movie": None,
         "word_guessed": False,
-        "revealed_words": [],
+        "revealed_words": {},
+        "correct_guessers": {},
+        "round_start_time": None,
+        "round_duration_seconds": None,
         "drawer_assigned": False,
         "drawer_name": None,
         "is_selecting": False,
@@ -1986,7 +2452,8 @@ async def get_game(
     if not resolved_room_id:
         return RedirectResponse(url="/", status_code=303)
 
-    username = request.cookies.get(player_cookie_name(resolved_room_id), username)
+    cookie_name = request.cookies.get(player_cookie_name(resolved_room_id))
+    username = unquote(cookie_name) if cookie_name else username
     response = templates.TemplateResponse("index.html", {
         "request": request,
         "room_code": resolved_room_id,
@@ -2074,13 +2541,25 @@ async def cleanup_public_room(room_id: str):
 
     # Cancel timer if exists
     if room_id in public_room_timers:
-        public_room_timers[room_id].cancel()
-        del public_room_timers[room_id]
+        timer_task = public_room_timers.pop(room_id)
+        # Usually called from inside this very timer; cancelling ourselves would
+        # abort the cleanup below at its next await.
+        if timer_task is not asyncio.current_task():
+            timer_task.cancel()
         print(f"[AUTO-DISCARD] Timer removed for room: {room_id}")
 
-    # Disconnect active websocket references
+    discarded_public_rooms.add(room_id)
+
+    # Tell connected players why, then disconnect active websocket references
     try:
         for name, ws in list(room.manager.active_connections.items()):
+            try:
+                await ws.send_json({
+                    "type": "room_closed",
+                    "message": PUBLIC_ROOM_CLOSED_MESSAGE,
+                })
+            except Exception:
+                pass
             try:
                 await ws.close()
             except:
@@ -2201,7 +2680,7 @@ async def start_public_room_timer(room_id: str):
     try:
         print(f"[AUTO-DISCARD] Timer started for room: {room_id}")
 
-        await asyncio.sleep(300)  # 5 minutes
+        await asyncio.sleep(PUBLIC_ROOM_DISCARD_SECONDS)
 
         # Room might already be deleted
         if room_id not in rooms:
@@ -2230,6 +2709,27 @@ async def start_public_room_timer(room_id: str):
 
     except Exception as e:
         print(f"[AUTO-DISCARD] Timer error for room {room_id}: {e}")
+
+def restart_public_room_timer_if_alone(room: GameRoom):
+    """
+    A public room that drops back to a single player before the game starts
+    (e.g. the joiner or the original host left) gets a fresh auto-discard timer,
+    otherwise it would sit in the wait lobby forever.
+    """
+    room_id = room.room_id
+    if (
+        room.room_type != "public"
+        or room.game_started
+        or len(room.players) != 1
+        or room_id not in rooms
+    ):
+        return
+    existing = public_room_timers.get(room_id)
+    if existing and not existing.done():
+        return
+    public_room_timers[room_id] = asyncio.create_task(start_public_room_timer(room_id))
+    print(f"[AUTO-DISCARD] Room {room_id} back to 1 player before start. Timer restarted")
+
 
 @app.websocket("/ws/lobby")
 async def lobby_endpoint(websocket: WebSocket):
@@ -2266,35 +2766,58 @@ async def broadcast_lobby():
 @app.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    username: str = Cookie(None),
     room_id: str = Cookie(None),
     guest_id: str = Cookie(None),
     player_name: str = Query(None),
     room_id_param: str = Query(None, alias="room_id"),
+    token_param: str = Query(None, alias="token"),
 ):
     # Same reasoning as /game: prefer the room_id the client sent explicitly
     # (from its own per-tab state) over the shared cookie, which a sibling
     # tab's /leave may have deleted without this tab's involvement.
     room_id = room_id_param or room_id
-    legacy_username = username
-    username = player_name or websocket.cookies.get(player_cookie_name(room_id)) or username
-    print(
-        f"[REFRESH-DEBUG] /ws room={room_id} requested_player={player_name!r} "
-        f"room_cookie={websocket.cookies.get(player_cookie_name(room_id))!r} "
-        f"legacy_cookie={legacy_username!r} resolved_player={username!r}"
-    )
     room = rooms.get(room_id)
 
-    if not username or not room_id or room_id not in rooms:
-        print(f"[DEBUG] WS Connection Denied: Missing credentials or room {room_id} exists: {room_id in rooms}")
+    if room_id and room_id not in rooms and room_id in discarded_public_rooms:
+        print(f"[AUTO-DISCARD] reconnect to discarded public room {room_id}")
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "room_closed",
+            "message": PUBLIC_ROOM_CLOSED_MESSAGE,
+        })
+        await websocket.close()
+        return
+
+    if not room_id or room_id not in rooms:
+        print(f"[DEBUG] WS Connection Denied: room {room_id!r} not found")
         await websocket.close()
         return
 
     validated_guest_id = validate_guest_id(guest_id)
     if not validated_guest_id:
-        print(f"[DEBUG] WS Connection Denied: Missing or invalid guest_id for {username}")
+        print(f"[DEBUG] WS Connection Denied: missing or invalid guest_id in room {room_id}")
         await websocket.close()
         return
+
+    # Identity comes only from the secret token issued by /join — a client can
+    # not become another player just by sending their name. The per-tab token
+    # (query) wins over the shared cookie so two tabs can hold different players.
+    player_token = token_param or websocket.cookies.get(player_token_cookie_name(room_id))
+    username = rooms[room_id].resolve_player_token(player_token)
+    if not username:
+        print(
+            f"[DEBUG] WS Connection Denied: no valid player token for room {room_id} "
+            f"(requested name {player_name!r})"
+        )
+        await websocket.accept()
+        await websocket.send_json({
+            "type": "error",
+            "code": "not_member",
+            "message": "Your session for this room has ended. Enter your name to join again.",
+        })
+        await websocket.close(code=4401)
+        return
+    requested_name = player_name or username
 
     room = rooms[room_id]
 
@@ -2314,6 +2837,8 @@ async def websocket_endpoint(
     print(f"[WEBSOCKET] Room status={room.status} game_started={room.game_started} players={len(room.players)}/{room.max_players}")
 
     role = await manager.connect(websocket, username, validated_guest_id)
+    if username != requested_name:
+        await websocket.send_json({"type": "name_updated", "new_name": username})
     print(f"[WEBSOCKET] {username} connected to room {room_id}, role={role}, room_type={room.room_type}")
 
     # After a vacancy wait, start a clean new round once 2+ players are connected.
@@ -2395,7 +2920,7 @@ async def websocket_endpoint(
             "max_players": room.max_players,
             "movie_set": bool(manager.game_state["movie"]),
             "display": manager.game_state["display_name"], 
-            "full_movie": manager.game_state["movie"],
+            "full_movie": manager.answer_for(username),
             "drawer_name": manager.game_state["drawer_name"], 
             "selection_active": manager.game_state.get("selection_active", False),
             "selection_time_left": manager.get_selection_time_left(),
@@ -2403,7 +2928,10 @@ async def websocket_endpoint(
             "winner_msg": manager.game_state["winner_announcement"],
             "revealed": manager.game_state["revealed_movie"],
             "word_guessed": bool(manager.game_state.get("word_guessed")),
-            "revealed_words": list(manager.game_state.get("revealed_words") or []),
+            "revealed_words": manager.revealed_words_for(username),
+            "correct_guessers": dict(manager.game_state.get("correct_guessers") or {}),
+            "already_guessed": username in (manager.game_state.get("correct_guessers") or {}),
+            "scores": manager.get_player_data(),
             "is_round_active": manager.game_state["is_round_active"],
             "time_left": current_time_left if manager.game_state["is_round_active"] else 0,
             "lobby_time_left": get_lobby_time_left(room),
@@ -2493,85 +3021,24 @@ async def websocket_endpoint(
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
             if data["type"] == "set_movie":
-                manager.cancel_selection_timer()
-                manager.game_state["movie"] = data["movie"].upper()
-                manager.game_state["show_vowels"] = data.get("show_vowels", True)
-                manager.game_state["word_guessed"] = False
-                manager.game_state["revealed_words"] = []
-
-                manager.game_state["display_name"] = process_movie(
-                    manager.game_state["movie"],
-                    manager.game_state["show_vowels"]
-                )
-                manager.persist_round_word(manager.game_state["movie"])
-
-                await manager.start_round_timer(duration=manager.round_duration)
-
-                await manager.broadcast({
-                    "type": "movie_selected",
-                    "drawer_name": manager.game_state["drawer_name"],
-                    "full_movie": manager.game_state["movie"]
-                })
-
-                await manager.broadcast({
-                    "type": "game_start", 
-                    "display": manager.game_state["display_name"],
-                    "full_movie": manager.game_state["movie"], 
-                    "drawer_name": manager.game_state["drawer_name"],
-                    "time_left": manager.round_duration 
-                })
-            elif data["type"] == "won" and manager.game_state["is_round_active"]:
-                manager.game_state["is_round_active"] = False
-
-                if manager.round_timer_task:
-                    manager.round_timer_task.cancel()
-                    manager.round_timer_task = None
-                r.delete(f"round_end_time:{id(manager)}")
-                r.delete("round_end_time")
-
-                manager.set_player_score(username, 50) 
-                if manager.game_state["drawer_name"]:
-                    manager.set_player_score(manager.game_state["drawer_name"], 25)
-
-                await manager.record_current_movie_history()
-                manager.finish_current_round(username)
-
-                manager.game_state["winner_announcement"] = f"🎉 {username} guessed it first!"
-                manager.game_state["revealed_movie"] = manager.game_state["movie"]
-                manager.game_state["word_guessed"] = True
-                is_final_round = manager.current_round >= manager.total_rounds
-
-                await manager.broadcast({"type": "player_list", "players": manager.get_player_data()})
-                await manager.broadcast({
-                    "type": "announcement",
-                    "message": manager.game_state["winner_announcement"],
-                    "reveal": manager.game_state["revealed_movie"],
-                    "word_guessed": True,
-                    "is_final_round": is_final_round,
-                    "round_number": manager.get_display_round(),
-                    "total_rounds": manager.get_display_total_rounds(),
-                })
-                # Last round finished — show Quit / Continue (no "Next Round")
-                if is_final_round:
-                    await manager.end_game()
-            elif data["type"] == "restart":
-                # Ignore mid-click "next round" once the series is already complete
-                if manager.current_round >= manager.total_rounds or manager.game_complete:
-                    await manager.end_game()
-                else:
-                    await manager.restart_game()
+                # Only the drawer may choose the word.
+                if name == manager.game_state["drawer_name"]:
+                    await manager.begin_round(
+                        str(data.get("movie") or ""),
+                        data.get("show_vowels", True),
+                    )
+            elif data["type"] == "guess":
+                await manager.handle_guess(username, data.get("guess"))
+            # There is no client "restart": rounds advance automatically after the
+            # result card (schedule_round_advance). Accepting it let any player
+            # skip rounds at will.
             elif data["type"] == "drawing":
                 manager.draw_history.append(data)
                 await manager.broadcast(data)
             elif data["type"] == "word_revealed":
-                if manager.game_state.get("is_round_active"):
-                    token = manager.reveal_word_if_valid(data.get("word"))
-                    if token:
-                        await manager.broadcast({
-                            "type": "word_revealed",
-                            "word": token,
-                            "revealed_words": list(manager.game_state.get("revealed_words") or []),
-                        })
+                await manager.handle_word_check(
+                    username, data.get("index"), data.get("word")
+                )
             elif data["type"] == "clear":
                 manager.draw_history = []
                 await manager.broadcast(data)
@@ -2599,40 +3066,14 @@ async def websocket_endpoint(
                         await manager.send_word_options_to_drawer(count=3)
             elif data["type"] == "select_movie":
                 if name == manager.game_state["drawer_name"]:
-                    manager.cancel_selection_timer()
-                    movie = data["movie"]
-                    # Normalize to uppercase for consistent guessing
-                    manager.game_state["movie"] = movie.strip().upper()
-                    manager.game_state["show_vowels"] = data.get("show_vowels", True)
-                    manager.game_state["word_guessed"] = False
-                    manager.game_state["revealed_words"] = []
-
-                    manager.game_state["display_name"] = process_movie(
-                        manager.game_state["movie"],
-                        manager.game_state["show_vowels"]
-                    )
-                    manager.persist_round_word(manager.game_state["movie"])
                     print(
-                        f"[WORD_MANAGER] Drawer {name} selected word="
-                        f"{manager.game_state['movie']} "
+                        f"[WORD_MANAGER] Drawer {name} selected a word "
                         f"category={manager.get_room_category()}"
                     )
-
-                    await manager.start_round_timer(duration=manager.round_duration)
-
-                    await manager.broadcast({
-                        "type": "movie_selected",
-                        "drawer_name": manager.game_state["drawer_name"],
-                        "full_movie": manager.game_state["movie"]
-                    })
-
-                    await manager.broadcast({
-                        "type": "game_start",
-                        "display": manager.game_state["display_name"],
-                        "full_movie": manager.game_state["movie"],
-                        "drawer_name": manager.game_state["drawer_name"],
-                        "time_left": manager.round_duration 
-                    })
+                    await manager.begin_round(
+                        str(data.get("movie") or ""),
+                        data.get("show_vowels", True),
+                    )
             elif data["type"] == "initiate_vote_kick":
                 target_player = data.get("target_player")
                 success = await manager.initiate_vote_kick(name, target_player)

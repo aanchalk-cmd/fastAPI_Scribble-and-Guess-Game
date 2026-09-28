@@ -15,9 +15,57 @@
         try {
             return JSON.parse(root.dataset.categories || "[]");
         } catch {
-            return ["movies", "characters"];
+            return ["hollywood_movies", "hollywood_characters"];
         }
     })();
+
+    // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
+    const GENRE_ORDER = ["bollywood", "hollywood", "anime", "asian_dramas", "cartoon"];
+    const KIND_ORDER = ["characters", "movies"];
+    // Dropdown wording from the design ("Asian Drama Character", "Hollywood Movies").
+    const GENRE_OPTION_LABELS = { asian_dramas: "Asian Drama" };
+    const KIND_OPTION_LABELS = { characters: "Character", movies: "Movies", mix: "Mix" };
+    const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
+
+    function splitCategory(id) {
+        const value = LEGACY_CATEGORIES[id] || String(id || "");
+        const cut = value.lastIndexOf("_");
+        return cut > 0
+            ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
+            : { genre: value, kind: "" };
+    }
+
+    function titleize(value) {
+        return String(value || "")
+            .split("_")
+            .filter(Boolean)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ");
+    }
+
+    function categoryLabel(id) {
+        const { genre, kind } = splitCategory(id);
+        return kind ? `${titleize(genre)} ${titleize(kind)}` : titleize(genre);
+    }
+
+    const genres = (() => {
+        const found = [];
+        categories.forEach((id) => {
+            const { genre } = splitCategory(id);
+            if (genre && !found.includes(genre)) found.push(genre);
+        });
+        const ordered = GENRE_ORDER.filter((g) => found.includes(g));
+        return ordered.concat(found.filter((g) => !ordered.includes(g)));
+    })();
+
+    function kindsFor(genre) {
+        const found = categories
+            .map(splitCategory)
+            .filter((c) => c.genre === genre && c.kind)
+            .map((c) => c.kind);
+        const ordered = KIND_ORDER.filter((k) => found.includes(k));
+        return ordered.concat(found.filter((k) => !ordered.includes(k)));
+    }
 
     const els = {
         error: document.getElementById("error-banner"),
@@ -30,7 +78,10 @@
         brand: document.getElementById("brand-title"),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
-        categoryRow: document.getElementById("category-pills"),
+        categorySelect: document.getElementById("category-select"),
+        categoryTrigger: document.getElementById("category-trigger"),
+        categoryValue: document.getElementById("category-value"),
+        categoryList: document.getElementById("category-list"),
         roundsRow: document.getElementById("rounds-pills"),
         duration: document.getElementById("duration-slider"),
         durationVal: document.getElementById("duration-val"),
@@ -70,7 +121,8 @@
     const state = {
         screen: "create",
         createTab: "create", // create | code
-        category: categories.includes("movies") ? "movies" : (categories[0] || "movies"),
+        genre: genres.includes("hollywood") ? "hollywood" : (genres[0] || "hollywood"),
+        kind: "movies", // movies | characters | mix
         rounds: 3,
         duration: 5,
         publicRoom: false,
@@ -94,8 +146,20 @@
         countEl.textContent = `${len}/${NAME_MAX}`;
     }
 
-    function setNameFieldError(visible) {
+    // Mirrors clean_player_name() in main.py (the server is the real check):
+    // letters/marks/digits in any script plus space _ . ' - , at least one
+    // letter or digit.
+    const NAME_PATTERN = /^[\p{L}\p{M}\p{N} _.'-]+$/u;
+    const NAME_HAS_LETTER = /[\p{L}\p{N}]/u;
+    const INVALID_NAME_MESSAGE = "Use letters, numbers, spaces and _ . ' - only.";
+
+    function isValidName(name) {
+        return NAME_PATTERN.test(name) && NAME_HAS_LETTER.test(name);
+    }
+
+    function setNameFieldError(visible, message) {
         if (!els.nameFieldError) return;
+        els.nameFieldError.textContent = message || "PLEASE ENTER YOUR NAME";
         els.nameFieldError.classList.toggle("hidden", !visible);
     }
 
@@ -131,7 +195,8 @@
         const draft = {
             screen: state.screen,
             createTab: state.createTab,
-            category: state.category,
+            genre: state.genre,
+            kind: state.kind,
             rounds: state.rounds,
             duration: state.duration,
             publicRoom: state.publicRoom,
@@ -156,9 +221,8 @@
             Object.assign(state, {
                 screen: draft.screen || state.screen,
                 createTab: draft.createTab || state.createTab,
-                category: draft.category || state.category,
                 rounds: draft.rounds || state.rounds,
-                duration: draft.duration || state.duration,
+                duration: Math.max(2, Math.min(5, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom === true,
                 maxPlayers: draft.maxPlayers || state.maxPlayers,
                 roomCode: draft.roomCode || "",
@@ -168,6 +232,13 @@
             cameFromPublic: !!draft.cameFromPublic,
             selectedRoom: draft.selectedRoom || null,
         });
+            // Older drafts stored a single flat category ("movies" / "characters" / "mix").
+            if (draft.genre && genres.includes(draft.genre)) state.genre = draft.genre;
+            if (draft.kind) {
+                state.kind = draft.kind;
+            } else if (["movies", "characters", "mix"].includes(draft.category)) {
+                state.kind = draft.category;
+            }
         } catch (_) { /* ignore */ }
     }
 
@@ -208,46 +279,117 @@
     }
 
     function resolveCategoryForSubmit() {
-        if (state.category === "mix") {
-            const pool = ["movies", "characters"].filter((c) => categories.includes(c));
-            if (pool.length) {
-                return pool[Math.floor(Math.random() * pool.length)];
-            }
+        const kinds = kindsFor(state.genre);
+        let kind = state.kind;
+        if (kind === "mix" || !kinds.includes(kind)) {
+            kind = kind === "mix" && kinds.length
+                ? kinds[Math.floor(Math.random() * kinds.length)]
+                : (kinds[0] || "movies");
         }
-        if (categories.includes(state.category)) return state.category;
-        return categories.includes("movies") ? "movies" : (categories[0] || "movies");
+        const id = `${state.genre}_${kind}`;
+        if (categories.includes(id)) return id;
+        return categories.includes("hollywood_movies") ? "hollywood_movies" : (categories[0] || "hollywood_movies");
     }
 
-    function renderCategoryPills() {
-        // Design: Movies, Characters, Mix (Mix = random of available real categories)
-        const preferred = ["movies", "characters"];
-        const ordered = preferred.filter((c) => categories.includes(c));
-        const list = ordered.length ? ordered : categories.slice(0, 2);
-        els.categoryRow.innerHTML = "";
-        list.forEach((cat) => {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "pill" + (state.category === cat ? " is-active" : "");
-            btn.textContent = cat.toUpperCase();
-            btn.addEventListener("click", () => {
-                state.category = cat;
-                saveDraft();
-                render();
+    // One dropdown entry per genre + type, plus "<Genre> Mix" (random of the two) when a genre has both.
+    const categoryOptions = (() => {
+        const options = [];
+        genres.forEach((genre) => {
+            const kinds = kindsFor(genre);
+            const withMix = kinds.length >= 2 ? kinds.concat("mix") : kinds;
+            withMix.forEach((kind) => {
+                const genreLabel = GENRE_OPTION_LABELS[genre] || titleize(genre);
+                const kindLabel = KIND_OPTION_LABELS[kind] || titleize(kind);
+                options.push({ genre, kind, label: `${genreLabel} ${kindLabel}`.toUpperCase() });
             });
-            els.categoryRow.appendChild(btn);
         });
-        if (list.length >= 2) {
-            const mixBtn = document.createElement("button");
-            mixBtn.type = "button";
-            mixBtn.className = "pill" + (state.category === "mix" ? " is-active" : "");
-            mixBtn.textContent = "MIX";
-            mixBtn.addEventListener("click", () => {
-                state.category = "mix";
-                saveDraft();
-                render();
-            });
-            els.categoryRow.appendChild(mixBtn);
+        return options;
+    })();
+
+    let categoryOpen = false;
+    let categoryHighlight = -1;
+
+    function isSelectedOption(option) {
+        return option.genre === state.genre && option.kind === state.kind;
+    }
+
+    // Options shown in the open list: everything except the current choice (design).
+    function visibleCategoryOptions() {
+        return categoryOptions.filter((option) => !isSelectedOption(option));
+    }
+
+    function renderCategorySelect() {
+        if (!categoryOptions.some(isSelectedOption)) {
+            const fallback = categoryOptions.find((o) => o.genre === state.genre) || categoryOptions[0];
+            if (fallback) {
+                state.genre = fallback.genre;
+                state.kind = fallback.kind;
+            }
         }
+        const selected = categoryOptions.find(isSelectedOption);
+        els.categoryValue.textContent = selected ? selected.label : "";
+
+        els.categoryTrigger.setAttribute("aria-expanded", String(categoryOpen));
+        els.categorySelect.classList.toggle("is-open", categoryOpen);
+        els.categoryList.classList.toggle("hidden", !categoryOpen);
+        els.categoryList.innerHTML = "";
+        if (!categoryOpen) return;
+
+        visibleCategoryOptions().forEach((option, index) => {
+            const item = document.createElement("li");
+            item.className = "mg-select-option" + (index === categoryHighlight ? " is-highlighted" : "");
+            item.id = `category-option-${index}`;
+            item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", "false");
+            item.textContent = option.label;
+            item.addEventListener("mouseenter", () => setCategoryHighlight(index));
+            item.addEventListener("click", () => chooseCategory(option));
+            els.categoryList.appendChild(item);
+        });
+        const active = els.categoryList.querySelector(".is-highlighted");
+        if (active) {
+            els.categoryList.setAttribute("aria-activedescendant", active.id);
+            active.scrollIntoView({ block: "nearest" });
+        } else {
+            els.categoryList.removeAttribute("aria-activedescendant");
+        }
+    }
+
+    function setCategoryHighlight(index) {
+        if (index === categoryHighlight) return;
+        categoryHighlight = index;
+        els.categoryList.querySelectorAll(".mg-select-option").forEach((item, i) => {
+            item.classList.toggle("is-highlighted", i === index);
+        });
+        const active = els.categoryList.children[index];
+        if (active) {
+            els.categoryList.setAttribute("aria-activedescendant", active.id);
+            active.scrollIntoView({ block: "nearest" });
+        }
+    }
+
+    function setCategoryOpen(open) {
+        categoryOpen = open;
+        categoryHighlight = open ? 0 : -1;
+        renderCategorySelect();
+        if (open) els.categoryList.focus();
+    }
+
+    function chooseCategory(option) {
+        state.genre = option.genre;
+        state.kind = option.kind;
+        categoryOpen = false;
+        categoryHighlight = -1;
+        saveDraft();
+        render();
+        els.categoryTrigger.focus();
+    }
+
+    function setSliderFill(slider) {
+        const min = Number(slider.min) || 0;
+        const max = Number(slider.max) || 100;
+        const pct = max > min ? ((Number(slider.value) - min) / (max - min)) * 100 : 0;
+        slider.style.setProperty("--fill", `${pct}%`);
     }
 
     function renderRounds() {
@@ -277,11 +419,12 @@
             const full = room.count >= room.max;
             const row = document.createElement("div");
             row.className = "room-row";
-            const cat = (room.category || "movies").toUpperCase();
+            const cat = categoryLabel(room.category || "hollywood_movies").toUpperCase();
             const rounds = room.rounds || 3;
+            const liveTag = room.in_progress ? `<span class="room-live-tag">IN PROGRESS</span>` : "";
             row.innerHTML = `
                 <div>
-                    <div class="room-id">${room.room_id}</div>
+                    <div class="room-id">${room.room_id}${liveTag}</div>
                     <div class="room-meta">
                         <span>👤 ${room.count}/${room.max}</span>
                         <span>${cat}</span>
@@ -304,7 +447,7 @@
                     room_id: room.room_id,
                     count: room.count,
                     max: room.max,
-                    category: room.category || "movies",
+                    category: room.category || "hollywood_movies",
                     rounds: room.rounds || 3,
                 };
                 setNameFieldError(false);
@@ -324,9 +467,11 @@
         });
 
         els.duration.value = state.duration;
+        setSliderFill(els.duration);
         els.durationVal.textContent = `${state.duration} MIN`;
         els.publicToggle.checked = state.publicRoom;
         els.maxPlayers.value = state.maxPlayers;
+        setSliderFill(els.maxPlayers);
         els.maxPlayersVal.textContent = String(state.maxPlayers);
         els.maxPlayersWrap.classList.toggle("hidden", !state.publicRoom && false);
         // Max players still useful for private rooms — keep visible.
@@ -359,7 +504,7 @@
             if (els.joinRoomMeta) {
                 els.joinRoomMeta.innerHTML = `
                     <span>👤 ${room.count}/${room.max}</span>
-                    <span>${(room.category || "movies").toUpperCase()}</span>
+                    <span>${categoryLabel(room.category || "hollywood_movies").toUpperCase()}</span>
                     <span>${room.rounds || 3} ROUNDS</span>
                 `;
             }
@@ -380,7 +525,7 @@
             els.nameSubmit.classList.remove("btn-yellow");
         }
 
-        renderCategoryPills();
+        renderCategorySelect();
         renderRounds();
         if (state.screen === "public") renderRooms();
     }
@@ -408,7 +553,15 @@
 
     function finishSubmit() {
         try {
-            sessionStorage.setItem("movie_guess_player_name", state.name);
+            // Don't pre-save the typed name: /join may rename a duplicate
+            // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
+            // name from the join cookie and stores it for this tab's refreshes.
+            sessionStorage.removeItem("movie_guess_player_name");
+            // A fresh /join issues a new session token; drop any old per-tab copies
+            // so the game page picks the new one up from the cookie.
+            Object.keys(sessionStorage)
+                .filter((key) => key.startsWith("movie_guess_player_token:"))
+                .forEach((key) => sessionStorage.removeItem(key));
             sessionStorage.setItem("movie_guess_player_room", state.roomCode);
         } catch (_) { /* ignore */ }
         if (state.pendingAction === "create" && state.copyLink) {
@@ -440,6 +593,11 @@
             els.joinNameInput.focus();
             return;
         }
+        if (!isValidName(name)) {
+            showError(INVALID_NAME_MESSAGE);
+            els.joinNameInput.focus();
+            return;
+        }
         if (!code) {
             showError("Please enter a room code.");
             els.roomCodeInput.focus();
@@ -461,6 +619,12 @@
         const name = clampName(els.nameInput.value || "").trim();
         if (!name) {
             setNameFieldError(true);
+            showError("");
+            els.nameInput.focus();
+            return;
+        }
+        if (!isValidName(name)) {
+            setNameFieldError(true, INVALID_NAME_MESSAGE);
             showError("");
             els.nameInput.focus();
             return;
@@ -491,6 +655,9 @@
                 banned: "You have been banned from this room and cannot rejoin.",
                 full: "This room is full. Try another room.",
                 ended: "This room has ended. Create or join another room.",
+                room_expired: "No one joined within 5 minutes, so your public room was closed.",
+                rejoin: "Your session for this room has ended. Enter your name to join again.",
+                invalid_name: "That name can't be used. Use letters, numbers, spaces and _ . ' - only (max 10).",
             };
             showError(messages[error] || "Something went wrong.");
             if (error === "not_found" || error === "missing_code") {
@@ -570,8 +737,39 @@
         }
     });
 
+    els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));
+
+    els.categoryTrigger.addEventListener("keydown", (event) => {
+        if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+            event.preventDefault();
+            setCategoryOpen(true);
+        }
+    });
+
+    els.categoryList.addEventListener("keydown", (event) => {
+        const options = visibleCategoryOptions();
+        if (event.key === "ArrowDown") {
+            event.preventDefault();
+            setCategoryHighlight(Math.min(options.length - 1, categoryHighlight + 1));
+        } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            setCategoryHighlight(Math.max(0, categoryHighlight - 1));
+        } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (options[categoryHighlight]) chooseCategory(options[categoryHighlight]);
+        } else if (event.key === "Escape" || event.key === "Tab") {
+            if (event.key === "Escape") event.preventDefault();
+            setCategoryOpen(false);
+            if (event.key === "Escape") els.categoryTrigger.focus();
+        }
+    });
+
+    document.addEventListener("click", (event) => {
+        if (categoryOpen && !els.categorySelect.contains(event.target)) setCategoryOpen(false);
+    });
+
     els.duration.addEventListener("input", () => {
-        state.duration = Number(els.duration.value) || 5;
+        state.duration = Math.max(2, Math.min(5, Number(els.duration.value) || 5));
         saveDraft();
         render();
     });

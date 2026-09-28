@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play13">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=popcorn2">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -558,6 +558,28 @@
         }
         @keyframes slideDown { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         #congrats-text { font-size: 1.15rem; color: var(--success); font-weight: 800; }
+        .round-result-scores {
+            margin: 14px auto 0;
+            width: 100%;
+            max-width: 320px;
+            text-align: left;
+        }
+        .round-result-scores.hidden { display: none; }
+        .round-result-score-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 12px;
+            margin-top: 6px;
+            border-radius: 10px;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            font-weight: 800;
+            font-size: 0.92rem;
+        }
+        .round-result-score-name { color: #fff; }
+        .round-result-score-pts { color: #4ade80; white-space: nowrap; }
         #movie-reveal {
             margin-top: 8px;
             color: var(--text-dim);
@@ -858,7 +880,11 @@
     </div>
     <div id="vote-kick-overlay" class="modal-overlay hidden"></div>
 
-    <div class="main-container">
+    <!-- App shell (Figma 10:300): players | stage | chat, each side column with a
+         secondary panel underneath. On desktop #sidebar is display:contents so its
+         panels drop into the left/right grid columns; stacked/phone layouts keep it
+         as the players + chat block behind the "Players" toggle. -->
+    <div class="main-container mg-shell">
         <div id="sidebar">
             <div class="mg-panel mg-panel-players">
                 <div id="player-list"></div>
@@ -874,6 +900,8 @@
             </div>
             <span id="sidebar-drawer" class="hidden">Waiting...</span>
         </div>
+        <div class="mg-panel mg-panel-aux mg-panel-aux-left" aria-hidden="true"></div>
+        <div class="mg-panel mg-panel-aux mg-panel-aux-right" aria-hidden="true"></div>
 
         <div id="content">
             <div class="stage-head">
@@ -881,11 +909,11 @@
             </div>
 
             <div id="setup-area">
-                <div id="lobby-waiting-area" class="hidden">
-                    <div class="lobby-top-row">
-                        <span class="lobby-status-pill" id="lobby-status-pill">Waiting for players</span>
-                        <div id="lobby-timer-display" class="lobby-timer-pill hidden">
-                            <img src="/static/img/icons/ic-clock.svg" width="33.3333" height="33.3333" alt="">
+                <div id="lobby-waiting-area" class="mg-stage hidden">
+                    <div class="lobby-top-row mg-stage-head">
+                        <span class="lobby-status-pill mg-pill" id="lobby-status-pill">Waiting for players</span>
+                        <div id="lobby-timer-display" class="lobby-timer-pill mg-timer hidden">
+                            <span class="mg-timer-icon"><img src="/static/img/icons/ic-clock.svg" width="33.3333" height="33.3333" alt=""></span>
                             <span id="lobby-time-left">05:00</span>
                         </div>
                     </div>
@@ -936,13 +964,13 @@
                     </div>
                 </div>
                 <div class="drawer-card-body">
-                    <div class="drawer-role-row">
-                        <div class="drawer-role-bar">
+                    <div class="drawer-role-row mg-stage-head">
+                        <div class="drawer-role-bar mg-pill">
                             <span class="drawer-role-label">Your role</span>
                             <h3 id="role-display">Determining Role...</h3>
                         </div>
-                        <div id="selection-timer-display" class="drawer-timer hidden">
-                            <span class="drawer-timer-icon">
+                        <div id="selection-timer-display" class="drawer-timer mg-timer hidden">
+                            <span class="drawer-timer-icon mg-timer-icon">
                                 <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
                             </span>
                             <span id="selection-time-left">00 : 59</span>
@@ -999,23 +1027,52 @@
                 </div>
             </div>
 
-            <div id="game-area" class="hidden">
+            <div id="game-area" class="mg-stage hidden">
                 <div id="congrats-area" style="display: none;">
                     <div class="round-result-card">
-                        <img class="round-result-popcorn is-left" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
-                        <img class="round-result-popcorn is-right" src="/static/img/lobby/celeb-popcorn.png" alt="" aria-hidden="true">
-                        <img class="round-result-burst is-left" src="/static/img/lobby/popcorn-burst-left-scatter.png" alt="" aria-hidden="true">
-                        <img class="round-result-burst is-right" src="/static/img/lobby/popcorn-burst-right-scatter.png" alt="" aria-hidden="true">
-                        <p class="round-result-eyebrow">
-                            <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
-                        </p>
-                        <h2 id="congrats-winner-name" class="round-result-winner"></h2>
-                        <div id="congrats-text"></div>
+                        <!-- Figma "Winner Declaration" (7:1187 / 7:1682): popcorn buckets Group 63 / Group 64 -->
+                        <div class="round-result-popcorn is-left" aria-hidden="true">
+                            <span class="popcorn-bucket"><img src="/static/img/round-result/bucket-left.svg" width="91.1963" height="99.4102" alt="" draggable="false"></span>
+                            <span class="popcorn-kernels">
+                                <span class="popcorn-kernel pk-4"><img src="/static/img/round-result/popcorn-4.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-11"><img src="/static/img/round-result/popcorn-11.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-1"><img src="/static/img/round-result/popcorn-1.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-5"><img src="/static/img/round-result/popcorn-5.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-7"><img src="/static/img/round-result/popcorn-7.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-8"><img src="/static/img/round-result/popcorn-8.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-6"><img src="/static/img/round-result/popcorn-6.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-10"><img src="/static/img/round-result/popcorn-10.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-3"><img src="/static/img/round-result/popcorn-3.svg" alt="" draggable="false"></span>
+                            </span>
+                            <img class="popcorn-scatter" src="/static/img/lobby/popcorn-burst-left-scatter.png" width="272" height="146.5" alt="" draggable="false">
+                        </div>
+                        <div class="round-result-popcorn is-right" aria-hidden="true">
+                            <span class="popcorn-bucket"><img src="/static/img/round-result/bucket-right.svg" width="93.4164" height="99.9259" alt="" draggable="false"></span>
+                            <span class="popcorn-kernels">
+                                <span class="popcorn-kernel pk-4"><img src="/static/img/round-result/popcorn-4.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-11"><img src="/static/img/round-result/popcorn-11.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-1"><img src="/static/img/round-result/popcorn-1.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-5"><img src="/static/img/round-result/popcorn-5.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-7"><img src="/static/img/round-result/popcorn-7.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-8"><img src="/static/img/round-result/popcorn-8.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-6"><img src="/static/img/round-result/popcorn-6.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-10"><img src="/static/img/round-result/popcorn-10.svg" alt="" draggable="false"></span>
+                                <span class="popcorn-kernel pk-3"><img src="/static/img/round-result/popcorn-3.svg" alt="" draggable="false"></span>
+                            </span>
+                            <img class="popcorn-scatter" src="/static/img/lobby/popcorn-burst-right-scatter.png" width="272" height="143.5" alt="" draggable="false">
+                        </div>
                         <div id="movie-reveal" class="hidden">
                             <p class="round-result-movie-label">Movie</p>
                             <p class="round-result-movie-value" id="revealed-name"></p>
                         </div>
-                        <button class="btn-restart" id="next-round-btn" onclick="requestRestart()">Next Round</button>
+                        <div class="round-result-round">
+                            <p class="round-result-eyebrow">
+                                <span id="congrats-round-label">Round 1</span><span id="congrats-kind-sep"> · </span><span id="congrats-kind-label">Winner</span>
+                            </p>
+                            <h2 id="congrats-winner-name" class="round-result-winner"></h2>
+                            <div id="congrats-text"></div>
+                            <div id="congrats-score-list" class="round-result-scores hidden" aria-live="polite"></div>
+                        </div>
                         <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
                             <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
                                 <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
@@ -1026,17 +1083,19 @@
                         </div>
                     </div>
                 </div>
-                <div class="game-play-head">
-                    <h2 id="drawer-movie"></h2>
-                    <div id="timer-display" class="play-timer hidden">
-                        <span class="play-timer-icon">
+                <div class="game-play-head mg-stage-head">
+                    <h2 id="drawer-movie" class="mg-pill"></h2>
+                    <div id="timer-display" class="play-timer mg-timer hidden">
+                        <span class="play-timer-icon mg-timer-icon">
                             <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
                         </span>
                         <span id="time-left">05 : 00</span>
                     </div>
                 </div>
-                <div class="game-canvas-wrap">
-                    <canvas id="canvas" width="800" height="500"></canvas>
+                <div class="game-canvas-slot">
+                    <div class="game-canvas-wrap">
+                        <canvas id="canvas" width="800" height="500"></canvas>
+                    </div>
                 </div>
                 <div id="movie-display" class="box-container"></div>
                 <div id="controls" class="toolbar hidden">
@@ -1127,6 +1186,17 @@
         try {
             if (myName) sessionStorage.setItem("movie_guess_player_name", myName);
         } catch (_) { /* ignore */ }
+        // Secret session token from /join — the only thing the server accepts as
+        // proof of which player this tab is. Kept per tab (sessionStorage) so two
+        // tabs of the same browser can still be two different players; the cookie
+        // only hands it over on the first load after /join.
+        const playerTokenKey = `movie_guess_player_token:${currentRoom || ""}`;
+        let playerToken = null;
+        try { playerToken = sessionStorage.getItem(playerTokenKey); } catch (_) { /* ignore */ }
+        if (!playerToken) {
+            playerToken = decodeURIComponent(getCookie(`player_token_${currentRoom}`) || "").replace(/^"|"$/g, "") || null;
+            try { if (playerToken) sessionStorage.setItem(playerTokenKey, playerToken); } catch (_) { /* ignore */ }
+        }
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1139,7 +1209,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&token=${encodeURIComponent(playerToken || "")}`);
         let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
         (function initColorSwatch() {
             const picker = document.getElementById('colorPicker');
@@ -1151,10 +1221,56 @@
             picker.addEventListener('change', sync);
         })();
         let myRole = "", targetMovie = "", drawing = false, currentTool = "draw";
+        // Masked display (e.g. "_I_E_-_A_") and what we've already asked the server about.
+        let currentDisplay = "", submittedGuess = "", submittedWords = {};
         let wordRanges = [], revealedWordKeys = new Set();
-        let roomCategory = "movies";
+        let roomCategory = "hollywood_movies";
         let currentHostName = null;
-        let availableCategories = ["movies", "characters"];
+        let availableCategories = ["hollywood_movies", "hollywood_characters"];
+
+        // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
+        const CATEGORY_GENRE_ORDER = ["bollywood", "hollywood", "asian_dramas", "anime", "cartoon"];
+        const CATEGORY_KIND_ORDER = ["movies", "characters"];
+        const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
+
+        function splitCategory(id) {
+            const value = LEGACY_CATEGORIES[id] || String(id || "");
+            const cut = value.lastIndexOf("_");
+            return cut > 0
+                ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
+                : { genre: value, kind: "" };
+        }
+
+        function titleizeCategoryPart(value) {
+            return String(value || "")
+                .split("_")
+                .filter(Boolean)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(" ");
+        }
+
+        function formatCategoryLabel(id) {
+            const { genre, kind } = splitCategory(id);
+            return kind
+                ? `${titleizeCategoryPart(genre)} · ${titleizeCategoryPart(kind)}`
+                : titleizeCategoryPart(genre);
+        }
+
+        function orderedCategoryParts(categories) {
+            const genres = [], kinds = [];
+            categories.map(splitCategory).forEach(({ genre, kind }) => {
+                if (genre && !genres.includes(genre)) genres.push(genre);
+                if (kind && !kinds.includes(kind)) kinds.push(kind);
+            });
+            const byOrder = (order) => (a, b) => {
+                const ia = order.indexOf(a), ib = order.indexOf(b);
+                return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+            };
+            return {
+                genres: genres.sort(byOrder(CATEGORY_GENRE_ORDER)),
+                kinds: kinds.sort(byOrder(CATEGORY_KIND_ORDER)),
+            };
+        }
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -1317,8 +1433,42 @@
                 movieHistory = data.history;
                 renderHistory();
             }
+            if (data.type === "name_updated" && data.new_name) {
+                // Server resolved a duplicate name (e.g. "Sam" -> "Sam(1)").
+                myName = data.new_name;
+                try { sessionStorage.setItem("movie_guess_player_name", myName); } catch (_) { /* ignore */ }
+                showToast("Name already taken — you are " + myName);
+                return;
+            }
+            if (data.type === "session_replaced") {
+                // This player connected again from another tab/window.
+                publicRoomClosed = true;
+                stopTimer();
+                document.getElementById('disconnect-overlay').classList.remove('hidden');
+                const heading = document.querySelector('#disconnect-overlay h2');
+                if (heading) heading.innerText = "This room is open in another tab";
+                return;
+            }
+            if (data.type === "room_closed") {
+                // Public room auto-discarded (nobody joined in time) — go back to
+                // the lobby with an explanation instead of "Connection lost".
+                publicRoomClosed = true;
+                document.cookie = "room_id=; path=/; max-age=0";
+                try { sessionStorage.removeItem("movie_guess_room_id"); } catch (_) { /* ignore */ }
+                window.location.replace("/?error=room_expired");
+                return;
+            }
             if (data.type === "error") {
                 console.log(`[DEBUG-FRONTEND] Error from server: ${data.message}`);
+                if (data.code === "not_member") {
+                    // No valid session for this room (never joined here, left, or
+                    // the name was taken over by a new join) — go join properly.
+                    publicRoomClosed = true;
+                    try { sessionStorage.removeItem(playerTokenKey); } catch (_) { /* ignore */ }
+                    const invite = currentRoom ? `&invite=${encodeURIComponent(btoa(currentRoom))}` : "";
+                    window.location.replace(`/?error=rejoin${invite}`);
+                    return;
+                }
                 if (data.code === "banned") {
                     document.cookie = "room_id=; path=/; max-age=0";
                     showToast("🚫 " + data.message);
@@ -1365,7 +1515,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
             }
@@ -1451,7 +1601,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
             }
@@ -1565,7 +1715,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
                 if (Array.isArray(data.categories) && data.categories.length) {
@@ -1687,14 +1837,24 @@
                 if (data.is_round_active && data.time_left > 0 && data.movie_set) {
                     startTimer(data.time_left);
                 }
-                if (data.winner_msg) showAnnouncement(data.winner_msg, data.revealed, undefined, { isRestore: true });
+                if (data.winner_msg) {
+                    showAnnouncement(data.winner_msg, data.revealed, undefined, {
+                        isRestore: true,
+                        correctGuessers: data.correct_guessers,
+                        scores: data.scores || window.lastPlayerData,
+                    });
+                }
                 if (data.movie_set) {
                     console.log(`[DEBUG-FRONTEND] Movie set by drawer. Setting up game UI.`);
                     setupGameUI(data.display, data.full_movie);
                     if (data.word_guessed) {
                         markWordCorrect(data.revealed || data.full_movie);
+                        hasWon = true;
+                    } else if (data.already_guessed) {
+                        markWordCorrect(data.full_movie);
+                        hasWon = true;
                     } else if (Array.isArray(data.revealed_words)) {
-                        data.revealed_words.forEach(applyRevealedWord);
+                        data.revealed_words.forEach((w) => applyRevealedWord(w.index, w.word));
                     }
                 } else if (!isInLobby) {
                     document.getElementById('setup-area').classList.remove('hidden');
@@ -1719,16 +1879,36 @@
                 setupGameUI(data.display, data.full_movie);
                 startTimer(data.time_left || 300);
                 hasWon = false;
+                populateRoundScoreList(null, null);
                 console.log(`[DEBUG-FRONTEND] Game started. Drawer: ${data.drawer_name}, Timer: ${data.time_left}s`);
             }
+            if (data.type === "correct_guess") {
+                // Room-wide notice (who guessed it) — never contains the answer.
+                if (data.message) showToast(data.message);
+            }
+            if (data.type === "guess_result") {
+                // Private reply to our own guess; only a correct one carries the answer.
+                if (data.correct && data.answer) {
+                    hasWon = true;
+                    targetMovie = data.answer;
+                    markWordCorrect(data.answer);
+                }
+            }
             if (data.type === "word_revealed") {
-                applyRevealedWord(data.word);
+                // Private confirmation of one word we solved.
+                applyRevealedWord(data.index, data.word);
             }
             if (data.type === "announcement") {
                 stopTimer();
                 stopSelectionTimer();
-                if (data.word_guessed) markWordCorrect(data.reveal);
-                showAnnouncement(data.message, data.reveal, data.is_final_round);
+                if (data.reveal) markWordCorrect(data.reveal);
+                if (Array.isArray(data.scores)) {
+                    updatePlayerList(data.scores);
+                }
+                showAnnouncement(data.message, data.reveal, data.is_final_round, {
+                    correctGuessers: data.correct_guessers,
+                    scores: data.scores,
+                });
             }
             if (data.type === "game_ended") {
                 console.log("[DEBUG-FRONTEND] Game ended.");
@@ -1762,7 +1942,7 @@
                     roomCategory = data.category;
                     const catLabel = document.getElementById('category-label');
                     if (catLabel) {
-                        catLabel.innerText = "Category: " + roomCategory.charAt(0).toUpperCase() + roomCategory.slice(1);
+                        catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
                 showToast(data.message || "Continuing the game!");
@@ -1782,8 +1962,10 @@
             const mine = name === myName;
             const row = document.createElement("div");
             row.className = "chat-row " + (mine ? "is-me" : "is-other");
+            // Own messages carry no author label (the right-aligned yellow bubble
+            // already says it's you); "(you)" is shown in the player list instead.
             row.innerHTML = `
-                <span class="chat-author">${mine ? "YOU" : escapeHtml(name)}</span>
+                ${mine ? "" : `<span class="chat-author">${escapeHtml(name)}</span>`}
                 <div class="chat-bubble">${escapeHtml(message)}</div>
             `;
             box.appendChild(row);
@@ -1794,7 +1976,8 @@
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;");
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
         }
         const ICON_PENCIL = `<img class="mg-icon" src="/static/img/icons/ic-pencil.svg" width="32.5" height="33.3237" alt="">`;
         const ICON_KICK = `<img class="mg-icon" src="/static/img/icons/ic-kick-player.svg" width="31.8167" height="33.3333" alt="">`;
@@ -1811,17 +1994,27 @@
                 const pencil = isDrawer
                     ? `<span class="player-drawer-icon" title="Drawer">${ICON_PENCIL}</span>`
                     : "";
-                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
-                const kickButton = canKick
-                    ? `<button type="button" class="kick-btn" onclick="initiateVoteKick('${p.name.replace(/'/g, "\\'")}')" title="Kick player" aria-label="Kick ${escapeHtml(p.name)}">${ICON_KICK}</button>`
-                    : `<span class="kick-btn is-static" title="Player">${ICON_KICK}</span>`;
+                // Player names never go into markup or inline handlers: text via
+                // escapeHtml/textContent, the kick action via addEventListener.
                 div.innerHTML = `
-                    <span class="player-name">${escapeHtml(p.name)}${pencil}</span>
+                    <span class="player-name"><span class="player-label"><span class="player-name-text">${escapeHtml(p.name)}</span>${p.name === myName ? `<span class="player-you">(you)</span>` : ""}</span>${pencil}</span>
                     <div class="player-right">
-                        <span class="player-score">${p.score}</span>
-                        ${kickButton}
+                        <span class="player-score">${Number(p.score) || 0}</span>
                     </div>
                 `;
+                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
+                const kick = document.createElement(canKick ? 'button' : 'span');
+                kick.className = "kick-btn" + (canKick ? "" : " is-static");
+                kick.innerHTML = ICON_KICK;
+                if (canKick) {
+                    kick.type = "button";
+                    kick.title = "Kick player";
+                    kick.setAttribute("aria-label", `Kick ${p.name}`);
+                    kick.addEventListener("click", () => initiateVoteKick(p.name));
+                } else {
+                    kick.title = "Player";
+                }
+                div.querySelector('.player-right').appendChild(kick);
                 listContainer.appendChild(div);
             });
             const countEl = document.getElementById("lobby-count-text");
@@ -2001,28 +2194,18 @@
         }
         function hideEndGameActions() {
             const endActions = document.getElementById('end-game-actions');
-            const nextBtn = document.getElementById('next-round-btn');
             if (endActions) {
                 endActions.classList.add('hidden');
                 endActions.style.display = 'none';
-            }
-            if (nextBtn) {
-                nextBtn.classList.remove('hidden');
-                nextBtn.style.display = '';
             }
         }
 
         function showEndGameActions() {
             const endActions = document.getElementById('end-game-actions');
-            const nextBtn = document.getElementById('next-round-btn');
             const continueBtn = document.getElementById('continue-game-btn');
             const hostWrap = document.getElementById('host-end-category-wrap');
             const hostSel = document.getElementById('host-end-category');
             const isHost = myName === currentHostName;
-            if (nextBtn) {
-                nextBtn.classList.add('hidden');
-                nextBtn.style.display = 'none';
-            }
             if (endActions) {
                 endActions.classList.remove('hidden');
                 endActions.style.display = 'flex';
@@ -2034,10 +2217,10 @@
                 if (isHost) {
                     hostWrap.classList.remove('hidden');
                     hostWrap.style.display = 'block';
-                    const cats = availableCategories.length ? availableCategories : ["movies", "characters"];
+                    const cats = availableCategories.length ? availableCategories : ["hollywood_movies", "hollywood_characters"];
                     hostSel.innerHTML = cats.map((cat) => {
                         const selected = cat === roomCategory ? " selected" : "";
-                        const label = cat.charAt(0).toUpperCase() + cat.slice(1);
+                        const label = formatCategoryLabel(cat);
                         return `<option value="${cat}"${selected}>${label}</option>`;
                     }).join("");
                 } else {
@@ -2057,18 +2240,58 @@
 
             const cleaned = String(msg || "").replace(/^[^\w]+/, "").trim();
             const winnerMatch = /^(.*?)\s+guessed it first!?$/i.exec(cleaned);
+            // Server sends "Everyone guessed it! N player(s) solved it." or
+            // "Time's up! N player(s) guessed it." when someone got it right.
+            const multiMatch = /(\d+)\s+player\(s\)\s+(?:guessed|solved) it/i.exec(cleaned);
             // has-winner gates the popcorn burst (see game-room.css): it should only
-            // celebrate an actual first-correct-guess, never a "time's up" round.
-            if (congratsArea) congratsArea.classList.toggle('has-winner', Boolean(winnerMatch));
+            // celebrate actual correct guesses, never a lonely "time's up" with nobody.
+            const hasWinner = Boolean(winnerMatch) || Boolean(multiMatch);
+            if (congratsArea) congratsArea.classList.toggle('has-winner', hasWinner);
             if (winnerMatch) {
                 if (sepEl) sepEl.classList.remove('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "Winner";
                 if (nameEl) { nameEl.innerText = winnerMatch[1]; nameEl.classList.remove('hidden'); }
+            } else if (multiMatch) {
+                if (sepEl) sepEl.classList.remove('hidden');
+                if (kindLabelEl) kindLabelEl.innerText = "Guessed";
+                if (nameEl) { nameEl.innerText = `${multiMatch[1]} player(s)`; nameEl.classList.remove('hidden'); }
             } else {
                 if (sepEl) sepEl.classList.add('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "";
                 if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
             }
+        }
+
+        function populateRoundScoreList(correctGuessers, scores) {
+            const listEl = document.getElementById('congrats-score-list');
+            if (!listEl) return;
+
+            const gained = correctGuessers && typeof correctGuessers === "object"
+                ? Object.entries(correctGuessers)
+                : [];
+            // With a score list the card shows just "Round N" + rows (Figma); the
+            // winner / "time's up" line is only shown when nobody scored.
+            document.getElementById('congrats-area')?.classList.toggle('has-scores', gained.length > 0);
+            if (!gained.length) {
+                listEl.innerHTML = "";
+                listEl.classList.add('hidden');
+                return;
+            }
+
+            gained.sort((a, b) => Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0])));
+            listEl.innerHTML = gained.map(([name, points]) => {
+                return `
+                    <div class="round-result-score-row">
+                        <span class="round-result-score-name"></span>
+                        <span class="round-result-score-pts">${points}</span>
+                    </div>
+                `;
+            }).join("");
+            Array.from(listEl.querySelectorAll('.round-result-score-row')).forEach((row, index) => {
+                const nameEl = row.querySelector('.round-result-score-name');
+                if (nameEl) nameEl.textContent = gained[index][0];
+            });
+            listEl.classList.remove('hidden');
         }
 
         function showAnnouncement(msg, reveal, isFinalRound, options = {}) {
@@ -2080,18 +2303,17 @@
             document.getElementById('congrats-text').innerText = msg;
             congratsArea.style.display = "block";
             populateRoundResultCard(msg);
+            populateRoundScoreList(options.correctGuessers, options.scores);
 
             const finalRound = dataRoundIsFinal(isFinalRound);
             if (finalRound) {
-                // All rounds done — Quit / Continue only (no Next Round)
+                // All rounds done — Quit / Continue
                 showEndGameActions();
             } else {
                 hideEndGameActions();
-                const restartBtn = document.getElementById('next-round-btn');
-                if (restartBtn) {
-                    restartBtn.innerText = `Start Round ${currentRound + 1}`;
-                }
             }
+            // No button / countdown: the server starts the next round a few
+            // seconds after this card appears.
             if (reveal) {
                 document.getElementById('movie-reveal').classList.remove('hidden');
                 document.getElementById('revealed-name').innerText = reveal;
@@ -2130,8 +2352,8 @@
         function showFinalLeaderboard(finalScores, totalRoundsCompleted, options = {}) {
             closeFinalLeaderboard();
 
-            const categories = options.categories || availableCategories || ["movies", "characters"];
-            const category = options.category || roomCategory || "movies";
+            const categories = options.categories || availableCategories || ["hollywood_movies", "hollywood_characters"];
+            const category = options.category || roomCategory || "hollywood_movies";
             const hostName = options.hostName || currentHostName;
             const isHost = myName === hostName;
             const sorted = [...finalScores].sort((a, b) => b.score - a.score);
@@ -2149,17 +2371,24 @@
                     </div>
                 `).join("");
 
-                const categoryButtonsHTML = categories.map((cat) => {
-                    const label = cat.charAt(0).toUpperCase() + cat.slice(1);
-                    const selected = cat === category ? " is-selected" : "";
-                    return `<button type="button" class="lb-category-btn${selected}" data-category="${cat}" onclick="selectLbCategory(this)">${escapeHtml(label)}</button>`;
+                // Two-step pick: genre, then type (movies / characters)
+                const current = splitCategory(category);
+                const parts = orderedCategoryParts(categories);
+                const genreButtonsHTML = parts.genres.map((genre) => {
+                    const selected = genre === current.genre ? " is-selected" : "";
+                    return `<button type="button" class="lb-category-btn${selected}" data-genre="${genre}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(genre))}</button>`;
+                }).join("");
+                const kindButtonsHTML = parts.kinds.map((kind) => {
+                    const selected = kind === current.kind ? " is-selected" : "";
+                    return `<button type="button" class="lb-category-btn${selected}" data-kind="${kind}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(kind))}</button>`;
                 }).join("");
 
                 modal.innerHTML = `
                     <h1 class="lb-title">Game Over</h1>
                     <div class="lb-list">${rowsHTML}</div>
                     <p class="lb-category-label">Choose category for next game</p>
-                    <div class="lb-category-options" role="group" aria-label="Category for next game">${categoryButtonsHTML}</div>
+                    <div class="lb-category-options is-genres" role="group" aria-label="Category for next game">${genreButtonsHTML}</div>
+                    <div class="lb-category-options" role="group" aria-label="Type for next game">${kindButtonsHTML}</div>
                     <div class="lb-actions">
                         <button type="button" class="lb-continue-btn" onclick="continueGame()">Continue Game</button>
                         <button type="button" class="lb-cancel-btn" onclick="closeFinalLeaderboard()">Cancel</button>
@@ -2206,12 +2435,16 @@
         }
 
         function continueGame() {
-            const selectedCategoryBtn = document.querySelector('.lb-category-btn.is-selected');
+            const selectedGenreBtn = document.querySelector('.lb-category-btn.is-selected[data-genre]');
+            const selectedKindBtn = document.querySelector('.lb-category-btn.is-selected[data-kind]');
             const categorySel =
                 document.getElementById("host-continue-category") ||
                 document.getElementById("host-end-category");
-            const nextCategory = selectedCategoryBtn
-                ? selectedCategoryBtn.dataset.category
+            const pickedCategory = selectedGenreBtn && selectedKindBtn
+                ? `${selectedGenreBtn.dataset.genre}_${selectedKindBtn.dataset.kind}`
+                : null;
+            const nextCategory = pickedCategory && availableCategories.includes(pickedCategory)
+                ? pickedCategory
                 : (categorySel && categorySel.value) ? categorySel.value : roomCategory;
             console.log("[DEBUG-FRONTEND] Continue game requested", { category: nextCategory });
             closeFinalLeaderboard();
@@ -2249,8 +2482,10 @@
             el.classList.toggle('hidden', !visible);
         }
         function setupGameUI(display, full) {
-            targetMovie = full;
+            targetMovie = full || "";
             revealedWordKeys = new Set();
+            submittedGuess = "";
+            submittedWords = {};
             const gameArea = document.getElementById('game-area');
             gameArea.classList.toggle('is-drawer', myRole === 'drawer');
             if (myRole === "drawer") {
@@ -2274,7 +2509,7 @@
             });
             try {
                 sessionStorage.setItem(getGuessDraftStorageKey(), JSON.stringify({
-                    movie: targetMovie,
+                    movie: currentDisplay,
                     values: values
                 }));
             } catch (_) { /* ignore unavailable storage */ }
@@ -2285,7 +2520,7 @@
                 const raw = sessionStorage.getItem(getGuessDraftStorageKey());
                 if (!raw) return;
                 const draft = JSON.parse(raw);
-                if (draft.movie !== targetMovie || !draft.values) return;
+                if (draft.movie !== currentDisplay || !draft.values) return;
                 const inputsByIndex = getInputsByIndex();
                 Object.entries(draft.values).forEach(([index, value]) => {
                     const input = inputsByIndex.get(Number(index));
@@ -2293,7 +2528,6 @@
                 });
             } catch (_) { /* ignore malformed or unavailable storage */ }
         }
-        function requestRestart() { ws.send(JSON.stringify({type: "restart"})); }
         function hostStartGame() {
             const playerCount = window.lastPlayerData ? window.lastPlayerData.length : 0;
             if (playerCount < 2) {
@@ -2319,20 +2553,32 @@
         function createGuessingBoxes(displayStr) {
             let container = document.getElementById('movie-display'); 
             container.innerHTML = "";
+            currentDisplay = displayStr || "";
             wordRanges = [];
             const wordPattern = /\S+/g;
             let wordMatch;
-            while ((wordMatch = wordPattern.exec(targetMovie)) !== null) {
+            while ((wordMatch = wordPattern.exec(currentDisplay)) !== null) {
                 wordRanges.push({
                     start: wordMatch.index,
                     end: wordMatch.index + wordMatch[0].length,
-                    key: wordMatch[0].toUpperCase()
+                    key: wordRanges.length
                 });
             }
+            // Letters are grouped per word so a word never breaks across lines;
+            // --word-len lets CSS shrink the boxes until the longest word fits.
+            const longestWord = wordRanges.reduce((max, r) => Math.max(max, r.end - r.start), 1);
+            container.style.setProperty('--word-len', longestWord);
+            let wordGroup = null;
             displayStr.split("").forEach((char, index) => {
                 if (char === " ") {
+                    wordGroup = null;
                     let div = document.createElement('div'); div.className = "space"; container.appendChild(div);
                 } else {
+                    if (!wordGroup) {
+                        wordGroup = document.createElement('div');
+                        wordGroup.className = "word-group";
+                        container.appendChild(wordGroup);
+                    }
                     let input = document.createElement('input');
                     input.className = "letter-input"; input.maxLength = 1; input.dataset.index = index;
                     if (char !== "_") { 
@@ -2365,7 +2611,7 @@
                             checkFullWord();
                         };
                     }
-                    container.appendChild(input);
+                    wordGroup.appendChild(input);
                 }
             });
             restoreGuessDraft();
@@ -2378,27 +2624,26 @@
             });
             return inputsByIndex;
         }
-        function applyRevealedWord(word) {
-            const key = String(word || "").toUpperCase();
-            if (!key || wordRanges.length < 2) return false;
+        function applyRevealedWord(index, word) {
+            const range = wordRanges[Number(index)];
+            const text = String(word || "").toUpperCase();
+            if (!range || !text || wordRanges.length < 2) return false;
             const inputsByIndex = getInputsByIndex();
             let applied = false;
-            wordRanges.forEach(range => {
-                if (range.key !== key) return;
-                revealedWordKeys.add(key);
-                for (let index = range.start; index < range.end; index++) {
-                    const input = inputsByIndex.get(index);
-                    if (!input) continue;
-                    const char = targetMovie[index];
-                    if (char && char !== " ") input.value = char.toUpperCase();
-                    input.classList.add('revealed-word');
-                    input.disabled = true;
-                    applied = true;
-                }
-            });
+            revealedWordKeys.add(range.key);
+            for (let pos = range.start; pos < range.end; pos++) {
+                const input = inputsByIndex.get(pos);
+                if (!input) continue;
+                const char = text[pos - range.start];
+                if (char && char !== " ") input.value = char;
+                input.classList.add('revealed-word');
+                input.disabled = true;
+                applied = true;
+            }
             return applied;
         }
         function checkWordReveals() {
+            // Ask the server whether a completed word is right; only we get the reply.
             if (wordRanges.length < 2) return;
             const inputsByIndex = getInputsByIndex();
             wordRanges.forEach(range => {
@@ -2409,13 +2654,19 @@
                     if (input) inputs.push(input);
                 }
                 if (inputs.length === 0 || inputs.some(input => input.value === "")) return;
-                const guessedWord = inputs.map(input => input.value).join("").toUpperCase();
-                const answerWord = targetMovie.slice(range.start, range.end).toUpperCase();
-                if (guessedWord !== answerWord) return;
-
-                applyRevealedWord(range.key);
+                const guessedWord = currentDisplay
+                    .slice(range.start, range.end)
+                    .split("")
+                    .map((char, offset) => {
+                        const input = inputsByIndex.get(range.start + offset);
+                        return input ? input.value : char;
+                    })
+                    .join("")
+                    .toUpperCase();
+                if (submittedWords[range.key] === guessedWord) return;
+                submittedWords[range.key] = guessedWord;
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: "word_revealed", word: range.key }));
+                    ws.send(JSON.stringify({ type: "word_revealed", index: range.key, word: guessedWord }));
                 }
             });
         }
@@ -2530,7 +2781,9 @@
                 category: roomCategory
             })); 
         }
+        let publicRoomClosed = false;
         ws.onclose = () => {
+            if (publicRoomClosed) return;
             console.log(`[REFRESH-DEBUG] WebSocket closed. navigation=${navigationType} player=${myName} room=${currentRoom}`);
             stopTimer();
             document.getElementById('disconnect-overlay').classList.remove('hidden');
@@ -2628,16 +2881,21 @@
         } 
         let hasWon = false;
         function checkFullWord() {
+            // The server checks the guess; we never hold the answer ourselves.
             if (hasWon) return;
+            if (myRole === "drawer") return;
             if (document.getElementById('congrats-area').style.display === "block") return;
-            let inputs = document.querySelectorAll('.letter-input');
-            let guessArr = targetMovie.split("").map(c => c === " " ? " " : "");
+            const inputs = document.querySelectorAll('.letter-input');
+            if (Array.from(inputs).some(input => input.value === "")) return;
+            const guessArr = currentDisplay.split("");
             inputs.forEach(input => {
                 guessArr[input.dataset.index] = input.value.toUpperCase();
             });
-            if (guessArr.join("") === targetMovie) {
-                hasWon = true;   
-                ws.send(JSON.stringify({type: "won"}));
+            const guess = guessArr.join("");
+            if (guess === submittedGuess) return;
+            submittedGuess = guess;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "guess", guess: guess }));
             }
         }
         let movieHistory = [];
@@ -2657,6 +2915,12 @@
         }
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
+            // Phone overlay starts just below the (wrapping) header so it never hides behind it
+            const header = document.querySelector('header.mg-header');
+            if (header) {
+                const top = Math.max(12, Math.round(header.getBoundingClientRect().bottom) + 8);
+                sidebar.style.setProperty('--overlay-top', `${top}px`);
+            }
             sidebar.classList.toggle('open-mobile');
             sidebar.classList.toggle('hidden-mobile');
         }

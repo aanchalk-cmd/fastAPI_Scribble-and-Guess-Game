@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=shell4">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=you1">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -1962,8 +1962,10 @@
             const mine = name === myName;
             const row = document.createElement("div");
             row.className = "chat-row " + (mine ? "is-me" : "is-other");
+            // Own messages carry no author label (the right-aligned yellow bubble
+            // already says it's you); "(you)" is shown in the player list instead.
             row.innerHTML = `
-                <span class="chat-author">${mine ? "YOU" : escapeHtml(name)}</span>
+                ${mine ? "" : `<span class="chat-author">${escapeHtml(name)}</span>`}
                 <div class="chat-bubble">${escapeHtml(message)}</div>
             `;
             box.appendChild(row);
@@ -1995,7 +1997,7 @@
                 // Player names never go into markup or inline handlers: text via
                 // escapeHtml/textContent, the kick action via addEventListener.
                 div.innerHTML = `
-                    <span class="player-name">${escapeHtml(p.name)}${pencil}</span>
+                    <span class="player-name"><span class="player-label"><span class="player-name-text">${escapeHtml(p.name)}</span>${p.name === myName ? `<span class="player-you">(you)</span>` : ""}</span>${pencil}</span>
                     <div class="player-right">
                         <span class="player-score">${Number(p.score) || 0}</span>
                     </div>

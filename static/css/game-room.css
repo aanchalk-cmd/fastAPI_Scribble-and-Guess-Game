@@ -406,6 +406,25 @@ body.mg-room .player-name {
     white-space: nowrap;
 }
 
+/* Name + "(you)" tag: the name truncates, the tag always stays visible */
+body.mg-room .player-label {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3em;
+    min-width: 0;
+}
+
+body.mg-room .player-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.mg-room .player-you {
+    flex-shrink: 0;
+    color: var(--mg-yellow);
+}
+
 body.mg-room .player-drawer-icon {
     flex-shrink: 0;
     width: 40px;

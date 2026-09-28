@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=play23">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=shell4">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -880,7 +880,11 @@
     </div>
     <div id="vote-kick-overlay" class="modal-overlay hidden"></div>
 
-    <div class="main-container">
+    <!-- App shell (Figma 10:300): players | stage | chat, each side column with a
+         secondary panel underneath. On desktop #sidebar is display:contents so its
+         panels drop into the left/right grid columns; stacked/phone layouts keep it
+         as the players + chat block behind the "Players" toggle. -->
+    <div class="main-container mg-shell">
         <div id="sidebar">
             <div class="mg-panel mg-panel-players">
                 <div id="player-list"></div>
@@ -896,6 +900,8 @@
             </div>
             <span id="sidebar-drawer" class="hidden">Waiting...</span>
         </div>
+        <div class="mg-panel mg-panel-aux mg-panel-aux-left" aria-hidden="true"></div>
+        <div class="mg-panel mg-panel-aux mg-panel-aux-right" aria-hidden="true"></div>
 
         <div id="content">
             <div class="stage-head">
@@ -903,11 +909,11 @@
             </div>
 
             <div id="setup-area">
-                <div id="lobby-waiting-area" class="hidden">
-                    <div class="lobby-top-row">
-                        <span class="lobby-status-pill" id="lobby-status-pill">Waiting for players</span>
-                        <div id="lobby-timer-display" class="lobby-timer-pill hidden">
-                            <img src="/static/img/icons/ic-clock.svg" width="33.3333" height="33.3333" alt="">
+                <div id="lobby-waiting-area" class="mg-stage hidden">
+                    <div class="lobby-top-row mg-stage-head">
+                        <span class="lobby-status-pill mg-pill" id="lobby-status-pill">Waiting for players</span>
+                        <div id="lobby-timer-display" class="lobby-timer-pill mg-timer hidden">
+                            <span class="mg-timer-icon"><img src="/static/img/icons/ic-clock.svg" width="33.3333" height="33.3333" alt=""></span>
                             <span id="lobby-time-left">05:00</span>
                         </div>
                     </div>
@@ -958,13 +964,13 @@
                     </div>
                 </div>
                 <div class="drawer-card-body">
-                    <div class="drawer-role-row">
-                        <div class="drawer-role-bar">
+                    <div class="drawer-role-row mg-stage-head">
+                        <div class="drawer-role-bar mg-pill">
                             <span class="drawer-role-label">Your role</span>
                             <h3 id="role-display">Determining Role...</h3>
                         </div>
-                        <div id="selection-timer-display" class="drawer-timer hidden">
-                            <span class="drawer-timer-icon">
+                        <div id="selection-timer-display" class="drawer-timer mg-timer hidden">
+                            <span class="drawer-timer-icon mg-timer-icon">
                                 <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
                             </span>
                             <span id="selection-time-left">00 : 59</span>
@@ -1021,7 +1027,7 @@
                 </div>
             </div>
 
-            <div id="game-area" class="hidden">
+            <div id="game-area" class="mg-stage hidden">
                 <div id="congrats-area" style="display: none;">
                     <div class="round-result-card">
                         <!-- Figma "Winner Declaration" (7:1187 / 7:1682): popcorn buckets Group 63 / Group 64 -->
@@ -1077,10 +1083,10 @@
                         </div>
                     </div>
                 </div>
-                <div class="game-play-head">
-                    <h2 id="drawer-movie"></h2>
-                    <div id="timer-display" class="play-timer hidden">
-                        <span class="play-timer-icon">
+                <div class="game-play-head mg-stage-head">
+                    <h2 id="drawer-movie" class="mg-pill"></h2>
+                    <div id="timer-display" class="play-timer mg-timer hidden">
+                        <span class="play-timer-icon mg-timer-icon">
                             <img src="/static/img/icons/ic-clock.svg" width="28.9" height="33.3337" alt="">
                         </span>
                         <span id="time-left">05 : 00</span>

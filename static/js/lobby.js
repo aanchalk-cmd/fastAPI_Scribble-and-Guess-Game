@@ -146,8 +146,20 @@
         countEl.textContent = `${len}/${NAME_MAX}`;
     }
 
-    function setNameFieldError(visible) {
+    // Mirrors clean_player_name() in main.py (the server is the real check):
+    // letters/marks/digits in any script plus space _ . ' - , at least one
+    // letter or digit.
+    const NAME_PATTERN = /^[\p{L}\p{M}\p{N} _.'-]+$/u;
+    const NAME_HAS_LETTER = /[\p{L}\p{N}]/u;
+    const INVALID_NAME_MESSAGE = "Use letters, numbers, spaces and _ . ' - only.";
+
+    function isValidName(name) {
+        return NAME_PATTERN.test(name) && NAME_HAS_LETTER.test(name);
+    }
+
+    function setNameFieldError(visible, message) {
         if (!els.nameFieldError) return;
+        els.nameFieldError.textContent = message || "PLEASE ENTER YOUR NAME";
         els.nameFieldError.classList.toggle("hidden", !visible);
     }
 
@@ -581,6 +593,11 @@
             els.joinNameInput.focus();
             return;
         }
+        if (!isValidName(name)) {
+            showError(INVALID_NAME_MESSAGE);
+            els.joinNameInput.focus();
+            return;
+        }
         if (!code) {
             showError("Please enter a room code.");
             els.roomCodeInput.focus();
@@ -602,6 +619,12 @@
         const name = clampName(els.nameInput.value || "").trim();
         if (!name) {
             setNameFieldError(true);
+            showError("");
+            els.nameInput.focus();
+            return;
+        }
+        if (!isValidName(name)) {
+            setNameFieldError(true, INVALID_NAME_MESSAGE);
             showError("");
             els.nameInput.focus();
             return;
@@ -634,6 +657,7 @@
                 ended: "This room has ended. Create or join another room.",
                 room_expired: "No one joined within 5 minutes, so your public room was closed.",
                 rejoin: "Your session for this room has ended. Enter your name to join again.",
+                invalid_name: "That name can't be used. Use letters, numbers, spaces and _ . ' - only (max 10).",
             };
             showError(messages[error] || "Something went wrong.");
             if (error === "not_found" || error === "missing_code") {

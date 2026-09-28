@@ -1,3 +1,4 @@
+import base64
 import os
 import random
 import re
@@ -5,9 +6,10 @@ import secrets
 import asyncio
 import time
 import string
+import unicodedata
 import uuid
 import fakeredis
-from urllib.parse import urlencode
+from urllib.parse import quote, unquote, urlencode
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Form, Cookie, Query
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -305,6 +307,35 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
     return validated if validated else str(uuid.uuid4())
 
 
+# Same limit as the name inputs on the landing page (lobby.js NAME_MAX).
+PLAYER_NAME_MAX = 10
+_PLAYER_NAME_EXTRA_CHARS = frozenset(" _.'-")
+
+
+def clean_player_name(raw) -> Optional[str]:
+    """
+    Normalise a display name, or return None if it is not allowed.
+
+    Allowed: letters and combining marks in any script (so names like "प्रिया"
+    work), digits, and space _ . ' -; must contain a letter or digit.
+    Everything else — < > " & \\ emoji, control characters — is rejected, so a
+    name can never carry markup into other players' pages.
+    """
+    name = " ".join(str(raw or "").split())
+    if not 1 <= len(name) <= PLAYER_NAME_MAX:
+        return None
+    has_letter_or_digit = False
+    for ch in name:
+        if ch in _PLAYER_NAME_EXTRA_CHARS:
+            continue
+        kind = unicodedata.category(ch)[0]
+        if kind not in ("L", "M", "N"):
+            return None
+        if kind in ("L", "N"):
+            has_letter_or_digit = True
+    return name if has_letter_or_digit else None
+
+
 def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
 
@@ -337,6 +368,15 @@ async def join(
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
+    cleaned_name = clean_player_name(name)
+    if not cleaned_name:
+        print(f"[MATCHMAKING] Rejected invalid player name {name!r}")
+        query = {"error": "invalid_name"}
+        if action == "join" and room_code and room_code.strip():
+            # Send them back to the "I have a code" tab with the code filled in.
+            query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
+        return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
+    name = cleaned_name
     print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(10, max_players))
@@ -503,7 +543,9 @@ async def join(
     player_token = room.issue_player_token(name)
     response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
-    response.set_cookie(player_cookie_name(room_code), name)
+    # URL-encoded: cookie values must be Latin-1, and names may be in any script
+    # (e.g. "प्रिया"). The game page decodes it with decodeURIComponent.
+    response.set_cookie(player_cookie_name(room_code), quote(name, safe=""))
     # Readable by the game page so each tab can keep its own copy (sessionStorage);
     # the server only ever trusts this token, never the display name.
     response.set_cookie(player_token_cookie_name(room_code), player_token, samesite="lax")
@@ -516,7 +558,8 @@ async def leave(
     player_name: str = Query(None),
     room_id: str = Cookie(None),
 ):
-    username = player_name or (request.cookies.get(player_cookie_name(room_id)) if room_id else None)
+    cookie_name = request.cookies.get(player_cookie_name(room_id)) if room_id else None
+    username = player_name or (unquote(cookie_name) if cookie_name else None)
     if room_id in rooms and username:
         room = rooms[room_id]
         manager = room.manager
@@ -2409,7 +2452,8 @@ async def get_game(
     if not resolved_room_id:
         return RedirectResponse(url="/", status_code=303)
 
-    username = request.cookies.get(player_cookie_name(resolved_room_id), username)
+    cookie_name = request.cookies.get(player_cookie_name(resolved_room_id))
+    username = unquote(cookie_name) if cookie_name else username
     response = templates.TemplateResponse("index.html", {
         "request": request,
         "room_code": resolved_room_id,

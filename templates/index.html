@@ -1968,7 +1968,8 @@
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;");
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
         }
         const ICON_PENCIL = `<img class="mg-icon" src="/static/img/icons/ic-pencil.svg" width="32.5" height="33.3237" alt="">`;
         const ICON_KICK = `<img class="mg-icon" src="/static/img/icons/ic-kick-player.svg" width="31.8167" height="33.3333" alt="">`;
@@ -1985,17 +1986,27 @@
                 const pencil = isDrawer
                     ? `<span class="player-drawer-icon" title="Drawer">${ICON_PENCIL}</span>`
                     : "";
-                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
-                const kickButton = canKick
-                    ? `<button type="button" class="kick-btn" onclick="initiateVoteKick('${p.name.replace(/'/g, "\\'")}')" title="Kick player" aria-label="Kick ${escapeHtml(p.name)}">${ICON_KICK}</button>`
-                    : `<span class="kick-btn is-static" title="Player">${ICON_KICK}</span>`;
+                // Player names never go into markup or inline handlers: text via
+                // escapeHtml/textContent, the kick action via addEventListener.
                 div.innerHTML = `
                     <span class="player-name">${escapeHtml(p.name)}${pencil}</span>
                     <div class="player-right">
-                        <span class="player-score">${p.score}</span>
-                        ${kickButton}
+                        <span class="player-score">${Number(p.score) || 0}</span>
                     </div>
                 `;
+                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
+                const kick = document.createElement(canKick ? 'button' : 'span');
+                kick.className = "kick-btn" + (canKick ? "" : " is-static");
+                kick.innerHTML = ICON_KICK;
+                if (canKick) {
+                    kick.type = "button";
+                    kick.title = "Kick player";
+                    kick.setAttribute("aria-label", `Kick ${p.name}`);
+                    kick.addEventListener("click", () => initiateVoteKick(p.name));
+                } else {
+                    kick.title = "Player";
+                }
+                div.querySelector('.player-right').appendChild(kick);
                 listContainer.appendChild(div);
             });
             const countEl = document.getElementById("lobby-count-text");

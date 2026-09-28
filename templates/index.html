@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=popcorn2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=turns3">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -470,7 +470,7 @@
             border: 1px solid var(--line-soft);
             flex-wrap: wrap;
         }
-        .btn, .btn-restart, #sidebar-toggle {
+        .btn, #sidebar-toggle {
             padding: 10px 14px;
             cursor: pointer;
             border: 1px solid var(--line);
@@ -484,7 +484,7 @@
             touch-action: manipulation;
             transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         }
-        .btn:hover, .btn-restart:hover, #sidebar-toggle:hover {
+        .btn:hover, #sidebar-toggle:hover {
             background: rgba(148, 163, 184, 0.16);
             border-color: rgba(148, 163, 184, 0.4);
         }
@@ -586,19 +586,6 @@
             font-size: 0.92rem;
         }
         #revealed-name { font-weight: 800; letter-spacing: 0.04em; }
-        .btn-restart {
-            background: linear-gradient(135deg, var(--success), #16a34a);
-            color: white;
-            border: none;
-            font-size: 0.95rem;
-            font-weight: 800;
-            padding: 12px 20px;
-            cursor: pointer;
-            border-radius: 12px;
-            margin-top: 14px;
-            min-width: 160px;
-        }
-        #end-game-actions { margin-left: auto; margin-right: auto; }
 
         /* ---------- overlays / modals ---------- */
         .modal-overlay {
@@ -652,38 +639,6 @@
         #disconnect-overlay .emoji { font-size: 3.4rem; }
         #disconnect-overlay h2 { margin: 0 0 14px; font-weight: 700; }
 
-        /* final leaderboard (built in JS) */
-        #final-leaderboard-modal { max-width: 460px; border: 1px solid rgba(34, 197, 94, 0.45); }
-        .lb-title { color: var(--success); margin: 0; font-size: 1.7rem; font-weight: 800; }
-        .lb-sub { color: var(--text-dim); font-size: 0.88rem; margin: 8px 0 22px; }
-        .lb-list {
-            background: rgba(15, 23, 42, 0.8);
-            border: 1px solid var(--line-soft);
-            border-radius: var(--radius);
-            padding: 8px 16px;
-            margin-bottom: 20px;
-            text-align: left;
-        }
-        .lb-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 10px;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--line-soft);
-        }
-        .lb-row:last-child { border-bottom: none; }
-        .lb-name { font-weight: 700; font-size: 1rem; }
-        .lb-score {
-            background: var(--accent);
-            color: #fff;
-            padding: 5px 11px;
-            border-radius: 999px;
-            font-weight: 800;
-            font-size: 0.8rem;
-        }
-        .lb-actions { display: flex; flex-direction: column; gap: 10px; }
-        .lb-actions .btn { width: 100%; font-weight: 800; padding: 13px 24px; }
         .btn-primary-success {
             background: linear-gradient(135deg, var(--success), #16a34a) !important;
             border-color: transparent !important;
@@ -780,7 +735,7 @@
             #content { padding: 14px; }
             #canvas { max-height: 45vh; }
             .toolbar { gap: 6px; padding: 9px; }
-            .btn, .btn-restart { font-size: 0.86rem; }
+            .btn { font-size: 0.86rem; }
         }
         @media (max-width: 768px) {
             header { padding: 10px 12px; }
@@ -832,6 +787,10 @@
                 <span class="mg-badge-label">Round</span>
                 <span class="mg-badge-value" id="round-display">1</span>
             </div>
+            <div class="mg-badge" id="turn-badge">
+                <span class="mg-badge-label">Turn</span>
+                <span class="mg-badge-value" id="turn-display">1</span>
+            </div>
             <div class="mg-badge" id="room-badge">
                 <span class="mg-badge-label">Room</span>
                 <div class="mg-badge-row">
@@ -856,10 +815,10 @@
         <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
     </div>
 
-    <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050; text-align: center;">
+    <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050;">
         <h2>Opponent left</h2>
-        <p id="rejoin-wait-message">End the game or wait for another player to join.</p>
-        <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none; margin: 8px 0 16px; color: var(--warning);">Waiting - <span id="rejoin-time-left">05:00</span></div>
+        <p id="rejoin-wait-message">Player left mid-game. Wait for someone new or wrap it up.</p>
+        <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none;">Waiting - <span id="rejoin-time-left">05:00</span></div>
         <div id="rejoin-choice-actions" class="vote-actions">
             <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait</button>
             <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
@@ -1073,14 +1032,6 @@
                             <div id="congrats-text"></div>
                             <div id="congrats-score-list" class="round-result-scores hidden" aria-live="polite"></div>
                         </div>
-                        <div id="end-game-actions" class="hidden" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; width: 100%; max-width: 320px;">
-                            <div id="host-end-category-wrap" class="hidden" style="text-align:left;">
-                                <label for="host-end-category" style="display:block; margin-bottom:6px; color:var(--text-dim); font-size:0.78rem; font-weight:600;">Word category</label>
-                                <select id="host-end-category" class="name-input" style="width:100%;"></select>
-                            </div>
-                            <button class="btn-restart" id="continue-game-btn" onclick="continueGame()">Continue Game</button>
-                            <button class="btn btn-danger" id="quit-game-btn" onclick="quitGame()" style="padding: 12px 20px; font-weight: 700;">Quit Game</button>
-                        </div>
                     </div>
                 </div>
                 <div class="game-play-head mg-stage-head">
@@ -1150,6 +1101,9 @@
 
         let currentRound = 0;
         let totalRounds = 3;  // Default, will be updated from init
+        // A round = every player draws once; a turn = one drawer's go.
+        let currentTurn = 0;
+        let totalTurns = 0;
         
         function getCookie(name) {
             let value = `; ${document.cookie}`;
@@ -1201,11 +1155,28 @@
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
         
+        // Round "2/3" and turn "7/15" badges in the header
+        function applyTurnInfo(data) {
+            if (data.round_number) currentRound = data.round_number;
+            if (data.total_rounds) totalRounds = data.total_rounds;
+            if (data.turn_number) currentTurn = data.turn_number;
+            if (data.total_turns) totalTurns = data.total_turns;
+            updateRoundDisplay();
+        }
+
         function updateRoundDisplay() {
-            const el = document.getElementById('round-display');
-            if (!el) return;
-            // Design shows current round number in the badge
-            el.innerText = String(currentRound || 1);
+            const roundEl = document.getElementById('round-display');
+            if (roundEl) {
+                roundEl.innerText = totalRounds
+                    ? `${currentRound || 1}/${totalRounds}`
+                    : String(currentRound || 1);
+            }
+            const turnEl = document.getElementById('turn-display');
+            if (turnEl) {
+                turnEl.innerText = totalTurns
+                    ? `${currentTurn || 1}/${totalTurns}`
+                    : String(currentTurn || 1);
+            }
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -1226,11 +1197,8 @@
         let wordRanges = [], revealedWordKeys = new Set();
         let roomCategory = "hollywood_movies";
         let currentHostName = null;
-        let availableCategories = ["hollywood_movies", "hollywood_characters"];
 
         // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-        const CATEGORY_GENRE_ORDER = ["bollywood", "hollywood", "asian_dramas", "anime", "cartoon"];
-        const CATEGORY_KIND_ORDER = ["movies", "characters"];
         const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
 
         function splitCategory(id) {
@@ -1256,21 +1224,6 @@
                 : titleizeCategoryPart(genre);
         }
 
-        function orderedCategoryParts(categories) {
-            const genres = [], kinds = [];
-            categories.map(splitCategory).forEach(({ genre, kind }) => {
-                if (genre && !genres.includes(genre)) genres.push(genre);
-                if (kind && !kinds.includes(kind)) kinds.push(kind);
-            });
-            const byOrder = (order) => (a, b) => {
-                const ia = order.indexOf(a), ib = order.indexOf(b);
-                return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-            };
-            return {
-                genres: genres.sort(byOrder(CATEGORY_GENRE_ORDER)),
-                kinds: kinds.sort(byOrder(CATEGORY_KIND_ORDER)),
-            };
-        }
         let countdownInterval = null;
         let timeLeft = 0;
         let lobbyTimeLeft = 0;
@@ -1539,19 +1492,13 @@
                 closeFinalLeaderboard();
                 const congrats = document.getElementById('congrats-area');
                 if (congrats) congrats.style.display = "none";
-                hideEndGameActions();
-                showRejoinWait(
-                    data.time_left,
-                    data.message || "Your opponent left. End the game or wait 5 minutes for another player.",
-                    data.awaiting_choice !== false
-                );
+                showRejoinWait(data.time_left, data.awaiting_choice !== false);
             }
             if (data.type === "rejoin_cancelled") {
                 stopRejoinWait();
                 closeFinalLeaderboard();
                 const congrats = document.getElementById('congrats-area');
                 if (congrats) congrats.style.display = "none";
-                hideEndGameActions();
                 const reveal = document.getElementById('movie-reveal');
                 if (reveal) reveal.classList.add('hidden');
                 // Clear stale letter boxes / canvas from the finished round
@@ -1705,9 +1652,9 @@
                     typeof data.player_count === "number" &&
                     data.player_count < 2;
                 if (soloInPlayingRoom && data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
-                    showRejoinWait(data.rejoin_time_left, null, false);
+                    showRejoinWait(data.rejoin_time_left, false);
                 } else if (soloInPlayingRoom && data.awaiting_rejoin_choice) {
-                    showRejoinWait(null, null, true);
+                    showRejoinWait(null, true);
                 } else {
                     stopRejoinWait();
                 }
@@ -1717,9 +1664,6 @@
                     if (catLabel) {
                         catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
-                }
-                if (Array.isArray(data.categories) && data.categories.length) {
-                    availableCategories = data.categories;
                 }
                 // Determine if we're in LOBBY or PLAYING state
                 // LOBBY: room_status is explicitly "LOBBY" OR not set and we're waiting
@@ -1794,13 +1738,7 @@
                     movieHistory = data.history_movies;
                     renderHistory();
                 }
-                if (data.round_number) {
-                    currentRound = data.round_number;
-                }
-                if (data.total_rounds) {
-                    totalRounds = data.total_rounds;
-                }
-                updateRoundDisplay();
+                applyTurnInfo(data);
                 myRole = data.role; targetMovie = "";
                 stopTimer();
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1838,7 +1776,7 @@
                     startTimer(data.time_left);
                 }
                 if (data.winner_msg) {
-                    showAnnouncement(data.winner_msg, data.revealed, undefined, {
+                    showAnnouncement(data.winner_msg, data.revealed, {
                         isRestore: true,
                         correctGuessers: data.correct_guessers,
                         scores: data.scores || window.lastPlayerData,
@@ -1864,11 +1802,7 @@
             if (data.type === "game_start") {
                 console.log(`[DEBUG-FRONTEND] game_start event received. Transitioning to PLAYING.`);
                 stopSelectionTimer();
-                currentRound = data.round_number || (currentRound);
-                if (data.total_rounds) {
-                    totalRounds = data.total_rounds;
-                }
-                updateRoundDisplay();
+                applyTurnInfo(data);
                 document.getElementById('congrats-area').style.display = "none";
                 document.getElementById('movie-reveal').classList.add('hidden');
                 document.getElementById('lobby-waiting-area').classList.add('hidden');
@@ -1901,11 +1835,12 @@
             if (data.type === "announcement") {
                 stopTimer();
                 stopSelectionTimer();
+                applyTurnInfo(data);
                 if (data.reveal) markWordCorrect(data.reveal);
                 if (Array.isArray(data.scores)) {
                     updatePlayerList(data.scores);
                 }
-                showAnnouncement(data.message, data.reveal, data.is_final_round, {
+                showAnnouncement(data.message, data.reveal, {
                     correctGuessers: data.correct_guessers,
                     scores: data.scores,
                 });
@@ -1914,18 +1849,14 @@
                 console.log("[DEBUG-FRONTEND] Game ended.");
                 stopTimer();
                 stopSelectionTimer();
+                applyTurnInfo(data);
                 stopRejoinWait();
                 if (data.host_name) currentHostName = data.host_name;
                 if (data.category) roomCategory = data.category;
-                if (Array.isArray(data.categories) && data.categories.length) {
-                    availableCategories = data.categories;
-                }
                 if (data.can_continue === false) {
                     showRoomEnded(data.reason || "The game has ended.");
                 } else {
-                    showFinalLeaderboard(data.final_scores, data.total_rounds, {
-                        category: data.category || roomCategory,
-                        categories: data.categories || availableCategories,
+                    showFinalLeaderboard(data.final_scores, {
                         hostName: data.host_name || currentHostName,
                     });
                 }
@@ -1934,7 +1865,6 @@
                 console.log("[DEBUG-FRONTEND] Game continued for another series of rounds.");
                 closeFinalLeaderboard();
                 document.getElementById('congrats-area').style.display = "none";
-                hideEndGameActions();
                 if (data.total_rounds) {
                     totalRounds = data.total_rounds;
                 }
@@ -1982,7 +1912,36 @@
         const ICON_PENCIL = `<img class="mg-icon" src="/static/img/icons/ic-pencil.svg" width="32.5" height="33.3237" alt="">`;
         const ICON_KICK = `<img class="mg-icon" src="/static/img/icons/ic-kick-player.svg" width="31.8167" height="33.3333" alt="">`;
 
+        // Points a player just gained ("+ 50" before their score), shown for
+        // SCORE_GAIN_MS after their score goes up. The first list after a page
+        // load / reconnect only records a baseline, so nothing flashes on refresh.
+        const SCORE_GAIN_MS = 1000;
+        let lastKnownScores = null;
+        const scoreGains = {};
+        let scoreGainTimer = null;
+
+        function trackScoreGains(players) {
+            const now = Date.now();
+            let gained = false;
+            const next = {};
+            players.forEach(p => {
+                const score = Number(p.score) || 0;
+                const prev = lastKnownScores ? lastKnownScores[p.name] : undefined;
+                if (typeof prev === "number" && score > prev) {
+                    scoreGains[p.name] = { points: score - prev, until: now + SCORE_GAIN_MS };
+                    gained = true;
+                }
+                next[p.name] = score;
+            });
+            lastKnownScores = next;
+            if (gained) {
+                clearTimeout(scoreGainTimer);
+                scoreGainTimer = setTimeout(() => updatePlayerList(window.lastPlayerData), SCORE_GAIN_MS);
+            }
+        }
+
         function updatePlayerList(players) {
+            trackScoreGains(players);
             const listContainer = document.getElementById('player-list');
             listContainer.innerHTML = "";
             window.lastPlayerData = players;
@@ -1991,6 +1950,7 @@
                 const div = document.createElement('div');
                 div.className = "player-item" + (p.name === myName ? " is-me" : "");
                 const isDrawer = p.name === drawerStatus;
+                const gain = scoreGains[p.name] && scoreGains[p.name].until > Date.now() ? scoreGains[p.name] : null;
                 const pencil = isDrawer
                     ? `<span class="player-drawer-icon" title="Drawer">${ICON_PENCIL}</span>`
                     : "";
@@ -1999,6 +1959,7 @@
                 div.innerHTML = `
                     <span class="player-name"><span class="player-label"><span class="player-name-text">${escapeHtml(p.name)}</span>${p.name === myName ? `<span class="player-you">(you)</span>` : ""}</span>${pencil}</span>
                     <div class="player-right">
+                        ${gain ? `<span class="player-gain">+ ${gain.points}</span>` : ""}
                         <span class="player-score">${Number(p.score) || 0}</span>
                     </div>
                 `;
@@ -2050,15 +2011,16 @@
         function stopLobbyTimer() {
             document.getElementById('lobby-timer-display').classList.add('hidden');
         }
-        function showRejoinWait(seconds, message, awaitingChoice) {
+        function showRejoinWait(seconds, awaitingChoice) {
             // Ensure Game Over modal cannot cover this prompt
             closeFinalLeaderboard();
             const overlay = document.getElementById('rejoin-wait-overlay');
             const timerBox = document.getElementById('rejoin-wait-timer');
             const choiceActions = document.getElementById('rejoin-choice-actions');
             const waitingActions = document.getElementById('rejoin-waiting-actions');
-            document.getElementById('rejoin-wait-message').innerText =
-                message || "End the game or wait for another player to join.";
+            document.getElementById('rejoin-wait-message').innerText = awaitingChoice
+                ? "Player left mid-game. Wait for someone new or wrap it up."
+                : "Waiting for another player to join.";
             overlay.classList.remove('hidden');
 
             let backdrop = document.getElementById('rejoin-wait-backdrop');
@@ -2192,44 +2154,6 @@
             if (timeLeft <= 30) timerDiv.classList.add('timer-low');
             else timerDiv.classList.remove('timer-low');
         }
-        function hideEndGameActions() {
-            const endActions = document.getElementById('end-game-actions');
-            if (endActions) {
-                endActions.classList.add('hidden');
-                endActions.style.display = 'none';
-            }
-        }
-
-        function showEndGameActions() {
-            const endActions = document.getElementById('end-game-actions');
-            const continueBtn = document.getElementById('continue-game-btn');
-            const hostWrap = document.getElementById('host-end-category-wrap');
-            const hostSel = document.getElementById('host-end-category');
-            const isHost = myName === currentHostName;
-            if (endActions) {
-                endActions.classList.remove('hidden');
-                endActions.style.display = 'flex';
-            }
-            if (continueBtn) {
-                continueBtn.style.display = isHost ? '' : 'none';
-            }
-            if (hostWrap && hostSel) {
-                if (isHost) {
-                    hostWrap.classList.remove('hidden');
-                    hostWrap.style.display = 'block';
-                    const cats = availableCategories.length ? availableCategories : ["hollywood_movies", "hollywood_characters"];
-                    hostSel.innerHTML = cats.map((cat) => {
-                        const selected = cat === roomCategory ? " selected" : "";
-                        const label = formatCategoryLabel(cat);
-                        return `<option value="${cat}"${selected}>${label}</option>`;
-                    }).join("");
-                } else {
-                    hostWrap.classList.add('hidden');
-                    hostWrap.style.display = 'none';
-                }
-            }
-        }
-
         function populateRoundResultCard(msg) {
             const roundLabelEl = document.getElementById('congrats-round-label');
             const sepEl = document.getElementById('congrats-kind-sep');
@@ -2294,7 +2218,7 @@
             listEl.classList.remove('hidden');
         }
 
-        function showAnnouncement(msg, reveal, isFinalRound, options = {}) {
+        function showAnnouncement(msg, reveal, options = {}) {
             const congratsArea = document.getElementById('congrats-area');
             // Restoring from init (page load / WS reconnect) shows the already-decided
             // result instantly, with no entrance/popcorn animation — only a live
@@ -2305,13 +2229,6 @@
             populateRoundResultCard(msg);
             populateRoundScoreList(options.correctGuessers, options.scores);
 
-            const finalRound = dataRoundIsFinal(isFinalRound);
-            if (finalRound) {
-                // All rounds done — Quit / Continue
-                showEndGameActions();
-            } else {
-                hideEndGameActions();
-            }
             // No button / countdown: the server starts the next round a few
             // seconds after this card appears.
             if (reveal) {
@@ -2321,12 +2238,6 @@
             document.querySelectorAll('.letter-input').forEach(i => i.disabled = true);
         }
 
-        function dataRoundIsFinal(isFinalRound) {
-            if (isFinalRound === true) return true;
-            if (isFinalRound === false) return false;
-            return totalRounds > 0 && currentRound >= totalRounds;
-        }
-
         function closeFinalLeaderboard() {
             const modal = document.getElementById('final-leaderboard-modal');
             const overlay = document.getElementById('final-leaderboard-overlay');
@@ -2334,13 +2245,21 @@
             if (overlay) overlay.remove();
         }
 
-        function showRoomEnded(message) {
+        // Film-strip modal (Figma "Game Over" / "Game Ended"): title, optional
+        // subtitle, optional ranked list, then stacked full-width actions.
+        function openFilmModal({ title, subtitle = "", rowsHTML = "", actionsHTML }) {
             closeFinalLeaderboard();
             const modal = document.createElement('div');
             modal.id = 'final-leaderboard-modal';
             modal.className = 'modal-card film-modal';
-            modal.innerHTML = `<h1 class="lb-title">Game ended</h1><p class="lb-sub"></p><div class="lb-actions"><button onclick="quitGame()" class="btn btn-danger">Leave Room</button></div>`;
-            modal.querySelector('.lb-sub').innerText = message;
+            modal.innerHTML = `
+                <h1 class="lb-title"></h1>
+                ${subtitle ? '<p class="lb-sub"></p>' : ''}
+                ${rowsHTML ? `<div class="lb-list">${rowsHTML}</div>` : ''}
+                <div class="lb-actions">${actionsHTML}</div>
+            `;
+            modal.querySelector('.lb-title').innerText = title;
+            if (subtitle) modal.querySelector('.lb-sub').innerText = subtitle;
             document.body.appendChild(modal);
             const overlay = document.createElement('div');
             overlay.id = 'final-leaderboard-overlay';
@@ -2349,112 +2268,41 @@
             document.body.appendChild(overlay);
         }
 
-        function showFinalLeaderboard(finalScores, totalRoundsCompleted, options = {}) {
-            closeFinalLeaderboard();
+        function showRoomEnded(message) {
+            openFilmModal({
+                title: "Game ended",
+                subtitle: message,
+                actionsHTML: `<button type="button" class="btn btn-danger" onclick="quitGame()">Leave Room</button>`,
+            });
+        }
 
-            const categories = options.categories || availableCategories || ["hollywood_movies", "hollywood_characters"];
-            const category = options.category || roomCategory || "hollywood_movies";
-            const hostName = options.hostName || currentHostName;
-            const isHost = myName === hostName;
+        // All rounds done. The host continues with the room's category or exits;
+        // everyone else waits for the host or leaves.
+        function showFinalLeaderboard(finalScores, options = {}) {
+            const isHost = myName === (options.hostName || currentHostName);
             const sorted = [...finalScores].sort((a, b) => b.score - a.score);
-
-            const modal = document.createElement('div');
-            modal.id = 'final-leaderboard-modal';
-
-            if (isHost) {
-                modal.className = 'modal-card film-modal is-host-gameover';
-
-                const rowsHTML = sorted.map((player, index) => `
-                    <div class="lb-row">
-                        <span class="lb-name">${index === 0 ? '<img class="lb-medal" src="/static/img/lobby/medal-first.png" alt="" aria-hidden="true">' : ''}${escapeHtml(player.name)}</span>
-                        <span class="lb-score">${player.score} pts</span>
-                    </div>
-                `).join("");
-
-                // Two-step pick: genre, then type (movies / characters)
-                const current = splitCategory(category);
-                const parts = orderedCategoryParts(categories);
-                const genreButtonsHTML = parts.genres.map((genre) => {
-                    const selected = genre === current.genre ? " is-selected" : "";
-                    return `<button type="button" class="lb-category-btn${selected}" data-genre="${genre}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(genre))}</button>`;
-                }).join("");
-                const kindButtonsHTML = parts.kinds.map((kind) => {
-                    const selected = kind === current.kind ? " is-selected" : "";
-                    return `<button type="button" class="lb-category-btn${selected}" data-kind="${kind}" onclick="selectLbCategory(this)">${escapeHtml(titleizeCategoryPart(kind))}</button>`;
-                }).join("");
-
-                modal.innerHTML = `
-                    <h1 class="lb-title">Game Over</h1>
-                    <div class="lb-list">${rowsHTML}</div>
-                    <p class="lb-category-label">Choose category for next game</p>
-                    <div class="lb-category-options is-genres" role="group" aria-label="Category for next game">${genreButtonsHTML}</div>
-                    <div class="lb-category-options" role="group" aria-label="Type for next game">${kindButtonsHTML}</div>
-                    <div class="lb-actions">
-                        <button type="button" class="lb-continue-btn" onclick="continueGame()">Continue Game</button>
-                        <button type="button" class="lb-cancel-btn" onclick="closeFinalLeaderboard()">Cancel</button>
-                    </div>
-                `;
-            } else {
-                modal.className = 'modal-card';
-                const rowsHTML = sorted.map((player, index) => {
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🔹';
-                    return `
-                        <div class="lb-row">
-                            <span class="lb-name">${medal} ${escapeHtml(player.name)}</span>
-                            <span class="lb-score">${player.score} pts</span>
-                        </div>
-                    `;
-                }).join("");
-
-                modal.innerHTML = `
-                    <h1 class="lb-title">🎉 Game Over!</h1>
-                    <p class="lb-sub">Completed ${totalRoundsCompleted} rounds</p>
-                    <div class="lb-list">${rowsHTML}</div>
-                    <p class="lb-sub" style="margin-top:0;">Waiting for host to continue, or leave the room.</p>
-                    <div class="lb-actions">
-                        <button onclick="quitGame()" class="btn btn-danger">Quit Game</button>
-                    </div>
-                `;
-            }
-
-            document.body.appendChild(modal);
-
-            const overlay = document.createElement('div');
-            overlay.id = 'final-leaderboard-overlay';
-            overlay.className = 'modal-overlay';
-            overlay.style.zIndex = '10000';
-            document.body.appendChild(overlay);
-
-            // Also switch the in-page congrats actions to Quit / Continue
-            showEndGameActions();
-        }
-
-        function selectLbCategory(btn) {
-            btn.parentElement.querySelectorAll('.lb-category-btn').forEach((b) => b.classList.remove('is-selected'));
-            btn.classList.add('is-selected');
+            const rowsHTML = sorted.map((player, index) => `
+                <div class="lb-row">
+                    <span class="lb-name">${index === 0 ? '<img class="lb-medal" src="/static/img/lobby/medal-first.png" alt="" aria-hidden="true">' : ''}<span class="lb-name-text">${escapeHtml(player.name)}</span></span>
+                    <span class="lb-score">${Number(player.score) || 0} pts</span>
+                </div>
+            `).join("");
+            openFilmModal({
+                title: "Game Over",
+                subtitle: isHost ? "" : "Waiting for host to continue",
+                rowsHTML,
+                actionsHTML: isHost
+                    ? `<button type="button" class="btn btn-danger" onclick="continueGame()">Continue Game</button>
+                       <button type="button" class="btn btn-primary-success" onclick="quitGame()">Exit Game</button>`
+                    : `<button type="button" class="btn btn-danger" onclick="quitGame()">Leave Room</button>`,
+            });
         }
 
         function continueGame() {
-            const selectedGenreBtn = document.querySelector('.lb-category-btn.is-selected[data-genre]');
-            const selectedKindBtn = document.querySelector('.lb-category-btn.is-selected[data-kind]');
-            const categorySel =
-                document.getElementById("host-continue-category") ||
-                document.getElementById("host-end-category");
-            const pickedCategory = selectedGenreBtn && selectedKindBtn
-                ? `${selectedGenreBtn.dataset.genre}_${selectedKindBtn.dataset.kind}`
-                : null;
-            const nextCategory = pickedCategory && availableCategories.includes(pickedCategory)
-                ? pickedCategory
-                : (categorySel && categorySel.value) ? categorySel.value : roomCategory;
-            console.log("[DEBUG-FRONTEND] Continue game requested", { category: nextCategory });
             closeFinalLeaderboard();
             document.getElementById('congrats-area').style.display = "none";
-            hideEndGameActions();
-            const payload = { type: "continue_game" };
-            if (myName === currentHostName && nextCategory) {
-                payload.category = nextCategory;
-            }
-            ws.send(JSON.stringify(payload));
+            // The next game keeps the room's category (it can't be changed between games).
+            ws.send(JSON.stringify({ type: "continue_game" }));
         }
 
         function quitGame() {
@@ -2499,7 +2347,7 @@
             createGuessingBoxes(display);
         }
         function getGuessDraftStorageKey() {
-            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}`;
+            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}:${currentTurn}`;
         }
         function saveGuessDraft() {
             if (myRole === "drawer") return;

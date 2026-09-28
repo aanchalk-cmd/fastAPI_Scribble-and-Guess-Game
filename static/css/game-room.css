@@ -2579,9 +2579,23 @@ body.mg-room .round-result-card {
         /* base #sidebar rule forces a transparent background with !important */
         background: #fff !important;
     }
-    /* Keeps Players / Round / Room on one row down to 360px */
+    /* Keeps Players / Round / Turn / Room on one row down to 360px */
+    body.mg-room .mg-header-right {
+        gap: 6px;
+    }
     body.mg-room .mg-badge-row {
-        gap: 10px;
+        gap: 6px;
+    }
+    body.mg-room .mg-badge {
+        min-width: 0;
+        padding: 6px 6px 8px;
+    }
+    body.mg-room #sidebar-toggle.mg-header-btn-ghost {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+    body.mg-room .mg-badge-label {
+        font-size: 0.7rem;
     }
     /* The drawer must be able to read the whole title on a phone */
     body.mg-room #drawer-movie {

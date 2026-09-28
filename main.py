@@ -660,12 +660,15 @@ class ConnectionManager:
         # Rounds tracking - validate: only 1, 3, or 5 rounds allowed
         if total_rounds not in [1, 3, 5]:
             total_rounds = 3  # Default to 3 if invalid
+        # A round = every player draws once, so a game is players x rounds turns
+        # and each player draws exactly `total_rounds` times.
         self.total_rounds = total_rounds
-        self.current_round = 0
+        self.current_round = 0   # round of the current turn (1-based, this series)
+        self.current_turn = 0    # turns started this series (1-based)
         self.round_display_offset = 0
-        self.game_complete = False  # True after all configured rounds finish
-        self.drawer_queue = []  # Fair rotation queue
-        self.drawer_queue_index = 0
+        self.game_complete = False  # True after every player finished their turns
+        self.drawer_queue = []  # Rotation order (roster order, joiners appended)
+        self.drawer_turns: Dict[str, int] = {}  # Drawing turns taken this series
         
         self.round_timer_task = None
         self.selection_timer_task = None
@@ -767,78 +770,79 @@ class ConnectionManager:
     def get_player_score(self, name: str):
         score = r.get(f"score:{self.room_id}:{name}")
         return int(score) if score else 0
-    def get_round(self):
-        round_no = r.get(f"round:{id(self)}")
-        return int(round_no) if round_no is not None else 0
-
-    def increment_round(self):
-        current = self.get_round()
-        r.set(f"round:{id(self)}", current + 1)
-
-    def reset_round(self):
-        r.set(f"round:{id(self)}", 0)
-
     def get_display_round(self):
         return self.round_display_offset + self.current_round
 
     def get_display_total_rounds(self):
         return self.round_display_offset + self.total_rounds
 
+    def get_total_turns(self) -> int:
+        """Turns this series: those already taken plus every active player's remaining ones."""
+        active = set(self.active_connections.keys())
+        remaining = sum(
+            max(0, self.total_rounds - self.drawer_turns.get(name, 0))
+            for name in self.drawer_queue
+            if name in active
+        )
+        return self.current_turn + remaining
+
+    def turn_info(self) -> dict:
+        """Round / turn fields shared by init, announcement and game_ended payloads."""
+        return {
+            "round_number": self.get_display_round(),
+            "total_rounds": self.get_display_total_rounds(),
+            "turn_number": self.current_turn,
+            "total_turns": self.get_total_turns(),
+        }
+
     def initialize_drawer_queue(self, player_names: List[str]):
-        """Initialize or rebuild the drawer rotation queue for fair rotation."""
+        """Set the rotation order for this series; turn counts start from zero."""
         self.drawer_queue = player_names.copy()
-        self.drawer_queue_index = 0
+        self.drawer_turns = {}
         print(f"[DEBUG-ROUNDS] Initialized drawer queue: {self.drawer_queue}")
 
     def remove_from_drawer_queue(self, player_name: str):
-        """Remove a disconnected or kicked player from the rotation queue."""
+        """Remove a player who left or was kicked from the rotation."""
         if player_name not in self.drawer_queue:
             return
-
-        removed_index = self.drawer_queue.index(player_name)
         self.drawer_queue.remove(player_name)
-
-        if removed_index < self.drawer_queue_index:
-            self.drawer_queue_index = max(0, self.drawer_queue_index - 1)
-        if self.drawer_queue and self.drawer_queue_index >= len(self.drawer_queue):
-            self.drawer_queue_index = 0
-
         print(
             f"[DEBUG-ROUNDS] Removed {player_name} from drawer queue. "
             f"Queue: {self.drawer_queue}"
         )
 
-    def get_next_drawer(self):
-        """Get the next drawer in fair rotation order, skipping inactive players."""
-        if not self.drawer_queue:
+    def peek_next_drawer(self) -> Optional[str]:
+        """
+        The next drawer: the connected player with the fewest drawing turns,
+        ties broken by rotation order — so round 1 is P1..Pn, round 2 is P1..Pn
+        again, and so on. None once every connected player has drawn
+        `total_rounds` times (the game is complete). Does not change state.
+        """
+        active = set(self.active_connections.keys())
+        candidates = [
+            name for name in self.drawer_queue
+            if name in active and self.drawer_turns.get(name, 0) < self.total_rounds
+        ]
+        if not candidates:
             return None
+        fewest = min(self.drawer_turns.get(name, 0) for name in candidates)
+        return next(name for name in candidates if self.drawer_turns.get(name, 0) == fewest)
 
-        active_players = set(self.active_connections.keys())
-        attempts = len(self.drawer_queue)
-
-        while attempts > 0:
-            if self.drawer_queue_index >= len(self.drawer_queue):
-                self.drawer_queue_index = 0
-
-            next_drawer = self.drawer_queue[self.drawer_queue_index]
-            self.drawer_queue_index += 1
-            attempts -= 1
-
-            if next_drawer in active_players:
-                print(
-                    f"[DEBUG-ROUNDS] Next drawer: {next_drawer} "
-                    f"(index {self.drawer_queue_index - 1}/{len(self.drawer_queue)})"
-                )
-                return next_drawer
-
-            print(f"[DEBUG-ROUNDS] Skipping inactive drawer: {next_drawer}")
-
-        if active_players:
-            fallback = random.choice(list(active_players))
-            print(f"[DEBUG-ROUNDS] No valid drawer in queue, fallback: {fallback}")
-            return fallback
-
-        return None
+    def take_next_turn(self) -> Optional[str]:
+        """Start the next turn: pick its drawer and count it against their turns."""
+        drawer = self.peek_next_drawer()
+        if drawer is None:
+            return None
+        self.drawer_turns[drawer] = self.drawer_turns.get(drawer, 0) + 1
+        self.current_turn += 1
+        # Monotonic: a mid-game joiner catching up never moves the round backwards.
+        self.current_round = max(self.current_round, self.drawer_turns[drawer])
+        print(
+            f"[DEBUG-ROUNDS] Turn {self.current_turn}/{self.get_total_turns()} "
+            f"(round {self.current_round}/{self.total_rounds}) drawer={drawer} "
+            f"turns={self.drawer_turns}"
+        )
+        return drawer
 
     def set_player_score(self, name: str, points: int):
         current_score = self.get_player_score(name)
@@ -1070,9 +1074,12 @@ class ConnectionManager:
         return 0
 
     def cancel_selection_timer(self):
-        if self.selection_timer_task:
-            self.selection_timer_task.cancel()
-            self.selection_timer_task = None
+        # On expiry we run inside the selection timer task itself (it starts the
+        # next turn); cancelling it would abort that at its next await.
+        task = self.selection_timer_task
+        self.selection_timer_task = None
+        if task and task is not asyncio.current_task():
+            task.cancel()
         self.game_state["selection_active"] = False
         self.game_state["selection_end_time"] = None
         self.last_word_options = []
@@ -1080,121 +1087,53 @@ class ConnectionManager:
         r.delete(f"selection_drawer:{id(self)}")
 
     async def reassign_drawer_after_removal(self):
-        """Pick a new drawer from active players without advancing the round."""
+        """
+        The drawer left or was kicked mid-turn. That turn counts as theirs; the
+        next player in the rotation starts the next turn (or the game ends).
+        """
         if self.round_advance_task and not self.round_advance_task.done():
             # Round is over and the next one is already scheduled — it will pick
             # the next drawer from the rotation; don't replay this round.
             return
-        player_names = list(self.active_connections.keys())
-        if not player_names:
+        if not self.active_connections:
             self.game_state["drawer_assigned"] = False
             self.game_state["drawer_name"] = None
             return
 
-        self.cancel_selection_timer()
-        if self.round_timer_task:
-            self.round_timer_task.cancel()
-            self.round_timer_task = None
-
-        r.delete("round_end_time")
-        r.delete(f"round_end_time:{id(self)}")
-        r.delete(f"round_start_time:{id(self)}")
-        self.game_state.update({
-            "movie": "",
-            "display_name": "",
-            "is_round_active": False,
-            "winner_announcement": None,
-            "revealed_movie": None,
-            "word_guessed": False,
-            "revealed_words": {},
-            "correct_guessers": {},
-            "round_start_time": None,
-            "round_duration_seconds": None,
-        })
-        self.draw_history = []
-
-        new_drawer_name = self.get_next_drawer()
-        if not new_drawer_name or new_drawer_name not in player_names:
-            new_drawer_name = random.choice(player_names)
-
-        self.game_state["drawer_name"] = new_drawer_name
-        self.game_state["drawer_assigned"] = True
-        self.game_state["is_selecting"] = True
-
-        print(f"[DEBUG-ROUNDS] Reassigned drawer after removal: {new_drawer_name}")
-
-        await self.start_selection_timer()
-
-        for name, ws in self.active_connections.items():
-            role = "drawer" if name == new_drawer_name else "guesser"
-            await ws.send_json({
-                "type": "init",
-                "role": role,
-                "round_number": self.get_display_round(),
-                "total_rounds": self.get_display_total_rounds(),
-                "movie_set": False,
-                "word_guessed": False,
-                "drawer_name": new_drawer_name,
-                "selection_active": True,
-                "selection_time_left": self.get_selection_time_left(),
+        next_drawer = self.peek_next_drawer()
+        if next_drawer:
+            await self.broadcast({
+                "type": "new_drawer",
+                "drawer_name": next_drawer,
+                "message": f"Drawer changed. New drawer: {next_drawer}.",
             })
-
-        await self.broadcast({
-            "type": "new_drawer",
-            "drawer_name": new_drawer_name,
-            "message": f"Drawer changed. New drawer: {new_drawer_name}.",
-        })
-
-        # Auto-send 3 word options to the new drawer from the room category
-        await self.send_word_options_to_drawer()
+        print(f"[DEBUG-ROUNDS] Drawer removed mid-turn; next drawer: {next_drawer}")
+        await self.restart_game()
 
     async def handle_selection_expiry(self):
-        
+        """
+        The drawer didn't pick a word in time. The turn still counts as theirs
+        (so nobody draws extra); the next player in the rotation goes next.
+        """
         if self.game_state.get("movie"):
+            return
+        if not self.active_connections:
             return
 
         old_drawer = self.game_state.get("drawer_name")
-
-        player_names = list(self.active_connections.keys())
-        if not player_names:
-            return
-
-        
-        if len(player_names) > 1 and old_drawer in player_names:
-            idx = player_names.index(old_drawer)
-            new_drawer = player_names[(idx + 1) % len(player_names)]
-        else:
-            new_drawer = random.choice(player_names)
-
-        
-        self.game_state.update({
-            "drawer_name": new_drawer,
-            "drawer_assigned": True,
-            "movie": "",
-            "display_name": "",
-            "is_round_active": False
-        })
-
-        
-        await self.broadcast({
-            "type": "new_drawer",
-            "drawer_name": new_drawer,
-            "message": f"⏱️ Time's up for {old_drawer}. New drawer: {new_drawer}."
-        })
-
-        await self.broadcast({
-            "type": "player_list",
-            "players": self.get_player_data()
-        })
-
-        
-        await self.start_selection_timer()
-        # New drawer's turn — offer three words from the room category
-        await self.send_word_options_to_drawer()
+        next_drawer = self.peek_next_drawer()
+        if next_drawer:
+            await self.broadcast({
+                "type": "new_drawer",
+                "drawer_name": next_drawer,
+                "message": f"⏱️ Time's up for {old_drawer}. New drawer: {next_drawer}.",
+            })
+        await self.restart_game()
 
     async def start_selection_timer(self):
-        if self.selection_timer_task:
-            self.selection_timer_task.cancel()
+        previous = self.selection_timer_task
+        if previous and previous is not asyncio.current_task():
+            previous.cancel()
 
         self.game_state["selection_active"] = True
         end_timestamp = time.time() + 60
@@ -1773,11 +1712,12 @@ class ConnectionManager:
         self.game_state["word_guessed"] = anyone_correct
         await self.record_current_movie_history()
         self.finish_current_round(winner_for_db)
-        is_final_round = self.current_round >= self.total_rounds
+        is_final_round = self.peek_next_drawer() is None
         scoreboard = self.get_player_data()
         print(
             f"[SCORE] round_end room={self.room_id} "
             f"round={self.get_display_round()}/{self.get_display_total_rounds()} "
+            f"turn={self.current_turn}/{self.get_total_turns()} "
             f"movie={self.game_state.get('movie')} "
             f"correct_guessers={correct} "
             f"reason={reason} totals={scoreboard}"
@@ -1795,8 +1735,7 @@ class ConnectionManager:
             "correct_guessers": correct,
             "scores": scoreboard,
             "is_final_round": is_final_round,
-            "round_number": self.get_display_round(),
-            "total_rounds": self.get_display_total_rounds(),
+            **self.turn_info(),
         })
 
     def cancel_round_advance(self):
@@ -1814,7 +1753,7 @@ class ConnectionManager:
         """
         self.cancel_round_advance()
         self.game_state["next_round_at"] = time.time() + ROUND_RESULT_SECONDS
-        round_at_schedule = self.current_round
+        turn_at_schedule = self.current_turn
 
         async def advance():
             try:
@@ -1824,7 +1763,7 @@ class ConnectionManager:
                 self.round_advance_task = None
                 self.game_state["next_round_at"] = None
                 # Something else already moved the game on.
-                if self.current_round != round_at_schedule or self.game_state.get("is_round_active"):
+                if self.current_turn != turn_at_schedule or self.game_state.get("is_round_active"):
                     return
                 room = self.room
                 if room and (
@@ -1895,29 +1834,39 @@ class ConnectionManager:
         self.round_timer_task = asyncio.create_task(timer())
 
     async def restart_game(self):
-        """Start a new round. Handles both initial game start (from lobby) and between-round transitions."""
+        """Start the next turn: from the lobby, between turns, or after a drawer left."""
         self.cancel_round_advance()
-        print(f"[DEBUG-BACKEND] restart_game() called. drawer_assigned={self.game_state['drawer_assigned']}, active_connections={len(self.active_connections)}, current_round={self.current_round}, total_rounds={self.total_rounds}")
-        
-        # Check if all rounds are completed
-        if self.current_round >= self.total_rounds:
-            print(f"[DEBUG-ROUNDS] All {self.total_rounds} rounds completed!")
+        print(
+            f"[DEBUG-BACKEND] restart_game() called. drawer_assigned={self.game_state['drawer_assigned']}, "
+            f"active_connections={len(self.active_connections)}, "
+            f"turn={self.current_turn}, round={self.current_round}/{self.total_rounds}"
+        )
+        if not self.active_connections:
+            print(f"[DEBUG-BACKEND] No active connections, returning")
+            return
+
+        # First turn of a series: fix the rotation order (roster order: host first)
+        if not self.drawer_queue:
+            active = list(self.active_connections.keys())
+            roster = [name for name in (self.room.players if self.room else []) if name in self.active_connections]
+            self.initialize_drawer_queue(roster + [name for name in active if name not in roster])
+
+        # Every connected player has drawn `total_rounds` times -> game over
+        if self.peek_next_drawer() is None:
+            print(f"[DEBUG-ROUNDS] All players drew {self.total_rounds} time(s): {self.drawer_turns}")
             await self.end_game()
             return
-        
+
         await self.record_current_movie_history()
 
         if self.current_db_round_id:
             self.finish_current_round()
 
-        self.increment_round() 
-        new_round = self.get_round()
-        self.current_round = new_round
-        
+        self.cancel_selection_timer()
         if self.round_timer_task:
             self.round_timer_task.cancel()
             self.round_timer_task = None
-        
+
         r.delete("round_end_time")
         r.delete(f"round_end_time:{id(self)}")
         r.delete(f"round_start_time:{id(self)}")
@@ -1932,23 +1881,10 @@ class ConnectionManager:
         })
         self.history_recorded_for_round = False
         self.draw_history = []
-        if not self.active_connections:
-            print(f"[DEBUG-BACKEND] No active connections, returning")
-            return
-        
-        # Initialize drawer queue on first round
-        player_names = list(self.active_connections.keys())
-        if not self.drawer_queue:
-            self.initialize_drawer_queue(player_names)
-        
-        # Get next drawer using fair rotation
-        new_drawer_name = self.get_next_drawer()
 
-        if not new_drawer_name or new_drawer_name not in player_names:
-            new_drawer_name = random.choice(player_names)
-        
-        print(f"[DEBUG-ROUNDS] Round {new_round}/{self.total_rounds} - Drawer: {new_drawer_name}")
-        
+        new_drawer_name = self.take_next_turn()
+        new_round = self.get_display_round()
+
         if self.room and self.room.db_id:
             drawer_db_id = self.room.get_player_db_id(new_drawer_name)
             if drawer_db_id:
@@ -1975,8 +1911,7 @@ class ConnectionManager:
             await ws.send_json({
                 "type": "init",
                 "role": role,
-                "round_number": self.get_display_round(),
-                "total_rounds": self.get_display_total_rounds(),
+                **self.turn_info(),
                 "movie_set": False,
                 "word_guessed": False,
                 "drawer_name": new_drawer_name,
@@ -2009,8 +1944,9 @@ class ConnectionManager:
             self.room.category = word_manager.normalize_category(category)
             print(f"[GAME] Category set to {self.room.category} for room {self.room_id}")
 
-        self.reset_round()
         self.current_round = 0
+        self.current_turn = 0
+        self.drawer_turns = {}
         self.cancel_selection_timer()
         if self.round_timer_task:
             self.round_timer_task.cancel()
@@ -2035,9 +1971,10 @@ class ConnectionManager:
             "selection_active": False,
         })
         self.draw_history = []
-        # Keep drawer_queue order; rebuild if empty so newcomers are included
+        # Keep the rotation order; rebuild if empty so newcomers are included
         if not self.drawer_queue:
             self.initialize_drawer_queue(list(self.active_connections.keys()))
+        self.drawer_turns = {}
 
         new_category = self.get_room_category()
         await self.broadcast({
@@ -2060,7 +1997,10 @@ class ConnectionManager:
 
     async def end_game(self):
         """All configured rounds finished — show final options (quit / continue)."""
-        print(f"[DEBUG-ROUNDS] Game ended after {self.total_rounds} rounds")
+        print(
+            f"[DEBUG-ROUNDS] Game ended after {self.total_rounds} round(s), "
+            f"{self.current_turn} turn(s): {self.drawer_turns}"
+        )
         self.game_complete = True
         final_scores = self.get_player_data()
 
@@ -2074,7 +2014,7 @@ class ConnectionManager:
         await self.broadcast({
             "type": "game_ended",
             "final_scores": final_scores,
-            "total_rounds": self.get_display_total_rounds(),
+            **self.turn_info(),
             "can_continue": True,
             "category": self.get_room_category(),
             "categories": word_manager.get_categories(),
@@ -2904,15 +2844,13 @@ async def websocket_endpoint(
         return  
     name = username
     current_time_left = manager.get_remaining_time()
-    current_round = manager.get_round()
 
     # restart_game / continue_game already sent init to everyone after resume.
     if not resumed_after_rejoin:
         await websocket.send_json({
             "type": "init", 
             "role": role, 
-            "round_number": manager.get_display_round(),
-            "total_rounds": manager.get_display_total_rounds(),
+            **manager.turn_info(),
             "room_status": room.status,
             "host_name": room.host,
             "room_type": room.room_type,

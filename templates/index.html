@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=gameover2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=turns3">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -787,6 +787,10 @@
                 <span class="mg-badge-label">Round</span>
                 <span class="mg-badge-value" id="round-display">1</span>
             </div>
+            <div class="mg-badge" id="turn-badge">
+                <span class="mg-badge-label">Turn</span>
+                <span class="mg-badge-value" id="turn-display">1</span>
+            </div>
             <div class="mg-badge" id="room-badge">
                 <span class="mg-badge-label">Room</span>
                 <div class="mg-badge-row">
@@ -1097,6 +1101,9 @@
 
         let currentRound = 0;
         let totalRounds = 3;  // Default, will be updated from init
+        // A round = every player draws once; a turn = one drawer's go.
+        let currentTurn = 0;
+        let totalTurns = 0;
         
         function getCookie(name) {
             let value = `; ${document.cookie}`;
@@ -1148,11 +1155,28 @@
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
         
+        // Round "2/3" and turn "7/15" badges in the header
+        function applyTurnInfo(data) {
+            if (data.round_number) currentRound = data.round_number;
+            if (data.total_rounds) totalRounds = data.total_rounds;
+            if (data.turn_number) currentTurn = data.turn_number;
+            if (data.total_turns) totalTurns = data.total_turns;
+            updateRoundDisplay();
+        }
+
         function updateRoundDisplay() {
-            const el = document.getElementById('round-display');
-            if (!el) return;
-            // Design shows current round number in the badge
-            el.innerText = String(currentRound || 1);
+            const roundEl = document.getElementById('round-display');
+            if (roundEl) {
+                roundEl.innerText = totalRounds
+                    ? `${currentRound || 1}/${totalRounds}`
+                    : String(currentRound || 1);
+            }
+            const turnEl = document.getElementById('turn-display');
+            if (turnEl) {
+                turnEl.innerText = totalTurns
+                    ? `${currentTurn || 1}/${totalTurns}`
+                    : String(currentTurn || 1);
+            }
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -1714,13 +1738,7 @@
                     movieHistory = data.history_movies;
                     renderHistory();
                 }
-                if (data.round_number) {
-                    currentRound = data.round_number;
-                }
-                if (data.total_rounds) {
-                    totalRounds = data.total_rounds;
-                }
-                updateRoundDisplay();
+                applyTurnInfo(data);
                 myRole = data.role; targetMovie = "";
                 stopTimer();
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1784,11 +1802,7 @@
             if (data.type === "game_start") {
                 console.log(`[DEBUG-FRONTEND] game_start event received. Transitioning to PLAYING.`);
                 stopSelectionTimer();
-                currentRound = data.round_number || (currentRound);
-                if (data.total_rounds) {
-                    totalRounds = data.total_rounds;
-                }
-                updateRoundDisplay();
+                applyTurnInfo(data);
                 document.getElementById('congrats-area').style.display = "none";
                 document.getElementById('movie-reveal').classList.add('hidden');
                 document.getElementById('lobby-waiting-area').classList.add('hidden');
@@ -1821,6 +1835,7 @@
             if (data.type === "announcement") {
                 stopTimer();
                 stopSelectionTimer();
+                applyTurnInfo(data);
                 if (data.reveal) markWordCorrect(data.reveal);
                 if (Array.isArray(data.scores)) {
                     updatePlayerList(data.scores);
@@ -1834,6 +1849,7 @@
                 console.log("[DEBUG-FRONTEND] Game ended.");
                 stopTimer();
                 stopSelectionTimer();
+                applyTurnInfo(data);
                 stopRejoinWait();
                 if (data.host_name) currentHostName = data.host_name;
                 if (data.category) roomCategory = data.category;
@@ -2331,7 +2347,7 @@
             createGuessingBoxes(display);
         }
         function getGuessDraftStorageKey() {
-            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}`;
+            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}:${currentTurn}`;
         }
         function saveGuessDraft() {
             if (myRole === "drawer") return;

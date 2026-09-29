@@ -124,7 +124,7 @@
         genre: genres.includes("hollywood") ? "hollywood" : (genres[0] || "hollywood"),
         kind: "movies", // movies | characters | mix
         rounds: 3,
-        duration: 5,
+        duration: 60,
         publicRoom: false,
         maxPlayers: 4,
         roomCode: "",
@@ -222,7 +222,7 @@
                 screen: draft.screen || state.screen,
                 createTab: draft.createTab || state.createTab,
                 rounds: draft.rounds || state.rounds,
-                duration: Math.max(2, Math.min(5, draft.duration || state.duration)),
+                duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom === true,
                 maxPlayers: draft.maxPlayers || state.maxPlayers,
                 roomCode: draft.roomCode || "",
@@ -468,7 +468,7 @@
 
         els.duration.value = state.duration;
         setSliderFill(els.duration);
-        els.durationVal.textContent = `${state.duration} MIN`;
+        els.durationVal.textContent = `${state.duration} SEC`;
         els.publicToggle.checked = state.publicRoom;
         els.maxPlayers.value = state.maxPlayers;
         setSliderFill(els.maxPlayers);
@@ -769,7 +769,7 @@
     });
 
     els.duration.addEventListener("input", () => {
-        state.duration = Math.max(2, Math.min(5, Number(els.duration.value) || 5));
+        state.duration = Math.max(30, Math.min(120, Number(els.duration.value) || 60));
         saveDraft();
         render();
     });

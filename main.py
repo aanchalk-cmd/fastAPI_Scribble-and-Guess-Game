@@ -69,7 +69,7 @@ class GameRoom:
         host: str,
         room_type: str,
         max_players: int,
-        duration: int = 5,
+        duration_seconds: int = 60,
         total_rounds: int = 3,
         category: str = "movies",
         db_id: Optional[int] = None,
@@ -78,7 +78,7 @@ class GameRoom:
         self.host = host
         self.room_type = room_type
         self.max_players = max_players
-        self.duration = duration
+        self.duration = duration_seconds
         self.db_id = db_id
         self.player_db_ids: Dict[str, int] = {}
         self.player_guest_ids: Dict[str, str] = {}
@@ -101,7 +101,7 @@ class GameRoom:
         self.total_rounds = total_rounds
         self.current_round = 0
         # Pass the duration and rounds to the manager!
-        self.manager = ConnectionManager(duration_mins=duration, room=self, room_id=room_id, total_rounds=self.total_rounds)
+        self.manager = ConnectionManager(duration_seconds=duration_seconds, room=self, room_id=room_id, total_rounds=self.total_rounds)
 
     def register_player(self, name: str, player_db_id: int):
         self.player_db_ids[name] = player_db_id
@@ -362,7 +362,7 @@ async def join(
     action: str = Form(...),
     room_type: str = Form("private"),  
     max_players: int = Form(6),
-    duration: int = Form(5),
+    duration: int = Form(60),
     rounds: int = Form(3),  # New: rounds selection
     category: str = Form("movies"),  # Word category from words.json
     guest_id: str = Form(None),
@@ -380,7 +380,7 @@ async def join(
     print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(10, max_players))
-        duration = max(2, min(5, duration))
+        duration = max(30, min(120, ((duration + 7) // 15) * 15))
         # Validate: only 1, 3, or 5 rounds allowed
         if rounds not in [1, 3, 5]:
             rounds = 3  # Default to 3 if invalid
@@ -395,7 +395,7 @@ async def join(
             host=name,
             room_type=room_type,
             max_players=max_players,
-            duration=duration,
+            duration_seconds=duration,
             total_rounds=rounds,  # Pass rounds to GameRoom
             category=category,
         )
@@ -645,11 +645,11 @@ def shutdown_event():
 
 
 class ConnectionManager:
-    def __init__(self, duration_mins=5, room=None, room_id=None, total_rounds=3): 
+    def __init__(self, duration_seconds=60, room=None, room_id=None, total_rounds=3): 
         self.active_connections: Dict[str, WebSocket] = {}
         self.ws_to_name: Dict[int, str] = {}
         self.draw_history: List[dict] = []
-        self.round_duration = duration_mins * 60
+        self.round_duration = duration_seconds
         self.movie_history: List[str] = []
         self.history_recorded_for_round = False
         
@@ -1710,6 +1710,16 @@ class ConnectionManager:
 
         self.game_state["revealed_movie"] = self.game_state["movie"]
         self.game_state["word_guessed"] = anyone_correct
+        drawer_name = self.game_state.get("drawer_name")
+        non_drawer_count = sum(
+            name != drawer_name for name in self.active_connections
+        )
+        drawer_points = points_for_drawer(
+            len(correct),
+            non_drawer_count,
+        )
+        if drawer_name and drawer_points:
+            self.set_player_score(drawer_name, drawer_points)
         await self.record_current_movie_history()
         self.finish_current_round(winner_for_db)
         is_final_round = self.peek_next_drawer() is None
@@ -1733,6 +1743,7 @@ class ConnectionManager:
             "reveal": self.game_state["revealed_movie"],
             "word_guessed": anyone_correct,
             "correct_guessers": correct,
+            "drawer_points": drawer_points,
             "scores": scoreboard,
             "is_final_round": is_final_round,
             **self.turn_info(),
@@ -2070,6 +2081,17 @@ def points_for_elapsed_time(elapsed: float, duration: int) -> int:
     if elapsed < duration * 0.8:
         return 80
     return 50
+
+
+def points_for_drawer(correct_guess_count: int, non_drawer_count: int) -> int:
+    """Award a drawer bonus based on how many non-drawers guessed correctly."""
+    if non_drawer_count <= 0 or correct_guess_count <= 0:
+        return 0
+    if correct_guess_count >= non_drawer_count:
+        return 80
+    if correct_guess_count * 2 >= non_drawer_count:
+        return 50
+    return 0
 
 
 def _vowel_hints_allowed(movie: str) -> bool:

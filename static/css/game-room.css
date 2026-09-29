@@ -1855,6 +1855,12 @@ body.mg-room #canvas {
     touch-action: none;
 }
 
+/* Fill tool selected: paint-bucket cursor, hotspot on the paint drip */
+#canvas.fill-cursor,
+body.mg-room #canvas.fill-cursor {
+    cursor: url("/static/img/icons/ic-bucket.svg") 28 26, crosshair;
+}
+
 body.mg-room #game-area.is-drawer #movie-display {
     display: none;
 }
@@ -1875,7 +1881,8 @@ body.mg-room #controls.toolbar {
     align-items: center;
     justify-content: center;
     gap: clamp(12px, 2vw, 48px);
-    flex-wrap: nowrap;
+    row-gap: 6px;
+    flex-wrap: wrap;
     flex-shrink: 0;
 }
 

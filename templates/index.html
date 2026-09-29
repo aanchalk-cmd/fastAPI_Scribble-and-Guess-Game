@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=turns3">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=fill2">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -1058,6 +1058,10 @@
                         <img src="/static/img/icons/ic-eraser.svg" width="32" height="32" alt="">
                         <span>Eraser</span>
                     </button>
+                    <button type="button" id="fillBtn" class="draw-tool" onclick="setTool('fill')" title="Fill an enclosed area">
+                        <img src="/static/img/icons/ic-bucket.svg" width="32" height="32" alt="">
+                        <span>Fill</span>
+                    </button>
                     <label class="draw-tool draw-color" title="Choose color">
                         <span class="draw-color-swatch" id="color-swatch"></span>
                         <input type="color" id="colorPicker" value="#333333" aria-label="Colour picker">
@@ -1181,7 +1185,11 @@
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
         let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&token=${encodeURIComponent(playerToken || "")}`);
-        let canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
+        let canvas = document.getElementById('canvas');
+        // willReadFrequently: the fill tool reads pixels back, and without this Chrome
+        // switches the canvas from GPU to CPU mid-game, which changes stroke
+        // anti-aliasing and makes history replays differ from what was drawn live.
+        let ctx = canvas.getContext('2d', { willReadFrequently: true });
         (function initColorSwatch() {
             const picker = document.getElementById('colorPicker');
             const swatch = document.getElementById('color-swatch');
@@ -1767,10 +1775,7 @@
                     if (myRole !== "drawer") setGuesserWaitingVisible(false);
                 }
                 if (data.history) {
-                    data.history.forEach(step => {
-                        if (step.isNewPath) ctx.beginPath();
-                        draw(step.x, step.y, step.tool, step.color);
-                    });
+                    data.history.forEach(applyDrawStep);
                 }
                 if (data.is_round_active && data.time_left > 0 && data.movie_set) {
                     startTimer(data.time_left);
@@ -1878,8 +1883,7 @@
                 showToast(data.message || "Continuing the game!");
             }
             if (data.type === "drawing" && myRole === "guesser") {
-                if (data.isNewPath) ctx.beginPath();
-                draw(data.x, data.y, data.tool, data.color);
+                applyDrawStep(data);
             }
             if (data.type === "clear") ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (data.type === "chat") {
@@ -2135,6 +2139,7 @@
             if (!el) return;
             const raw = String(roleText || "").replace(/^Role:\s*/i, "").trim();
             el.textContent = raw ? raw.toUpperCase() : "Determining Role...";
+            updateCanvasCursor();
         }
         function updateSelectionTimerDisplay() {
             const mins = Math.floor(selectionTimeLeft / 60);
@@ -2569,6 +2574,15 @@
         }
         function handleDrawStart(coords) {
             if (myRole !== "drawer") return;
+            if (currentTool === 'fill') {
+                // Send the exact pixel so every client seeds the fill identically.
+                const x = Math.floor(coords.x), y = Math.floor(coords.y);
+                if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                const color = document.getElementById('colorPicker').value;
+                floodFill(x, y, color);
+                ws.send(JSON.stringify({ type: "drawing", x: x, y: y, tool: "fill", isNewPath: true, color: color }));
+                return;
+            }
             drawing = true;
             ctx.beginPath();
             const color = document.getElementById('colorPicker').value;
@@ -2613,10 +2627,104 @@
             ctx.stroke();
             ctx.moveTo(x, y);
         }
+        // Replays one "drawing" message (live or from history) on this canvas.
+        function applyDrawStep(step) {
+            if (step.tool === 'fill') {
+                floodFill(step.x, step.y, step.color);
+                return;
+            }
+            if (step.isNewPath) ctx.beginPath();
+            draw(step.x, step.y, step.tool, step.color);
+        }
+        // Paint-bucket fill from pixel (x, y). Pixels are compared as if composited
+        // over the white canvas background, so cleared (transparent) and erased
+        // (white) areas count as one region. Anti-aliased line edges within
+        // FILL_TOLERANCE are filled; the remaining partly-transparent edge ring
+        // gets the fill colour blended underneath so no white halo is left.
+        const FILL_TOLERANCE = 48;
+        function floodFill(x, y, color) {
+            const w = canvas.width, h = canvas.height;
+            if (typeof x !== 'number' || typeof y !== 'number') return;
+            x = Math.floor(x); y = Math.floor(y);
+            if (!(x >= 0 && y >= 0 && x < w && y < h)) return;
+            if (!/^#[0-9a-f]{6}$/i.test(color || "")) return;
+            const fr = parseInt(color.slice(1, 3), 16);
+            const fg = parseInt(color.slice(3, 5), 16);
+            const fb = parseInt(color.slice(5, 7), 16);
+            const image = ctx.getImageData(0, 0, w, h);
+            const d = image.data;
+            // Flattened (over white) RGB of every pixel, packed for fast comparison.
+            const flat = new Int32Array(w * h);
+            for (let p = 0, i = 0; p < flat.length; p++, i += 4) {
+                const a = d[i + 3], inv = 255 - a;
+                const r = (d[i] * a + 255 * inv) / 255 | 0;
+                const g = (d[i + 1] * a + 255 * inv) / 255 | 0;
+                const b = (d[i + 2] * a + 255 * inv) / 255 | 0;
+                flat[p] = (r << 16) | (g << 8) | b;
+            }
+            const seed = flat[y * w + x];
+            const tr = seed >> 16 & 255, tg = seed >> 8 & 255, tb = seed & 255;
+            const matches = (p) => {
+                const c = flat[p];
+                return Math.abs((c >> 16 & 255) - tr) <= FILL_TOLERANCE
+                    && Math.abs((c >> 8 & 255) - tg) <= FILL_TOLERANCE
+                    && Math.abs((c & 255) - tb) <= FILL_TOLERANCE;
+            };
+            // Scanline flood fill (4-connected, so diagonal gaps in a line don't leak).
+            const filled = new Uint8Array(w * h);
+            const stack = [y * w + x];
+            while (stack.length) {
+                const p = stack.pop();
+                if (filled[p] || !matches(p)) continue;
+                const row = p - (p % w);
+                let lx = p, rx = p;
+                while (lx > row && !filled[lx - 1] && matches(lx - 1)) lx--;
+                while (rx < row + w - 1 && !filled[rx + 1] && matches(rx + 1)) rx++;
+                let upOpen = false, downOpen = false;
+                for (let q = lx; q <= rx; q++) {
+                    filled[q] = 1;
+                    const u = q - w, dn = q + w;
+                    if (u >= 0) {
+                        const ok = !filled[u] && matches(u);
+                        if (ok && !upOpen) stack.push(u);
+                        upOpen = ok;
+                    }
+                    if (dn < flat.length) {
+                        const ok = !filled[dn] && matches(dn);
+                        if (ok && !downOpen) stack.push(dn);
+                        downOpen = ok;
+                    }
+                }
+            }
+            for (let p = 0, i = 0; p < filled.length; p++, i += 4) {
+                if (filled[p]) {
+                    d[i] = fr; d[i + 1] = fg; d[i + 2] = fb; d[i + 3] = 255;
+                    continue;
+                }
+                const a = d[i + 3];
+                if (a === 0 || a === 255) continue;
+                const px = p % w;
+                const touches = (px > 0 && filled[p - 1]) || (px < w - 1 && filled[p + 1])
+                    || (p >= w && filled[p - w]) || (p + w < filled.length && filled[p + w]);
+                if (!touches) continue;
+                const inv = 255 - a;
+                d[i] = (d[i] * a + fr * inv) / 255 | 0;
+                d[i + 1] = (d[i + 1] * a + fg * inv) / 255 | 0;
+                d[i + 2] = (d[i + 2] * a + fb * inv) / 255 | 0;
+                d[i + 3] = 255;
+            }
+            ctx.putImageData(image, 0, 0);
+            ctx.beginPath();
+        }
+        function updateCanvasCursor() {
+            canvas.classList.toggle('fill-cursor', currentTool === 'fill' && myRole === 'drawer');
+        }
         function setTool(t) {
             currentTool = t;
             document.getElementById('drawBtn').classList.toggle('active-tool', t === 'draw');
             document.getElementById('eraseBtn').classList.toggle('active-tool', t === 'erase');
+            document.getElementById('fillBtn').classList.toggle('active-tool', t === 'fill');
+            updateCanvasCursor();
         }
         function clearCanvasSync() { 
             ctx.clearRect(0, 0, canvas.width, canvas.height); 

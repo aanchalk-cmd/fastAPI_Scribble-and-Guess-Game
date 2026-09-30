@@ -1,0 +1,62 @@
+{
+    "bollywood_movies": [
+        "Filmy Fan", "Masala Max", "Chai Break", "Interval", "Retake Raj",
+        "Climax Kid", "Hero Entry", "Slo-Mo Raj", "Drama Bhai", "Popcorn Ji",
+        "Punchline", "Box Office", "Rain Song", "Jhakaas", "Kya Scene",
+        "Dhoom Dost"
+    ],
+    "bollywood_characters": [
+        "Chulbul", "Munna Bhai", "Circuit", "Gabbar Fan", "Basanti Ji",
+        "Raju Rocks", "Baburao", "Rancho Jr", "Chatur Ji", "Virus Sir",
+        "Thakur Ji", "Mogambo Jr", "Geet Mode", "Pooja Pro", "Bunny Babu",
+        "Crime Mast"
+    ],
+    "hollywood_movies": [
+        "Plot Twist", "Reel Deal", "Final Cut", "Sequel Sam", "Red Carpet",
+        "No Spoiler", "Big Screen", "Jump Scare", "Mid Credit", "Slow Clap",
+        "Oscar Bait", "Take Two", "Cue Music", "Nacho Fan", "Trailer Ty",
+        "Stunt Stan"
+    ],
+    "hollywood_characters": [
+        "Cape Kid", "Jedi Lite", "Wizard Wes", "Hobbit Hal", "Spidey Sam",
+        "Bat Buddy", "Dino Dan", "Agent Zero", "Villain Vi", "Sidekick",
+        "Robo Rick", "Captain Q", "Ghost Gus", "Pirate Pat", "Zombie Zed",
+        "Hulk Hugs"
+    ],
+    "asian_dramas_movies": [
+        "KDrama Kid", "Ep 16 Fan", "Slow Burn", "Soju Break", "Ramen Time",
+        "Subtitle", "Binge Mode", "Cliffy Kim", "Next Ep", "Flashback",
+        "Rain Scene", "Drama Mama", "OST Loop", "Noona Fan", "Oppa Alert",
+        "Kimchi Kid"
+    ],
+    "asian_dramas_characters": [
+        "Rich Heir", "2nd Lead", "Grumpy CEO", "Cafe Owner", "Bestie Bo",
+        "Sassy Mom", "Lost Twin", "Oppa Cool", "Umbrella", "Piggyback",
+        "Amnesia Al", "Noble Lady", "Palace Pal", "Ice Prince", "Chaebol Ki",
+        "Wrist Grab"
+    ],
+    "anime_movies": [
+        "Filler Arc", "Opening 2", "Power Up", "Plot Armor", "Sakura Fan",
+        "Beam Mode", "Chibi Time", "Hype Scene", "Ending OST", "Sub or Dub",
+        "Ramen Run", "Sparkle", "Mecha Mode", "Sensei Sam", "Ghibli Fan",
+        "Episode 1"
+    ],
+    "anime_characters": [
+        "Senpai", "Kohai Kid", "Ninja Neko", "Titan Tim", "Pika Pal",
+        "Saiyan Sid", "Shinobi", "Chibi Chan", "Kawaii Kai", "Mecha Mike",
+        "Ramen Ryu", "Dragon Dev", "Tsundere", "Otaku Oli", "Rival Rei",
+        "Sword Sora"
+    ],
+    "cartoon_movies": [
+        "Toon Town", "Doodle Bug", "Frame 24", "Ink Blot", "Sketchy",
+        "Pencil Pal", "Color Pop", "Rewind", "Anvil Drop", "Looney Lou",
+        "Cel Shader", "Pixel Pal", "Cartoonist", "Scribbler", "Wacky Walt",
+        "Squiggle"
+    ],
+    "cartoon_characters": [
+        "Mouse Max", "Duck Duke", "Coyote Cy", "Sponge Sam", "Bunny Bo",
+        "Cat Chaser", "Toon Tom", "Jerry Jr", "Popeye Pal", "Snoopy Sam",
+        "Donut Dad", "Smurf Blue", "Lasagna Lu", "Tweety Ty", "Pink Pip",
+        "Road Rush"
+    ]
+}

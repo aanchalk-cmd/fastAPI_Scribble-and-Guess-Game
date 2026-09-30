@@ -449,15 +449,16 @@
 
     /* ---------- submit ---------- */
 
-    // Validates the shared name field on the current screen; returns the name or "".
+    // Validates the shared name field on the current screen. Returns the name,
+    // "" when it was left blank (the server then picks a funny name from the room's
+    // categories), or null when the typed name isn't allowed.
     function requireName() {
         const input = els.screens[state.screen].querySelector(".js-name-input");
         const name = clampName(state.name).trim();
-        const message = !name ? "Please enter your name." : (!isValidName(name) ? INVALID_NAME_MESSAGE : "");
-        if (message) {
-            showError(message);
+        if (name && !isValidName(name)) {
+            showError(INVALID_NAME_MESSAGE);
             if (input) input.focus();
-            return "";
+            return null;
         }
         showError("");
         return name;
@@ -496,7 +497,7 @@
 
     function createRoom() {
         const name = requireName();
-        if (!name) return;
+        if (name === null) return;
         submitJoin({
             action: "create",
             name,
@@ -507,7 +508,7 @@
 
     function joinWithCode() {
         const name = requireName();
-        if (!name) return;
+        if (name === null) return;
         const code = extractRoomCode(els.roomCodeInput.value);
         if (!code) {
             showError("Please enter a room code.");
@@ -519,7 +520,7 @@
 
     function joinPublicRoom(room) {
         const name = requireName();
-        if (!name) return;
+        if (name === null) return;
         submitJoin({ action: "join", name, roomCode: room.room_id, roomType: "public" });
     }
 

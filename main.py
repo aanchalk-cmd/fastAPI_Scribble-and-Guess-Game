@@ -23,6 +23,7 @@ from app.services.word_manager import (
     CategoryNotFoundError,
     word_manager,
 )
+from app.services.player_names import player_names
 from db_helpers import (
     ban_guest_from_room,
     create_game_round,
@@ -360,7 +361,7 @@ def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
 
 @app.post("/join")
 async def join(
-    name: str = Form(...),
+    name: str = Form(""),  # blank -> a random funny name from the room's categories
     room_code: str = Form(None),
     action: str = Form(...),
     room_type: str = Form("private"),  
@@ -371,16 +372,17 @@ async def join(
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
-    cleaned_name = clean_player_name(name)
-    if not cleaned_name:
+    wants_random_name = not str(name or "").strip()
+    cleaned_name = None if wants_random_name else clean_player_name(name)
+    if not wants_random_name and not cleaned_name:
         print(f"[MATCHMAKING] Rejected invalid player name {name!r}")
         query = {"error": "invalid_name"}
         if action == "join" and room_code and room_code.strip():
             # Send them back to the "I have a code" tab with the code filled in.
             query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
         return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
-    name = cleaned_name
-    print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
+    name = cleaned_name  # None until the room's categories are known (random name)
+    print(f"[MATCHMAKING] Action={action} user={name or '(random)'} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(10, max_players))
         duration = max(30, min(120, ((duration + 7) // 15) * 15))
@@ -390,6 +392,9 @@ async def join(
 
         # Normalize / fall back if client sent unknown categories
         categories = word_manager.parse_categories(category)
+        if wants_random_name:
+            name = player_names.random_name(categories, max_length=PLAYER_NAME_MAX)
+            print(f"[MATCHMAKING] No name given; host gets random name {name!r}")
         
         room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
@@ -481,6 +486,9 @@ async def join(
             return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
 
         joining_running = room.game_started and room.status == "PLAYING"
+        if wants_random_name:
+            name = player_names.random_name(room.categories, taken=room.players, max_length=PLAYER_NAME_MAX)
+            print(f"[MATCHMAKING] No name given; joiner gets random name {name!r}")
         name = get_unique_name(name, room.players)
         added = room.add_player(name)
         if not added:

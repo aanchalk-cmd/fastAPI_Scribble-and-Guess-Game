@@ -141,6 +141,40 @@ class WordManager:
         picked = random.sample(pool, sample_size)
         return [w.strip().upper() for w in picked]
 
+    def get_random_words_from(self, categories: List[str], count: int = 3) -> List[str]:
+        """
+        Like get_random_words, but samples from the combined pool of several
+        categories (a room may pick more than one). Unknown ids are skipped.
+        """
+        if count < 0:
+            raise ValueError("count must be >= 0")
+        pool: List[str] = []
+        seen = set()
+        for category in categories:
+            if not self.has_category(category):
+                continue
+            for word in self._require_category(category):
+                key = word.strip().upper()
+                if key not in seen:
+                    seen.add(key)
+                    pool.append(word)
+        if not pool:
+            return self.get_random_words(self.normalize_category(None), count=count)
+        picked = random.sample(pool, min(count, len(pool)))
+        return [w.strip().upper() for w in picked]
+
+    def parse_categories(self, value: Optional[str]) -> List[str]:
+        """
+        Parse a comma-separated category list (e.g. "bollywood_movies,anime_characters")
+        into valid, de-duplicated ids. Falls back to [default] if none are valid.
+        """
+        found: List[str] = []
+        for raw in str(value or "").split(","):
+            category = self.resolve_alias(raw.strip())
+            if category and self.has_category(category) and category not in found:
+                found.append(category)
+        return found or [self.normalize_category(None)]
+
     def has_category(self, category: str) -> bool:
         with self._lock:
             return self.resolve_alias(category) in self._categories

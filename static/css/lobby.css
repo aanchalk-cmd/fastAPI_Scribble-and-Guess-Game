@@ -15,7 +15,9 @@
     --font-display: "Bowlby One", system-ui, -apple-system, sans-serif;
     /* Figma "Create Room" frame: 788px film card, 60px sprocket strips, 30px padding */
     --card-w: min(788px, calc(100vw - 48px));
-    --card-min-h: min(906px, calc(100dvh - 180px));
+    /* 43px top + 74px header + 27px gap above; 30px below (Figma) */
+    --card-min-h: min(906px, calc(100dvh - 174px));
+    --room-list-h: 540px;
     --film-strip-h: 60px;
     --film-pad: 30px;
     --radius-ctl: 18px;
@@ -91,6 +93,8 @@ body.lobby-body {
     pointer-events: none;
     user-select: none;
     z-index: 0;
+    /* Figma crops the soda and camera at the frame's bottom edge */
+    overflow: hidden;
 }
 .decor-rail-left { left: 0; }
 .decor-rail-right { right: 0; }
@@ -105,12 +109,13 @@ body.lobby-body {
 .decor-rail-left .decor-img { left: 0; }
 .decor-rail-right .decor-img { right: 0; }
 
-.decor-img-clap { top: 16.5%; width: 9.74vw; }
-.decor-img-ticket { top: 58%; width: 10.16vw; }
-.decor-img-soda { bottom: 0; width: 10.68vw; }
-.decor-img-reel { top: 17.4%; width: 12.76vw; }
-.decor-img-popcorn { top: 55.3%; width: 10.42vw; }
-.decor-img-camera { bottom: 0; width: 10.63vw; }
+/* Tops are the Figma group y / 1080; widths the visible width / 1920 */
+.decor-img-clap { top: 19.18%; width: 9.74vw; }
+.decor-img-ticket { top: 54.73%; width: 10.16vw; }
+.decor-img-soda { top: 88.6%; width: 10.68vw; }
+.decor-img-reel { top: 13.15%; width: 12.76vw; }
+.decor-img-popcorn { top: 53.34%; width: 10.42vw; }
+.decor-img-camera { top: 92.61%; width: 10.63vw; }
 
 /* ---------- header ---------- */
 .lobby-top {
@@ -121,7 +126,7 @@ body.lobby-body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 37px;
+    margin-bottom: 27px;
 }
 
 .brand-title {
@@ -171,7 +176,9 @@ body.lobby-body {
     min-height: var(--card-min-h);
     background: #000;
     color: #fff;
-    border: 1px solid #fff;
+    /* 1px white edge drawn inside the 788px frame, like Figma (no layout width) */
+    outline: 1px solid #fff;
+    outline-offset: -1px;
     border-radius: var(--radius-ctl);
     position: relative;
     padding: calc(var(--film-strip-h) + var(--film-pad)) var(--film-pad);
@@ -206,34 +213,23 @@ body.lobby-body {
     flex-direction: column;
 }
 
+/* Create screen: fields on top, CTA pinned to the bottom (Figma justify-between) */
 .stack {
+    justify-content: space-between;
+    gap: 0;
+}
+
+/* Figma lets the CTA's white offset tuck 3px under the last field row */
+.stack > .create-fields { margin-bottom: -3px; }
+
+.create-fields,
+.create-pane {
     display: flex;
     flex-direction: column;
     gap: 24px;
-    flex: 1;
 }
 
-#create-pane {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    flex: 1;
-}
-
-#create-pane .btn-primary {
-    margin-top: auto;
-    align-self: center;
-    width: min(400px, calc(100% - 8px));
-    border-radius: var(--radius-ctl);
-    padding: 18px;
-    font-size: 24px;
-    line-height: normal;
-    letter-spacing: 0;
-    min-height: 0;
-    --btn-pop-x: 8px;
-    --btn-pop-y: 8px;
-}
-
+/* ---------- shared form pieces ---------- */
 .field-label {
     display: block;
     margin: 0 0 18px;
@@ -248,11 +244,14 @@ body.lobby-body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 18px;
 }
 
 .field-row .field-label { margin: 0; }
+/* Name label sits 8px above its input; Max Player label 20px above its slider */
+.field-row-tight { margin-bottom: 8px; }
+.field-row-loose { margin-bottom: 20px; }
 
 .field-value {
     font-weight: 400;
@@ -262,6 +261,37 @@ body.lobby-body {
     text-transform: uppercase;
 }
 
+/* Name / room code input (Figma "Component 5": white, 24px padding, 18px radius) */
+.name-input {
+    display: block;
+    width: 100%;
+    border: none;
+    border-radius: var(--radius-ctl);
+    background: #fff;
+    color: var(--mg-ink);
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.5;
+    padding: 24px;
+    text-transform: uppercase;
+    outline: none;
+}
+
+.name-input::placeholder {
+    color: rgba(0, 0, 0, 0.8);
+    opacity: 1;
+}
+
+.name-input:focus-visible {
+    box-shadow: 0 0 0 3px var(--mg-yellow);
+}
+
+.code-input {
+    letter-spacing: 0.22em;
+}
+.code-input::placeholder { letter-spacing: normal; }
+
 /* tabs — translucent outer track, two inner segments (design) */
 .mode-tabs {
     display: flex;
@@ -269,14 +299,6 @@ body.lobby-body {
     padding: 8px;
     background: var(--mg-tabs-bg);
     border-radius: 26px;
-}
-
-.pill-row {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 16px;
-    align-items: stretch;
-    width: 100%;
 }
 
 .mode-tab {
@@ -298,68 +320,28 @@ body.lobby-body {
     transition: background 0.12s ease, color 0.12s ease, transform 0.08s ease;
 }
 
-.mode-tab:active:not(:disabled) {
-    transform: scale(0.98);
-}
+.mode-tab:active:not(:disabled) { transform: scale(0.98); }
 
 .mode-tab.is-active {
     background: var(--mg-red);
     color: #fff;
-    box-shadow: none;
 }
 
-/* Design: "I HAVE A CODE" active tab is yellow */
 .mode-tab.is-active[data-tab="code"] {
     background: var(--mg-yellow);
     color: var(--mg-ink);
 }
 
-.code-pane {
+/* pills — flat wide chips */
+.pill-row {
     display: flex;
-    flex-direction: column;
-    gap: 22px;
-    flex: 1;
-}
-
-.code-pane-fields {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-}
-
-#code-pane .btn-yellow {
-    margin-top: auto;
-}
-
-.btn-yellow {
+    gap: 16px;
     width: 100%;
-    border: none;
-    border-radius: 16px;
-    background: var(--mg-yellow);
-    color: var(--mg-ink);
-    font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 1rem;
-    letter-spacing: 0.05em;
-    padding: 17px 18px;
-    min-height: 58px;
-    cursor: pointer;
-    touch-action: manipulation;
-    text-transform: uppercase;
-    margin-top: 8px;
-    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
-    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
 
-.btn-yellow:active:not(:disabled) {
-    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
-    box-shadow: 0 0 0 var(--btn-pop-color);
-}
-.btn-yellow:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
-
-/* pills — flat wide chips (design: no white pop on selectors) */
 .pill {
     flex: 1;
+    min-width: 0;
     border: none;
     border-radius: var(--radius-ctl);
     padding: 12px 18px;
@@ -375,20 +357,11 @@ body.lobby-body {
     transition: background 0.12s ease, transform 0.08s ease;
 }
 
-.pill:active {
-    transform: scale(0.97);
-}
-
+.pill:active { transform: scale(0.97); }
 .pill.is-active { background: var(--mg-yellow); }
 
-.pill-round {
-    min-width: 0;
-}
-
-/* category dropdown (Figma: white field + chevron, overlay list) */
-.mg-select {
-    position: relative;
-}
+/* ---------- category multi-select (Figma: white field + chevron, checkbox list) ---------- */
+.mg-select { position: relative; }
 
 .mg-select-trigger {
     width: 100%;
@@ -421,7 +394,11 @@ body.lobby-body {
 .mg-select-chevron {
     flex-shrink: 0;
     display: block;
+    transition: transform 0.15s ease;
 }
+
+/* Open state points the chevron up (Figma rotates the same icon) */
+.mg-select.is-open .mg-select-chevron { transform: rotate(180deg); }
 
 .mg-select-list {
     position: absolute;
@@ -434,15 +411,16 @@ body.lobby-body {
     list-style: none;
     background: #fff;
     border-radius: var(--radius-ctl);
-    max-height: calc(7 * 60px);
+    max-height: calc(8 * 60px);
     overflow-y: auto;
-    overscroll-behavior: contain;
     outline: none;
 }
 
 .mg-select-option {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
     height: 60px;
     padding: 12px 18px;
     color: var(--mg-ink);
@@ -451,11 +429,37 @@ body.lobby-body {
     text-transform: uppercase;
     white-space: nowrap;
     cursor: pointer;
+    user-select: none;
+}
+
+.mg-select-option-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mg-select-option.is-highlighted { background: var(--mg-option-hover); }
 
-/* sliders — 9px track, yellow fill up to the value, popcorn thumb from design asset */
+/* 24px icon frame with the 20px checkbox glyph centred (Figma frame inset 2px) */
+.mg-check,
+.room-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+}
+.mg-check img,
+.room-icon img { display: block; }
+
+/* ---------- sliders — 9px track, yellow fill, popcorn thumb ---------- */
+/* Flex column so the label row's margin and the track's 11px offset add up
+   (Figma: 32px slider box, track 11px from its top) instead of collapsing. */
+.slider-field {
+    display: flex;
+    flex-direction: column;
+}
+
 .mg-slider {
     -webkit-appearance: none;
     appearance: none;
@@ -494,15 +498,21 @@ body.lobby-body {
     cursor: pointer;
 }
 
-/* toggle — Figma switch icons in a 52px hit area */
+/* ---------- public-room toggle (Figma "Component 6") ---------- */
+.room-access {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* Public variant: keep the popcorn thumb clear of the CTA's top edge */
+#max-players-wrap { margin-bottom: 16px; }
+
 .toggle-row {
     display: flex;
     align-items: center;
     gap: 18px;
 }
-
-/* Figma groups the public toggle and its max-player slider 18px apart */
-.toggle-row + #max-players-wrap { margin-top: -6px; }
 
 .toggle {
     position: relative;
@@ -532,7 +542,8 @@ body.lobby-body {
     border-radius: 10px;
 }
 
-.toggle-label {
+.toggle-label,
+.toggle-note {
     font-weight: 400;
     font-size: 16px;
     line-height: 1.5;
@@ -540,23 +551,23 @@ body.lobby-body {
     text-transform: uppercase;
 }
 
+.toggle-note {
+    margin-left: auto;
+    text-align: right;
+}
+
+/* ---------- buttons ---------- */
 .btn-primary {
-    width: 100%;
     border: none;
-    border-radius: 16px;
+    border-radius: var(--radius-ctl);
     background: var(--mg-red);
     color: #fff;
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 1rem;
-    letter-spacing: 0.05em;
-    padding: 17px 18px;
-    min-height: 58px;
+    font-weight: 400;
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
-    margin-top: 8px;
-    /* White hard offset — looks like a border popping out bottom-right */
+    /* White hard offset — Figma "Component 7" stacks a white copy 8px down-right */
     box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
     transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
@@ -567,33 +578,21 @@ body.lobby-body {
 }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 
-.name-input,
-.code-input {
-    width: 100%;
-    border: none;
-    border-radius: 14px;
-    background: #fff;
+.btn-cta {
+    --btn-pop-x: 8px;
+    --btn-pop-y: 8px;
+    align-self: center;
+    width: min(400px, calc(100% - 8px));
+    padding: 18px;
+    font-size: 24px;
+    line-height: normal;
+    /* keep the 8px white offset inside the card padding */
+    margin-bottom: 8px;
+}
+
+.btn-yellow {
+    background: var(--mg-yellow);
     color: var(--mg-ink);
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: 16px;
-    padding: 16px 18px;
-    outline: none;
-}
-
-.name-input::placeholder,
-.code-input::placeholder {
-    color: #9a9a9a;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-}
-
-.code-input {
-    text-transform: uppercase;
-    letter-spacing: 0.22em;
-    text-align: center;
-    font-weight: 900;
 }
 
 .error-banner {
@@ -604,7 +603,6 @@ body.lobby-body {
     background: #fff1f0;
     border: 1px solid #ffb4ae;
     color: #9f120a;
-    font-weight: 800;
     font-size: 0.88rem;
     display: none;
     position: relative;
@@ -612,189 +610,143 @@ body.lobby-body {
 }
 .error-banner.is-visible { display: block; }
 
+/* ---------- shared scrollbar (Figma: 10px pale-yellow track, yellow thumb) ---------- */
+.mg-scroll {
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--mg-yellow) var(--mg-option-hover);
+}
+.mg-scroll::-webkit-scrollbar { width: 10px; }
+.mg-scroll::-webkit-scrollbar-track {
+    background: var(--mg-option-hover);
+    border-radius: 27px;
+}
+.mg-scroll::-webkit-scrollbar-thumb {
+    background: var(--mg-yellow);
+    border-radius: 16px;
+    min-height: 66px;
+}
+
+/* ---------- public rooms (Figma "Public Room List") ---------- */
+.public-inner {
+    gap: 32px;
+    min-height: 0;
+}
+
+/* Figma: the room list runs straight into the bottom film strip */
+.film-card-flush { padding-bottom: var(--film-strip-h); }
+
 .public-title {
-    margin: 0 0 16px;
-    font-weight: 900;
-    font-size: 1.15rem;
-    letter-spacing: 0.08em;
-    text-align: center;
+    margin: 0;
+    font-weight: 400;
+    font-size: 32px;
+    line-height: 1.5;
+    color: #fff;
     text-transform: uppercase;
 }
 
+/* List scrolls inside the card; 10px yellow scrollbar 24px right of the rows */
 .room-list {
+    flex: 0 0 auto;
+    height: var(--room-list-h);
+    padding-right: 24px;
     display: flex;
     flex-direction: column;
-    flex: 1;
-    max-height: none;
-    min-height: 360px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
+    gap: 20px;
+    /* track always visible, as in the design */
+    overflow-y: scroll;
 }
+
+
 
 .room-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    align-items: center;
-    padding: 16px 2px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    flex-shrink: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
 }
-.room-row:last-child { border-bottom: none; }
+
+.room-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
 
 .room-id {
-    font-weight: 900;
-    font-size: 1.12rem;
-    letter-spacing: 0.04em;
+    font-size: 24px;
+    line-height: 1.5;
+    color: #fff;
+    text-transform: uppercase;
 }
 
 .room-live-tag {
     display: inline-block;
-    margin-left: 10px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--mg-yellow);
+    margin-left: 12px;
+    padding: 0 8px;
+    border-radius: 8px;
+    background: var(--mg-option-hover);
     color: var(--mg-ink);
-    font-size: 0.66rem;
-    letter-spacing: 0.06em;
+    font-size: 12px;
+    line-height: 1.8;
     vertical-align: middle;
 }
 
-.room-meta {
-    margin-top: 4px;
+.room-details {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0;
+    flex-direction: column;
+    gap: 8px;
     color: var(--mg-yellow);
-    font-weight: 800;
-    font-size: 0.72rem;
-    letter-spacing: 0.04em;
+    font-size: 16px;
+    line-height: 1.5;
     text-transform: uppercase;
 }
-.room-meta span + span::before {
-    content: "|";
-    margin: 0 8px;
-    opacity: 0.7;
+
+.room-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
+.room-players {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.room-categories { margin: 0; }
+
 .join-btn {
+    flex-shrink: 0;
     border: none;
-    border-radius: 10px;
+    border-radius: 8px;
     background: var(--mg-yellow);
     color: var(--mg-ink);
     font-family: var(--font-display);
-    font-weight: 900;
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
-    padding: 13px 18px;
-    min-height: 46px;
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 1.5;
+    padding: 4px 8px;
     cursor: pointer;
     touch-action: manipulation;
-    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 var(--btn-pop-color);
-    transition: transform 0.08s ease, box-shadow 0.08s ease;
+    text-transform: uppercase;
+    transition: transform 0.08s ease, filter 0.08s ease;
 }
-.join-btn:active:not(:disabled) {
-    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
-    box-shadow: 0 0 0 var(--btn-pop-color);
-}
-.join-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+.join-btn:hover:not(:disabled) { filter: brightness(1.06); }
+.join-btn:active:not(:disabled) { transform: scale(0.95); }
+.join-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .empty-state {
+    margin: 0;
     text-align: center;
     color: rgba(255, 255, 255, 0.65);
     padding: 40px 8px;
-    font-size: 0.95rem;
-    font-weight: 700;
-}
-
-.char-count {
-    font-weight: 800;
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
-    color: rgba(255, 255, 255, 0.9);
-    white-space: nowrap;
-}
-
-.field-error {
-    margin: 8px 0 0;
-    color: #ff4d4f;
-    font-weight: 800;
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
+    font-size: 16px;
     text-transform: uppercase;
-}
-
-.public-join-header {
-    margin-bottom: 8px;
-}
-
-.join-code-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.join-room-id {
-    font-weight: 900;
-    font-size: 1.35rem;
-    letter-spacing: 0.06em;
-}
-
-.copy-code-btn {
-    border: none;
-    background: transparent;
-    color: var(--mg-yellow);
-    font-size: 1.1rem;
-    cursor: pointer;
-    padding: 4px;
-    line-height: 1;
-    touch-action: manipulation;
-}
-
-.join-room-meta {
-    margin-top: 8px;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    color: var(--mg-yellow);
-    font-weight: 800;
-    font-size: 0.78rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-}
-.join-room-meta span + span::before {
-    content: "|";
-    margin: 0 8px;
-    opacity: 0.7;
-}
-
-.join-divider {
-    border: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.22);
-    margin: 16px 0 18px;
-}
-
-.name-field-block {
-    width: 100%;
-}
-
-.name-screen.is-public-join #name-submit-btn.btn-yellow {
-    background: var(--mg-yellow);
-    color: var(--mg-ink);
-}
-
-.name-screen .film-inner {
-    min-height: 280px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: stretch;
-    gap: 18px;
-    padding-top: 18px;
-}
-
-.name-screen #name-submit-btn {
-    margin-top: 4px;
 }
 
 .hidden { display: none !important; }
@@ -811,8 +763,11 @@ body.lobby-body {
     .pill,
     .mg-select-trigger,
     .mg-select-option,
-    #create-pane .btn-primary { font-size: 18px; }
+    .btn-cta { font-size: 18px; }
     .mode-tabs { gap: 8px; }
+    .public-title { font-size: 26px; }
+    .room-id { font-size: 20px; }
+    .toggle-row { flex-wrap: wrap; row-gap: 4px; }
 }
 
 /* Shorter desktop screens (e.g. 1440×900): tighten the Figma rhythm so the card fits */
@@ -830,12 +785,16 @@ body.lobby-body {
         background-size: calc(100% - 16px) 22px;
         background-position: 16px center;
     }
-    .stack, #create-pane { gap: 16px; }
+    .stack, .create-fields, .create-pane { gap: 16px; }
+    .public-inner { gap: 20px; }
+    :root { --room-list-h: max(240px, min(540px, calc(100dvh - 400px))); }
     .field-label { margin-bottom: 10px; }
     .field-row { margin-bottom: 10px; }
+    .field-row-tight { margin-bottom: 6px; }
     .mode-tab { padding: 14px 18px; }
+    .name-input { padding: 16px 24px; }
     .pill, .mg-select-trigger { padding-top: 8px; padding-bottom: 8px; }
-    .toggle-row + #max-players-wrap { margin-top: -6px; }
+    .room-access { gap: 12px; }
 }
 
 /* Laptop heights (1280×720, 1024×768): one step tighter so Create stays above the fold */
@@ -854,22 +813,27 @@ body.lobby-body {
         background-size: calc(100% - 14px) 18px;
         background-position: 14px center;
     }
-    .stack, #create-pane { gap: 12px; }
+    .stack, .create-fields, .create-pane { gap: 12px; }
+    .public-inner { gap: 14px; }
+    :root { --room-list-h: max(220px, calc(100dvh - 330px)); }
     .mode-tab,
     .pill,
     .mg-select-trigger,
     .mg-select-option,
-    #create-pane .btn-primary { font-size: 20px; }
+    .btn-cta { font-size: 20px; }
+    .public-title { font-size: 26px; }
     .mode-tab { padding: 12px 18px; }
+    .name-input { padding: 12px 18px; }
     .pill, .mg-select-trigger { padding-top: 6px; padding-bottom: 6px; }
-    #create-pane .btn-primary { padding: 14px 18px; }
+    .btn-cta { padding: 14px 18px; }
     .mg-select-option { height: 48px; }
-    .mg-select-list { max-height: calc(7 * 48px); }
+    .mg-select-list { max-height: calc(8 * 48px); }
     .field-label { font-size: 14px; margin-bottom: 8px; }
     .field-row { margin-bottom: 8px; }
+    .field-row-tight { margin-bottom: 4px; }
     .field-value { font-size: 16px; }
     .toggle { height: 44px; }
-    .toggle-row + #max-players-wrap { margin-top: -2px; }
+    .room-access { gap: 8px; }
 }
 
 @media (max-width: 720px) {
@@ -899,16 +863,27 @@ body.lobby-body {
         background-size: calc(100% - 12px) 18px;
         background-position: 12px center;
     }
-    .stack, #create-pane { gap: 18px; }
+    .stack, .create-fields, .create-pane { gap: 18px; }
+    .public-inner { gap: 18px; }
+    .public-title { font-size: 22px; }
+    :root { --room-list-h: max(260px, calc(100dvh - 330px)); }
+    .room-list { padding-right: 12px; }
+    .room-id { font-size: 18px; }
+    .room-info { gap: 10px; }
+    .room-details { font-size: 13px; }
+    .room-meta { gap: 10px; }
+    .join-btn { font-size: 15px; }
     .mode-tab,
     .pill,
     .mg-select-trigger,
     .mg-select-option,
-    #create-pane .btn-primary { font-size: 16px; }
+    .btn-cta { font-size: 16px; }
     .mode-tab { padding: 14px 8px; }
+    .name-input { padding: 16px 18px; font-size: 14px; }
     .mg-select-option { height: 48px; }
-    .mg-select-list { max-height: calc(7 * 48px); }
-    .field-label, .toggle-label { font-size: 13px; }
+    .mg-select-list { max-height: calc(8 * 48px); }
+    .field-label, .toggle-label, .toggle-note { font-size: 13px; }
+    .toggle-note { margin-left: 0; text-align: left; flex-basis: 100%; }
     .field-value { font-size: 15px; }
 }
 

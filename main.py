@@ -23,6 +23,7 @@ from app.services.word_manager import (
     CategoryNotFoundError,
     word_manager,
 )
+from app.services.player_names import player_names
 from db_helpers import (
     ban_guest_from_room,
     create_game_round,
@@ -73,6 +74,7 @@ class GameRoom:
         total_rounds: int = 3,
         category: str = "movies",
         db_id: Optional[int] = None,
+        categories: Optional[List[str]] = None,
     ):
         self.room_id = room_id
         self.host = host
@@ -93,8 +95,10 @@ class GameRoom:
         self.rejoin_wait_deadline: Optional[float] = None
         self.awaiting_rejoin_choice: bool = False
         self.pending_resume_after_rejoin: bool = False
-        # Word category for this room (from words.json via WordManager)
-        self.category = word_manager.normalize_category(category)
+        # Word categories for this room (from words.json via WordManager). A room
+        # may pick several; `category` stays the primary one for older clients.
+        self.categories = word_manager.parse_categories(",".join(categories or [category]))
+        self.category = self.categories[0]
         # Validate: only 1, 3, or 5 rounds allowed
         if total_rounds not in [1, 3, 5]:
             total_rounds = 3  # Default to 3 if invalid
@@ -357,27 +361,28 @@ def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
 
 @app.post("/join")
 async def join(
-    name: str = Form(...),
+    name: str = Form(""),  # blank -> a random funny name from the room's categories
     room_code: str = Form(None),
     action: str = Form(...),
     room_type: str = Form("private"),  
     max_players: int = Form(6),
     duration: int = Form(60),
     rounds: int = Form(3),  # New: rounds selection
-    category: str = Form("movies"),  # Word category from words.json
+    category: str = Form("movies"),  # Word category id(s) from words.json, comma-separated
     guest_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
-    cleaned_name = clean_player_name(name)
-    if not cleaned_name:
+    wants_random_name = not str(name or "").strip()
+    cleaned_name = None if wants_random_name else clean_player_name(name)
+    if not wants_random_name and not cleaned_name:
         print(f"[MATCHMAKING] Rejected invalid player name {name!r}")
         query = {"error": "invalid_name"}
         if action == "join" and room_code and room_code.strip():
             # Send them back to the "I have a code" tab with the code filled in.
             query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
         return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
-    name = cleaned_name
-    print(f"[MATCHMAKING] Action={action} user={name} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
+    name = cleaned_name  # None until the room's categories are known (random name)
+    print(f"[MATCHMAKING] Action={action} user={name or '(random)'} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
         max_players = max(2, min(10, max_players))
         duration = max(30, min(120, ((duration + 7) // 15) * 15))
@@ -385,8 +390,11 @@ async def join(
         if rounds not in [1, 3, 5]:
             rounds = 3  # Default to 3 if invalid
 
-        # Normalize / fall back if client sent an unknown category
-        category = word_manager.normalize_category(category)
+        # Normalize / fall back if client sent unknown categories
+        categories = word_manager.parse_categories(category)
+        if wants_random_name:
+            name = player_names.random_name(categories, max_length=PLAYER_NAME_MAX)
+            print(f"[MATCHMAKING] No name given; host gets random name {name!r}")
         
         room_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
@@ -397,7 +405,7 @@ async def join(
             max_players=max_players,
             duration_seconds=duration,
             total_rounds=rounds,  # Pass rounds to GameRoom
-            category=category,
+            categories=categories,
         )
 
         room.add_player(name)
@@ -420,7 +428,7 @@ async def join(
         print(f"[ROOM] Created room={room_code}")
         print(f"[ROOM] Public={room_type == 'public'}")
         print(f"[ROOM] Max Players={max_players}")
-        print(f"[ROOM] Category={room.category}")
+        print(f"[ROOM] Categories={room.categories}")
         print(f"[ROOM] Current players={room.players}")
         log_room_state(room)
 
@@ -478,6 +486,9 @@ async def join(
             return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
 
         joining_running = room.game_started and room.status == "PLAYING"
+        if wants_random_name:
+            name = player_names.random_name(room.categories, taken=room.players, max_length=PLAYER_NAME_MAX)
+            print(f"[MATCHMAKING] No name given; joiner gets random name {name!r}")
         name = get_unique_name(name, room.players)
         added = room.add_player(name)
         if not added:
@@ -1176,6 +1187,12 @@ class ConnectionManager:
             return self.room.category
         return "movies"
 
+    def get_room_categories(self) -> List[str]:
+        """Return every word category selected for this room."""
+        if self.room and getattr(self.room, "categories", None):
+            return list(self.room.categories)
+        return [self.get_room_category()]
+
     async def send_word_options_to_drawer(self, count: int = 3, reuse_cached: bool = False):
         """
         Fetch `count` random words from the room category and send them
@@ -1192,13 +1209,7 @@ class ConnectionManager:
         if reuse_cached and self.last_word_options:
             options = list(self.last_word_options)
         else:
-            try:
-                options = word_manager.get_random_words(category, count=count)
-            except CategoryNotFoundError as e:
-                print(f"[WORD_MANAGER] {e}")
-                options = word_manager.get_random_words(
-                    word_manager.normalize_category(None), count=count
-                )
+            options = word_manager.get_random_words_from(self.get_room_categories(), count=count)
             self.last_word_options = list(options)
 
         print(
@@ -1953,6 +1964,7 @@ class ConnectionManager:
 
         if category and self.room:
             self.room.category = word_manager.normalize_category(category)
+            self.room.categories = [self.room.category]
             print(f"[GAME] Category set to {self.room.category} for room {self.room_id}")
 
         self.current_round = 0
@@ -2458,6 +2470,7 @@ async def broadcast_lobby_update():
             "game_started": r.game_started,
             "in_progress": r.status == "PLAYING" and r.game_started,
             "category": getattr(r, "category", "movies"),
+            "categories": getattr(r, "categories", None) or [getattr(r, "category", "movies")],
             "rounds": getattr(r, "total_rounds", 3),
         }
         public_list.append(entry)
@@ -3007,7 +3020,12 @@ async def websocket_endpoint(
                 if name == manager.game_state["drawer_name"]:
                     # Prefer room category; allow optional override from client
                     requested = data.get("category") or data.get("section")
-                    if requested and word_manager.has_category(requested):
+                    # A room category in the request just means "the room pool".
+                    if (
+                        requested
+                        and word_manager.has_category(requested)
+                        and requested not in manager.get_room_categories()
+                    ):
                         # Temporary override for this pick only (room category stays)
                         category = requested
                         try:

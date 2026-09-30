@@ -1,12 +1,14 @@
 /**
- * Movie Guess lobby — Create Room / Public Rooms / Name screens.
- * Submits the same POST /join form the backend already expects.
+ * Movie Guess lobby — Public Rooms (landing) and Create Room / I Have a Code.
+ * Submits the same POST /join form the backend already expects; `category`
+ * carries one or more comma-separated category ids.
  * Lobby list still comes from /ws/lobby.
  */
 (function () {
     const STORAGE_KEY = "movie_guess_lobby_draft";
     const COPY_FLAG = "movie_guess_copy_invite";
     const NAME_MAX = 10;
+    const MAX_PLAYERS = 10;
 
     const root = document.getElementById("lobby-app");
     if (!root) return;
@@ -21,10 +23,10 @@
 
     // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
     const GENRE_ORDER = ["bollywood", "hollywood", "anime", "asian_dramas", "cartoon"];
-    const KIND_ORDER = ["characters", "movies"];
-    // Dropdown wording from the design ("Asian Drama Character", "Hollywood Movies").
-    const GENRE_OPTION_LABELS = { asian_dramas: "Asian Drama" };
-    const KIND_OPTION_LABELS = { characters: "Character", movies: "Movies", mix: "Mix" };
+    const KIND_ORDER = ["movies", "characters"];
+    // Wording from the design ("Asian Drama Character", "Hollywood Movies").
+    const GENRE_LABELS = { asian_dramas: "Asian Drama" };
+    const KIND_LABELS = { characters: "Character", movies: "Movies" };
     const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
 
     function splitCategory(id) {
@@ -45,37 +47,37 @@
 
     function categoryLabel(id) {
         const { genre, kind } = splitCategory(id);
-        return kind ? `${titleize(genre)} ${titleize(kind)}` : titleize(genre);
+        const genreLabel = GENRE_LABELS[genre] || titleize(genre);
+        const kindLabel = kind ? (KIND_LABELS[kind] || titleize(kind)) : "";
+        return `${genreLabel} ${kindLabel}`.trim().toUpperCase();
     }
 
-    const genres = (() => {
-        const found = [];
-        categories.forEach((id) => {
-            const { genre } = splitCategory(id);
-            if (genre && !found.includes(genre)) found.push(genre);
-        });
-        const ordered = GENRE_ORDER.filter((g) => found.includes(g));
-        return ordered.concat(found.filter((g) => !ordered.includes(g)));
-    })();
-
-    function kindsFor(genre) {
-        const found = categories
-            .map(splitCategory)
-            .filter((c) => c.genre === genre && c.kind)
-            .map((c) => c.kind);
-        const ordered = KIND_ORDER.filter((k) => found.includes(k));
-        return ordered.concat(found.filter((k) => !ordered.includes(k)));
+    function orderIndex(list, value) {
+        const i = list.indexOf(value);
+        return i === -1 ? list.length : i;
     }
+
+    // Dropdown options: one per category id, grouped by genre (design order).
+    const categoryOptions = categories
+        .map((id) => ({ id, ...splitCategory(id) }))
+        .sort((a, b) =>
+            orderIndex(GENRE_ORDER, a.genre) - orderIndex(GENRE_ORDER, b.genre)
+            || a.genre.localeCompare(b.genre)
+            || orderIndex(KIND_ORDER, a.kind) - orderIndex(KIND_ORDER, b.kind))
+        .map((c) => ({ id: c.id, label: categoryLabel(c.id) }));
+
+    const DEFAULT_CATEGORY = categories.includes("hollywood_movies")
+        ? "hollywood_movies"
+        : (categoryOptions[0] && categoryOptions[0].id) || "hollywood_movies";
 
     const els = {
         error: document.getElementById("error-banner"),
         screens: {
-            create: document.getElementById("screen-create"),
             public: document.getElementById("screen-public"),
-            name: document.getElementById("screen-name"),
+            create: document.getElementById("screen-create"),
         },
         topBtn: document.getElementById("top-nav-btn"),
-        brand: document.getElementById("brand-title"),
+        nameInputs: Array.from(document.querySelectorAll(".js-name-input")),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
         categorySelect: document.getElementById("category-select"),
@@ -86,24 +88,10 @@
         duration: document.getElementById("duration-slider"),
         durationVal: document.getElementById("duration-val"),
         publicToggle: document.getElementById("public-toggle"),
-        maxPlayersWrap: document.getElementById("max-players-wrap"),
-        maxPlayers: document.getElementById("max-players-slider"),
-        maxPlayersVal: document.getElementById("max-players-val"),
         roomCodeInput: document.getElementById("have-code-input"),
-        joinNameInput: document.getElementById("join-name-input"),
+        createBtn: document.getElementById("create-copy-btn"),
         joinRoomBtn: document.getElementById("join-room-btn"),
         roomList: document.getElementById("room-list"),
-        nameInput: document.getElementById("player-name"),
-        nameTitle: document.getElementById("name-screen-label"),
-        nameSubmit: document.getElementById("name-submit-btn"),
-        nameCount: document.getElementById("player-name-count"),
-        joinNameCount: document.getElementById("join-name-count"),
-        nameFieldError: document.getElementById("name-field-error"),
-        publicJoinHeader: document.getElementById("public-join-header"),
-        joinRoomId: document.getElementById("join-room-id"),
-        joinRoomMeta: document.getElementById("join-room-meta"),
-        copyJoinCode: document.getElementById("copy-join-code"),
-        nameScreen: document.getElementById("screen-name"),
         form: document.getElementById("join-form"),
         fields: {
             name: document.getElementById("field-name"),
@@ -119,31 +107,19 @@
     };
 
     const state = {
-        screen: "create",
+        screen: "public", // public | create
         createTab: "create", // create | code
-        genre: genres.includes("hollywood") ? "hollywood" : (genres[0] || "hollywood"),
-        kind: "movies", // movies | characters | mix
+        categories: [DEFAULT_CATEGORY],
         rounds: 3,
         duration: 60,
         publicRoom: false,
-        maxPlayers: 4,
         roomCode: "",
-        pendingAction: "create", // create | join
-        copyLink: false,
         name: "",
-        cameFromPublic: false,
-        selectedRoom: null,
         rooms: [],
     };
 
     function clampName(value) {
         return String(value || "").slice(0, NAME_MAX);
-    }
-
-    function updateCharCount(input, countEl) {
-        if (!input || !countEl) return;
-        const len = (input.value || "").length;
-        countEl.textContent = `${len}/${NAME_MAX}`;
     }
 
     // Mirrors clean_player_name() in main.py (the server is the real check):
@@ -155,12 +131,6 @@
 
     function isValidName(name) {
         return NAME_PATTERN.test(name) && NAME_HAS_LETTER.test(name);
-    }
-
-    function setNameFieldError(visible, message) {
-        if (!els.nameFieldError) return;
-        els.nameFieldError.textContent = message || "PLEASE ENTER YOUR NAME";
-        els.nameFieldError.classList.toggle("hidden", !visible);
     }
 
     function createGuestId() {
@@ -195,18 +165,12 @@
         const draft = {
             screen: state.screen,
             createTab: state.createTab,
-            genre: state.genre,
-            kind: state.kind,
+            categories: state.categories,
             rounds: state.rounds,
             duration: state.duration,
             publicRoom: state.publicRoom,
-            maxPlayers: state.maxPlayers,
             roomCode: state.roomCode,
-            pendingAction: state.pendingAction,
-            copyLink: state.copyLink,
             name: clampName(state.name),
-            cameFromPublic: !!state.cameFromPublic,
-            selectedRoom: state.selectedRoom,
         };
         try {
             sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft));
@@ -219,37 +183,24 @@
             if (!raw) return;
             const draft = JSON.parse(raw);
             Object.assign(state, {
-                screen: draft.screen || state.screen,
-                createTab: draft.createTab || state.createTab,
+                screen: ["public", "create"].includes(draft.screen) ? draft.screen : state.screen,
+                createTab: draft.createTab === "code" ? "code" : "create",
                 rounds: draft.rounds || state.rounds,
                 duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom === true,
-                maxPlayers: draft.maxPlayers || state.maxPlayers,
                 roomCode: draft.roomCode || "",
-                pendingAction: draft.pendingAction || "create",
-                copyLink: !!draft.copyLink,
-            name: clampName(draft.name || ""),
-            cameFromPublic: !!draft.cameFromPublic,
-            selectedRoom: draft.selectedRoom || null,
-        });
-            // Older drafts stored a single flat category ("movies" / "characters" / "mix").
-            if (draft.genre && genres.includes(draft.genre)) state.genre = draft.genre;
-            if (draft.kind) {
-                state.kind = draft.kind;
-            } else if (["movies", "characters", "mix"].includes(draft.category)) {
-                state.kind = draft.category;
-            }
+                name: clampName(draft.name || ""),
+            });
+            const saved = Array.isArray(draft.categories)
+                ? draft.categories.filter((id) => categories.includes(id))
+                : [];
+            if (saved.length) state.categories = saved;
         } catch (_) { /* ignore */ }
     }
 
     function showError(message) {
-        if (!message) {
-            els.error.classList.remove("is-visible");
-            els.error.textContent = "";
-            return;
-        }
-        els.error.textContent = message;
-        els.error.classList.add("is-visible");
+        els.error.textContent = message || "";
+        els.error.classList.toggle("is-visible", !!message);
     }
 
     function setScreen(name) {
@@ -257,17 +208,10 @@
         Object.entries(els.screens).forEach(([key, node]) => {
             node.classList.toggle("is-active", key === name);
         });
-
-        if (name === "public") {
-            els.topBtn.textContent = "BACK";
-            els.topBtn.dataset.action = "back";
-        } else if (name === "name") {
-            els.topBtn.textContent = "BACK";
-            els.topBtn.dataset.action = "back-name";
-        } else {
-            els.topBtn.textContent = "PUBLIC ROOMS";
-            els.topBtn.dataset.action = "public";
-        }
+        // Design: Public list offers "Private Rooom"; Create offers "Back".
+        const onPublic = name === "public";
+        els.topBtn.textContent = onPublic ? "PRIVATE ROOOM" : "BACK";
+        els.topBtn.dataset.action = onPublic ? "create" : "public";
         saveDraft();
         render();
     }
@@ -278,56 +222,27 @@
         render();
     }
 
-    function resolveCategoryForSubmit() {
-        const kinds = kindsFor(state.genre);
-        let kind = state.kind;
-        if (kind === "mix" || !kinds.includes(kind)) {
-            kind = kind === "mix" && kinds.length
-                ? kinds[Math.floor(Math.random() * kinds.length)]
-                : (kinds[0] || "movies");
-        }
-        const id = `${state.genre}_${kind}`;
-        if (categories.includes(id)) return id;
-        return categories.includes("hollywood_movies") ? "hollywood_movies" : (categories[0] || "hollywood_movies");
-    }
-
-    // One dropdown entry per genre + type, plus "<Genre> Mix" (random of the two) when a genre has both.
-    const categoryOptions = (() => {
-        const options = [];
-        genres.forEach((genre) => {
-            const kinds = kindsFor(genre);
-            const withMix = kinds.length >= 2 ? kinds.concat("mix") : kinds;
-            withMix.forEach((kind) => {
-                const genreLabel = GENRE_OPTION_LABELS[genre] || titleize(genre);
-                const kindLabel = KIND_OPTION_LABELS[kind] || titleize(kind);
-                options.push({ genre, kind, label: `${genreLabel} ${kindLabel}`.toUpperCase() });
-            });
-        });
-        return options;
-    })();
+    /* ---------- category multi-select ---------- */
 
     let categoryOpen = false;
     let categoryHighlight = -1;
 
-    function isSelectedOption(option) {
-        return option.genre === state.genre && option.kind === state.kind;
+    function checkboxIcon(selected) {
+        return `/static/img/icons/${selected ? "ic-checkbox-on" : "ic-checkbox-off"}.svg`;
     }
 
-    // Options shown in the open list: everything except the current choice (design).
-    function visibleCategoryOptions() {
-        return categoryOptions.filter((option) => !isSelectedOption(option));
+    // Trigger lists the picks in dropdown order, comma separated (design).
+    function renderCategoryValue() {
+        state.categories = state.categories.filter((id) => categories.includes(id));
+        if (!state.categories.length) state.categories = [DEFAULT_CATEGORY];
+        els.categoryValue.textContent = categoryOptions
+            .filter((o) => state.categories.includes(o.id))
+            .map((o) => o.label)
+            .join(", ");
     }
 
     function renderCategorySelect() {
-        if (!categoryOptions.some(isSelectedOption)) {
-            const fallback = categoryOptions.find((o) => o.genre === state.genre) || categoryOptions[0];
-            if (fallback) {
-                state.genre = fallback.genre;
-                state.kind = fallback.kind;
-            }
-        }
-        const selected = categoryOptions.find(isSelectedOption);
-        els.categoryValue.textContent = selected ? selected.label : "";
+        renderCategoryValue();
 
         els.categoryTrigger.setAttribute("aria-expanded", String(categoryOpen));
         els.categorySelect.classList.toggle("is-open", categoryOpen);
@@ -335,18 +250,28 @@
         els.categoryList.innerHTML = "";
         if (!categoryOpen) return;
 
-        visibleCategoryOptions().forEach((option, index) => {
+        categoryOptions.forEach((option, index) => {
+            const selected = state.categories.includes(option.id);
             const item = document.createElement("li");
             item.className = "mg-select-option" + (index === categoryHighlight ? " is-highlighted" : "");
             item.id = `category-option-${index}`;
             item.setAttribute("role", "option");
-            item.setAttribute("aria-selected", "false");
-            item.textContent = option.label;
+            item.setAttribute("aria-selected", String(selected));
+
+            const label = document.createElement("span");
+            label.className = "mg-select-option-label";
+            label.textContent = option.label;
+
+            const box = document.createElement("span");
+            box.className = "mg-check";
+            box.innerHTML = `<img src="${checkboxIcon(selected)}" width="19.99" height="20" alt="">`;
+
+            item.append(label, box);
             item.addEventListener("mouseenter", () => setCategoryHighlight(index));
-            item.addEventListener("click", () => chooseCategory(option));
+            item.addEventListener("click", () => toggleCategory(option.id));
             els.categoryList.appendChild(item);
         });
-        const active = els.categoryList.querySelector(".is-highlighted");
+        const active = els.categoryList.children[categoryHighlight];
         if (active) {
             els.categoryList.setAttribute("aria-activedescendant", active.id);
             active.scrollIntoView({ block: "nearest" });
@@ -358,7 +283,7 @@
     function setCategoryHighlight(index) {
         if (index === categoryHighlight) return;
         categoryHighlight = index;
-        els.categoryList.querySelectorAll(".mg-select-option").forEach((item, i) => {
+        Array.from(els.categoryList.children).forEach((item, i) => {
             item.classList.toggle("is-highlighted", i === index);
         });
         const active = els.categoryList.children[index];
@@ -375,15 +300,25 @@
         if (open) els.categoryList.focus();
     }
 
-    function chooseCategory(option) {
-        state.genre = option.genre;
-        state.kind = option.kind;
-        categoryOpen = false;
-        categoryHighlight = -1;
+    // Multi-select: the list stays open; at least one category stays picked.
+    // Options are updated in place so the open list (and outside-click check) stay intact.
+    function toggleCategory(id) {
+        if (state.categories.includes(id)) {
+            if (state.categories.length === 1) return;
+            state.categories = state.categories.filter((c) => c !== id);
+        } else {
+            state.categories = state.categories.concat(id);
+        }
         saveDraft();
-        render();
-        els.categoryTrigger.focus();
+        renderCategoryValue();
+        Array.from(els.categoryList.children).forEach((item, i) => {
+            const selected = state.categories.includes(categoryOptions[i].id);
+            item.setAttribute("aria-selected", String(selected));
+            item.querySelector(".mg-check img").src = checkboxIcon(selected);
+        });
     }
+
+    /* ---------- render ---------- */
 
     function setSliderFill(slider) {
         const min = Number(slider.min) || 0;
@@ -397,7 +332,7 @@
         [1, 3, 5].forEach((n) => {
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "pill pill-round" + (state.rounds === n ? " is-active" : "");
+            btn.className = "pill" + (state.rounds === n ? " is-active" : "");
             btn.textContent = String(n);
             btn.addEventListener("click", () => {
                 state.rounds = n;
@@ -406,6 +341,22 @@
             });
             els.roundsRow.appendChild(btn);
         });
+    }
+
+    function renderNameInputs() {
+        state.name = clampName(state.name);
+        els.nameInputs.forEach((input) => {
+            if (input.value !== state.name) input.value = state.name;
+            const count = input.closest(".name-field").querySelector(".js-name-count");
+            if (count) count.textContent = `${state.name.length}/${NAME_MAX}`;
+        });
+    }
+
+    function roomCategories(room) {
+        const list = Array.isArray(room.categories) && room.categories.length
+            ? room.categories
+            : [room.category || DEFAULT_CATEGORY];
+        return list.map(categoryLabel).join(", ");
     }
 
     function renderRooms() {
@@ -419,49 +370,52 @@
             const full = room.count >= room.max;
             const row = document.createElement("div");
             row.className = "room-row";
-            const cat = categoryLabel(room.category || "hollywood_movies").toUpperCase();
-            const rounds = room.rounds || 3;
-            const liveTag = room.in_progress ? `<span class="room-live-tag">IN PROGRESS</span>` : "";
-            row.innerHTML = `
-                <div>
-                    <div class="room-id">${room.room_id}${liveTag}</div>
+
+            const info = document.createElement("div");
+            info.className = "room-info";
+            info.innerHTML = `
+                <div class="room-id"></div>
+                <div class="room-details">
                     <div class="room-meta">
-                        <span>👤 ${room.count}/${room.max}</span>
-                        <span>${cat}</span>
-                        <span>${rounds} ROUNDS</span>
+                        <span class="room-players">
+                            <span class="room-icon"><img src="/static/img/icons/ic-users.svg" width="20.0409" height="19.9999" alt=""></span>
+                            <span class="room-count"></span>
+                        </span>
+                        <span aria-hidden="true">|</span>
+                        <span class="room-rounds"></span>
                     </div>
+                    <p class="room-categories"></p>
                 </div>
             `;
+            info.querySelector(".room-id").textContent = room.room_id;
+            if (room.in_progress) {
+                const tag = document.createElement("span");
+                tag.className = "room-live-tag";
+                tag.textContent = "IN PROGRESS";
+                info.querySelector(".room-id").appendChild(tag);
+            }
+            info.querySelector(".room-count").textContent = `${room.count}/${room.max}`;
+            info.querySelector(".room-rounds").textContent = `${room.rounds || 3} ROUNDS`;
+            info.querySelector(".room-categories").textContent = roomCategories(room);
+
             const join = document.createElement("button");
             join.type = "button";
             join.className = "join-btn";
             join.textContent = "JOIN";
             join.disabled = full;
-            join.addEventListener("click", () => {
-                state.pendingAction = "join";
-                state.roomCode = room.room_id;
-                state.copyLink = false;
-                state.createTab = "code";
-                state.cameFromPublic = true;
-                state.selectedRoom = {
-                    room_id: room.room_id,
-                    count: room.count,
-                    max: room.max,
-                    category: room.category || "hollywood_movies",
-                    rounds: room.rounds || 3,
-                };
-                setNameFieldError(false);
-                setScreen("name");
-            });
-            row.appendChild(join);
+            join.addEventListener("click", () => joinPublicRoom(room));
+
+            row.append(info, join);
             list.appendChild(row);
         });
     }
 
     function render() {
-        els.createPane.classList.toggle("hidden", state.createTab !== "create");
-        els.codePane.classList.toggle("hidden", state.createTab !== "code");
-
+        const onCode = state.createTab === "code";
+        els.createPane.classList.toggle("hidden", onCode);
+        els.codePane.classList.toggle("hidden", !onCode);
+        els.createBtn.classList.toggle("hidden", onCode);
+        els.joinRoomBtn.classList.toggle("hidden", !onCode);
         document.querySelectorAll(".mode-tab").forEach((tab) => {
             tab.classList.toggle("is-active", tab.dataset.tab === state.createTab);
         });
@@ -469,89 +423,47 @@
         els.duration.value = state.duration;
         setSliderFill(els.duration);
         els.durationVal.textContent = `${state.duration} SEC`;
+
         els.publicToggle.checked = state.publicRoom;
-        els.maxPlayers.value = state.maxPlayers;
-        setSliderFill(els.maxPlayers);
-        els.maxPlayersVal.textContent = String(state.maxPlayers);
-        els.maxPlayersWrap.classList.toggle("hidden", !state.publicRoom && false);
-        // Max players still useful for private rooms — keep visible.
 
-        if (els.roomCodeInput) {
-            els.roomCodeInput.value = state.roomCode;
-        }
-        state.name = clampName(state.name);
-        if (els.nameInput) {
-            els.nameInput.value = state.name;
-            els.nameInput.maxLength = NAME_MAX;
-            updateCharCount(els.nameInput, els.nameCount);
-        }
-        if (els.joinNameInput) {
-            els.joinNameInput.value = state.name;
-            els.joinNameInput.maxLength = NAME_MAX;
-            updateCharCount(els.joinNameInput, els.joinNameCount);
-        }
+        if (els.roomCodeInput.value !== state.roomCode) els.roomCodeInput.value = state.roomCode;
 
-        const publicJoin = state.cameFromPublic && state.pendingAction === "join";
-        if (els.publicJoinHeader) {
-            els.publicJoinHeader.classList.toggle("hidden", !publicJoin);
-        }
-        if (els.nameScreen) {
-            els.nameScreen.classList.toggle("is-public-join", publicJoin);
-        }
-        if (publicJoin && state.selectedRoom) {
-            const room = state.selectedRoom;
-            if (els.joinRoomId) els.joinRoomId.textContent = room.room_id;
-            if (els.joinRoomMeta) {
-                els.joinRoomMeta.innerHTML = `
-                    <span>👤 ${room.count}/${room.max}</span>
-                    <span>${categoryLabel(room.category || "hollywood_movies").toUpperCase()}</span>
-                    <span>${room.rounds || 3} ROUNDS</span>
-                `;
-            }
-        }
-
-        els.nameTitle.textContent = "NAME";
-        if (publicJoin) {
-            els.nameSubmit.textContent = "JOIN ROOM";
-            els.nameSubmit.classList.add("btn-yellow");
-            els.nameSubmit.classList.remove("btn-primary");
-        } else if (state.pendingAction === "join") {
-            els.nameSubmit.textContent = "ENTER ROOM";
-            els.nameSubmit.classList.add("btn-primary");
-            els.nameSubmit.classList.remove("btn-yellow");
-        } else {
-            els.nameSubmit.textContent = "CREATE & ENTER";
-            els.nameSubmit.classList.add("btn-primary");
-            els.nameSubmit.classList.remove("btn-yellow");
-        }
-
+        renderNameInputs();
         renderCategorySelect();
         renderRounds();
         if (state.screen === "public") renderRooms();
     }
 
-    function syncForm(nameOverride, codeOverride) {
-        const name = clampName(nameOverride != null ? nameOverride : (els.nameInput.value || "")).trim();
-        const code = (codeOverride != null ? codeOverride : state.roomCode || "").toUpperCase().trim();
-        state.name = name;
-        state.roomCode = code;
-        els.fields.name.value = name;
-        els.fields.guestId.value = getOrCreateGuestId();
-        els.fields.action.value = state.pendingAction;
-        els.fields.maxPlayers.value = String(state.maxPlayers);
-        els.fields.rounds.value = String(state.rounds);
-        els.fields.duration.value = String(state.duration);
-        els.fields.category.value = resolveCategoryForSubmit();
-        els.fields.roomCode.value = code;
+    /* ---------- submit ---------- */
 
-        if (state.pendingAction === "create") {
-            els.fields.roomType.value = state.publicRoom ? "public" : "private";
-        } else {
-            els.fields.roomType.value = state.cameFromPublic ? "public" : "private";
+    // Validates the shared name field on the current screen. Returns the name,
+    // "" when it was left blank (the server then picks a funny name from the room's
+    // categories), or null when the typed name isn't allowed.
+    function requireName() {
+        const input = els.screens[state.screen].querySelector(".js-name-input");
+        const name = clampName(state.name).trim();
+        if (name && !isValidName(name)) {
+            showError(INVALID_NAME_MESSAGE);
+            if (input) input.focus();
+            return null;
         }
+        showError("");
+        return name;
     }
 
-    function finishSubmit() {
+    function submitJoin({ action, name, roomCode = "", roomType = "private", copyLink = false }) {
+        state.name = name;
+        state.roomCode = roomCode;
+        els.fields.name.value = name;
+        els.fields.guestId.value = getOrCreateGuestId();
+        els.fields.action.value = action;
+        els.fields.roomType.value = roomType;
+        els.fields.maxPlayers.value = String(MAX_PLAYERS);
+        els.fields.rounds.value = String(state.rounds);
+        els.fields.duration.value = String(state.duration);
+        els.fields.category.value = state.categories.join(",");
+        els.fields.roomCode.value = roomCode;
+
         try {
             // Don't pre-save the typed name: /join may rename a duplicate
             // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
@@ -562,84 +474,41 @@
             Object.keys(sessionStorage)
                 .filter((key) => key.startsWith("movie_guess_player_token:"))
                 .forEach((key) => sessionStorage.removeItem(key));
-            sessionStorage.setItem("movie_guess_player_room", state.roomCode);
-        } catch (_) { /* ignore */ }
-        if (state.pendingAction === "create" && state.copyLink) {
-            try {
-                sessionStorage.setItem(COPY_FLAG, "1");
-            } catch (_) { /* ignore */ }
-        }
-        try {
-            sessionStorage.removeItem(STORAGE_KEY);
+            sessionStorage.setItem("movie_guess_player_room", roomCode);
+            if (copyLink) sessionStorage.setItem(COPY_FLAG, "1");
+            // Keep the name/settings for when the user comes back to the lobby.
+            saveDraft();
         } catch (_) { /* ignore */ }
         els.form.submit();
     }
 
-    function goCreateWithCopy() {
-        state.pendingAction = "create";
-        state.copyLink = true;
-        state.roomCode = "";
-        state.cameFromPublic = false;
-        state.selectedRoom = null;
-        setNameFieldError(false);
-        setScreen("name");
+    function createRoom() {
+        const name = requireName();
+        if (name === null) return;
+        submitJoin({
+            action: "create",
+            name,
+            roomType: state.publicRoom ? "public" : "private",
+            copyLink: true,
+        });
     }
 
-    function submitJoinWithCode() {
-        const name = clampName(els.joinNameInput.value || "").trim();
-        const code = (els.roomCodeInput.value || "").trim().toUpperCase();
-        if (!name) {
-            showError("Please enter your name.");
-            els.joinNameInput.focus();
-            return;
-        }
-        if (!isValidName(name)) {
-            showError(INVALID_NAME_MESSAGE);
-            els.joinNameInput.focus();
-            return;
-        }
+    function joinWithCode() {
+        const name = requireName();
+        if (name === null) return;
+        const code = extractRoomCode(els.roomCodeInput.value);
         if (!code) {
             showError("Please enter a room code.");
             els.roomCodeInput.focus();
             return;
         }
-        showError("");
-        state.pendingAction = "join";
-        state.copyLink = false;
-        state.cameFromPublic = false;
-        state.selectedRoom = null;
-        state.name = name;
-        state.roomCode = code;
-        syncForm(name, code);
-        finishSubmit();
+        submitJoin({ action: "join", name, roomCode: code });
     }
 
-    function submitName(event) {
-        event.preventDefault();
-        const name = clampName(els.nameInput.value || "").trim();
-        if (!name) {
-            setNameFieldError(true);
-            showError("");
-            els.nameInput.focus();
-            return;
-        }
-        if (!isValidName(name)) {
-            setNameFieldError(true, INVALID_NAME_MESSAGE);
-            showError("");
-            els.nameInput.focus();
-            return;
-        }
-        setNameFieldError(false);
-        if (state.pendingAction === "join" && !(state.roomCode || "").trim()) {
-            showError("Missing room code.");
-            setScreen("create");
-            setCreateTab("code");
-            return;
-        }
-        showError("");
-        state.name = name;
-        syncForm(name, state.roomCode);
-        finishSubmit();
+    function joinPublicRoom(room) {
+        const name = requireName();
+        if (name === null) return;
+        submitJoin({ action: "join", name, roomCode: room.room_id, roomType: "public" });
     }
 
     function parseQuery() {
@@ -663,26 +532,13 @@
             if (error === "not_found" || error === "missing_code") {
                 state.screen = "create";
                 state.createTab = "code";
-                state.pendingAction = "join";
-            } else if (error === "name_taken" || error === "banned" || error === "full") {
-                // Prefer code tab (name + code) when rejoining with a code
-                if (state.roomCode) {
-                    state.screen = "create";
-                    state.createTab = "code";
-                } else {
-                    state.screen = "name";
-                }
-                state.pendingAction = "join";
             }
         }
 
         if (invite) {
             try {
-                const decoded = atob(invite).toUpperCase();
-                state.roomCode = decoded;
-                state.pendingAction = "join";
-                state.copyLink = false;
-                // Design: join with code is name + code on the same tab
+                state.roomCode = atob(invite).toUpperCase();
+                // Design: join with code is name + code on the "I have a code" tab
                 state.screen = "create";
                 state.createTab = "code";
             } catch (_) {
@@ -691,13 +547,28 @@
         }
     }
 
+    function extractRoomCode(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (/https?:\/\//i.test(raw) || /[?&]invite=/i.test(raw)) {
+            try {
+                const urlMatch = raw.match(/https?:\/\/[^\s]+/i) || raw.match(/\S+/);
+                const invite = urlMatch ? new URL(urlMatch[0], window.location.origin).searchParams.get("invite") : null;
+                if (invite) {
+                    return atob(invite).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+                }
+            } catch (_) { /* ignore malformed URLs */ }
+            return "";
+        }
+        return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    }
+
     function connectLobby() {
         const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws;
         let retryMs = 1200;
 
         const connect = () => {
-            ws = new WebSocket(`${protocol}://${window.location.host}/ws/lobby`);
+            const ws = new WebSocket(`${protocol}://${window.location.host}/ws/lobby`);
             ws.onmessage = (event) => {
                 let data;
                 try {
@@ -721,20 +592,28 @@
         connect();
     }
 
-    // Events
+    /* ---------- events ---------- */
+
     document.querySelectorAll(".mode-tab").forEach((tab) => {
         tab.addEventListener("click", () => setCreateTab(tab.dataset.tab));
     });
 
     els.topBtn.addEventListener("click", () => {
-        const action = els.topBtn.dataset.action;
-        if (action === "public") {
-            setScreen("public");
-        } else if (action === "back-name") {
-            setScreen(state.cameFromPublic ? "public" : "create");
-        } else {
-            setScreen("create");
-        }
+        showError("");
+        setScreen(els.topBtn.dataset.action === "create" ? "create" : "public");
+    });
+
+    els.nameInputs.forEach((input) => {
+        input.addEventListener("input", () => {
+            state.name = clampName(input.value);
+            renderNameInputs();
+            saveDraft();
+        });
+        input.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || state.screen !== "create") return;
+            event.preventDefault();
+            if (state.createTab === "code") joinWithCode(); else createRoom();
+        });
     });
 
     els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));
@@ -747,16 +626,16 @@
     });
 
     els.categoryList.addEventListener("keydown", (event) => {
-        const options = visibleCategoryOptions();
         if (event.key === "ArrowDown") {
             event.preventDefault();
-            setCategoryHighlight(Math.min(options.length - 1, categoryHighlight + 1));
+            setCategoryHighlight(Math.min(categoryOptions.length - 1, categoryHighlight + 1));
         } else if (event.key === "ArrowUp") {
             event.preventDefault();
             setCategoryHighlight(Math.max(0, categoryHighlight - 1));
         } else if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            if (options[categoryHighlight]) chooseCategory(options[categoryHighlight]);
+            const option = categoryOptions[categoryHighlight];
+            if (option) toggleCategory(option.id);
         } else if (event.key === "Escape" || event.key === "Tab") {
             if (event.key === "Escape") event.preventDefault();
             setCategoryOpen(false);
@@ -774,12 +653,6 @@
         render();
     });
 
-    els.maxPlayers.addEventListener("input", () => {
-        state.maxPlayers = Number(els.maxPlayers.value) || 4;
-        saveDraft();
-        render();
-    });
-
     els.publicToggle.addEventListener("change", () => {
         state.publicRoom = els.publicToggle.checked;
         saveDraft();
@@ -791,91 +664,25 @@
         saveDraft();
     });
 
-    els.joinNameInput.addEventListener("input", () => {
-        els.joinNameInput.value = clampName(els.joinNameInput.value);
-        state.name = els.joinNameInput.value;
-        updateCharCount(els.joinNameInput, els.joinNameCount);
+    els.roomCodeInput.addEventListener("paste", (event) => {
+        const pasted = (event.clipboardData && (event.clipboardData.getData("text/plain") || event.clipboardData.getData("text"))) || "";
+        const extracted = extractRoomCode(pasted);
+        if (!extracted) return;
+        event.preventDefault();
+        els.roomCodeInput.value = extracted;
+        state.roomCode = extracted;
         saveDraft();
     });
 
-    els.nameInput.addEventListener("input", () => {
-        els.nameInput.value = clampName(els.nameInput.value);
-        state.name = els.nameInput.value;
-        updateCharCount(els.nameInput, els.nameCount);
-        if (els.nameInput.value.trim()) setNameFieldError(false);
-        saveDraft();
+    els.roomCodeInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            joinWithCode();
+        }
     });
 
-    function extractRoomCode(value) {
-        const raw = String(value || "").trim();
-        if (!raw) return "";
-        if (/https?:\/\//i.test(raw) || /[?&]invite=/i.test(raw)) {
-            try {
-                const urlMatch = raw.match(/https?:\/\/[^\s]+/i) || raw.match(/\S+/);
-                const invite = urlMatch ? new URL(urlMatch[0], window.location.origin).searchParams.get("invite") : null;
-                if (invite) {
-                    return atob(invite).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-                }
-            } catch (_) { /* ignore malformed URLs */ }
-            return "";
-        }
-        return raw.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-    }
-
-    function copyText(value) {
-        const text = String(value || "");
-        const fallback = () => {
-            const ta = document.createElement("textarea");
-            ta.value = text;
-            ta.setAttribute("readonly", "");
-            ta.style.position = "absolute";
-            ta.style.left = "-9999px";
-            ta.style.top = `${window.pageYOffset || 0}px`;
-            ta.style.userSelect = "text";
-            document.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            ta.setSelectionRange(0, text.length);
-            const ok = document.execCommand("copy");
-            ta.remove();
-            return ok;
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text).catch(() => {
-                if (!fallback()) throw new Error("copy failed");
-            });
-        }
-        return fallback() ? Promise.resolve() : Promise.reject(new Error("copy failed"));
-    }
-
-    if (els.copyJoinCode) {
-        els.copyJoinCode.addEventListener("click", (event) => {
-            event.preventDefault();
-            const code = extractRoomCode(state.roomCode || (state.selectedRoom && state.selectedRoom.room_id) || "");
-            if (!code) return;
-            copyText(code).then(() => {
-                showError("");
-                els.copyJoinCode.textContent = "✓";
-                setTimeout(() => { els.copyJoinCode.textContent = "⧉"; }, 1200);
-            }).catch(() => {});
-        });
-    }
-
-    if (els.roomCodeInput) {
-        els.roomCodeInput.addEventListener("paste", (event) => {
-            const pasted = (event.clipboardData && (event.clipboardData.getData("text/plain") || event.clipboardData.getData("text"))) || "";
-            const extracted = extractRoomCode(pasted);
-            if (!extracted) return;
-            event.preventDefault();
-            els.roomCodeInput.value = extracted;
-            state.roomCode = extracted;
-            saveDraft();
-        });
-    }
-
-    document.getElementById("create-copy-btn").addEventListener("click", goCreateWithCopy);
-    els.joinRoomBtn.addEventListener("click", submitJoinWithCode);
-    els.form.addEventListener("submit", submitName);
+    els.createBtn.addEventListener("click", createRoom);
+    els.joinRoomBtn.addEventListener("click", joinWithCode);
 
     // Boot. Guest-id setup must not block pills — HTTP LAN is not a secure context.
     try {
@@ -883,7 +690,7 @@
     } catch (_) { /* ignore */ }
     loadDraft();
     parseQuery();
-    setScreen(state.screen || "create");
+    setScreen(state.screen);
     try {
         connectLobby();
     } catch (_) { /* ignore */ }

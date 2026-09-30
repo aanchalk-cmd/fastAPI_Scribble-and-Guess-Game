@@ -1967,7 +1967,10 @@
                         <span class="player-score">${Number(p.score) || 0}</span>
                     </div>
                 `;
-                const canKick = p.name !== myName && currentRoomStatus === "PLAYING";
+                // Any other player's kick icon starts a vote (server handles the rest).
+                // Not gated on room status: that flag isn't refreshed when the game
+                // starts, which left every icon unclickable until a page reload.
+                const canKick = p.name !== myName;
                 const kick = document.createElement(canKick ? 'button' : 'span');
                 kick.className = "kick-btn" + (canKick ? "" : " is-static");
                 kick.innerHTML = ICON_KICK;

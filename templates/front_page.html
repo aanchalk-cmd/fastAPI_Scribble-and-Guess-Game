@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/lobby.css">
+    <link rel="stylesheet" href="/static/css/lobby.css?v=rooms2">
 </head>
 <body class="lobby-body">
     <div
@@ -18,7 +18,7 @@
     >
         <header class="lobby-top">
             <h1 class="brand-title" id="brand-title">Movie Guess</h1>
-            <button type="button" class="top-btn" id="top-nav-btn" data-action="public">PUBLIC ROOMS</button>
+            <button type="button" class="top-btn" id="top-nav-btn" data-action="create">PRIVATE ROOOM</button>
         </header>
 
         <div id="error-banner" class="error-banner" role="alert"></div>
@@ -32,100 +32,115 @@
             </aside>
 
             <div class="lobby-main">
-                <!-- ===== Screen 1: Create / Have a code ===== -->
-                <section id="screen-create" class="screen is-active" aria-label="Create room">
+                <!-- ===== Public rooms (landing) ===== -->
+                <section id="screen-public" class="screen" aria-label="Public rooms">
+                    <div class="film-card film-card-flush">
+                        <div class="film-inner public-inner">
+                            <h2 class="public-title">Public Roooms</h2>
+
+                            <div class="name-field">
+                                <div class="field-row field-row-tight">
+                                    <label class="field-label" for="public-name-input">Name</label>
+                                    <span class="field-label js-name-count" aria-live="polite">0/10</span>
+                                </div>
+                                <input
+                                    type="text"
+                                    id="public-name-input"
+                                    class="name-input js-name-input"
+                                    placeholder="ENTER YOUR NAME"
+                                    maxlength="10"
+                                    autocomplete="nickname"
+                                >
+                            </div>
+
+                            <div id="room-list" class="room-list mg-scroll">
+                                <p class="empty-state">Looking for active games...</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- ===== Create room / I have a code ===== -->
+                <section id="screen-create" class="screen" aria-label="Create room">
                     <div class="film-card">
                         <div class="film-inner stack">
-                            <div class="mode-tabs" role="tablist">
-                                <button type="button" class="mode-tab is-active" data-tab="create" role="tab">CREATE ROOM</button>
-                                <button type="button" class="mode-tab" data-tab="code" role="tab">I HAVE A CODE</button>
-                            </div>
-
-                            <div id="create-pane">
-                                <div>
-                                    <span class="field-label" id="category-label">Category</span>
-                                    <div class="mg-select" id="category-select">
-                                        <button
-                                            type="button"
-                                            class="mg-select-trigger"
-                                            id="category-trigger"
-                                            aria-haspopup="listbox"
-                                            aria-expanded="false"
-                                            aria-labelledby="category-label category-trigger"
-                                        >
-                                            <span class="mg-select-value" id="category-value"></span>
-                                            <img class="mg-select-chevron" src="/static/img/icons/ic-chevron-down.svg" width="24" height="24" alt="">
-                                        </button>
-                                        <ul class="mg-select-list hidden" id="category-list" role="listbox" aria-labelledby="category-label" tabindex="-1"></ul>
-                                    </div>
+                            <div class="create-fields">
+                                <div class="mode-tabs" role="tablist">
+                                    <button type="button" class="mode-tab is-active" data-tab="create" role="tab">CREATE ROOOM</button>
+                                    <button type="button" class="mode-tab" data-tab="code" role="tab">I HAVE A CODE</button>
                                 </div>
 
-                                <div>
-                                    <span class="field-label">Number of Round</span>
-                                    <div id="rounds-pills" class="pill-row"></div>
-                                </div>
-
-                                <div>
-                                    <div class="field-row">
-                                        <span class="field-label">Time Duration</span>
-                                        <span class="field-value" id="duration-val">60 SEC</span>
+                                <div class="name-field">
+                                    <div class="field-row field-row-tight">
+                                        <label class="field-label" for="create-name-input">Name</label>
+                                        <span class="field-label js-name-count" aria-live="polite">0/10</span>
                                     </div>
                                     <input
-                                        type="range"
-                                        id="duration-slider"
-                                        class="mg-slider"
-                                        min="30"
-                                        max="120"
-                                        step="15"
-                                        value="60"
-                                        aria-label="Time duration in seconds"
+                                        type="text"
+                                        id="create-name-input"
+                                        class="name-input js-name-input"
+                                        placeholder="ENTER YOUR NAME"
+                                        maxlength="10"
+                                        autocomplete="nickname"
                                     >
                                 </div>
 
-                                <div class="toggle-row">
-                                    <label class="toggle">
-                                        <input type="checkbox" id="public-toggle" aria-labelledby="public-toggle-label">
-                                        <img class="toggle-icon toggle-icon-on" src="/static/img/icons/ic-switch-on.svg" width="43.3333" height="35.2734" alt="">
-                                        <img class="toggle-icon toggle-icon-off" src="/static/img/icons/ic-switch-off.svg" width="43.3333" height="35.2734" alt="">
-                                    </label>
-                                    <span class="toggle-label" id="public-toggle-label">Public Room</span>
-                                </div>
-
-                                <div id="max-players-wrap">
-                                    <div class="field-row">
-                                        <span class="field-label">Max Player</span>
-                                        <span class="field-value" id="max-players-val">4</span>
-                                    </div>
-                                    <input
-                                        type="range"
-                                        id="max-players-slider"
-                                        class="mg-slider"
-                                        min="2"
-                                        max="10"
-                                        value="4"
-                                        aria-label="Maximum players"
-                                    >
-                                </div>
-
-                                <button type="button" class="btn-primary" id="create-copy-btn">CREATE &amp; COPY LINK</button>
-                            </div>
-
-                            <div id="code-pane" class="hidden code-pane">
-                                <div class="code-pane-fields">
+                                <div id="create-pane" class="create-pane">
                                     <div>
+                                        <span class="field-label" id="category-label">Category</span>
+                                        <div class="mg-select" id="category-select">
+                                            <button
+                                                type="button"
+                                                class="mg-select-trigger"
+                                                id="category-trigger"
+                                                aria-haspopup="listbox"
+                                                aria-expanded="false"
+                                                aria-labelledby="category-label category-trigger"
+                                            >
+                                                <span class="mg-select-value" id="category-value"></span>
+                                                <img class="mg-select-chevron" src="/static/img/icons/ic-chevron-down.svg" width="24" height="24" alt="">
+                                            </button>
+                                            <ul class="mg-select-list mg-scroll hidden" id="category-list" role="listbox" aria-multiselectable="true" aria-labelledby="category-label" tabindex="-1"></ul>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <span class="field-label">Number of Round</span>
+                                        <div id="rounds-pills" class="pill-row"></div>
+                                    </div>
+
+                                    <div class="slider-field">
                                         <div class="field-row">
-                                            <label class="field-label" for="join-name-input">Name</label>
-                                            <span class="char-count" id="join-name-count" aria-live="polite">0/10</span>
+                                            <span class="field-label">Time Duration</span>
+                                            <span class="field-value" id="duration-val">60 SEC</span>
                                         </div>
                                         <input
-                                            type="text"
-                                            id="join-name-input"
-                                            class="name-input"
-                                            placeholder="ENTER YOUR NAME"
-                                            maxlength="10"
-                                            autocomplete="nickname"
+                                            type="range"
+                                            id="duration-slider"
+                                            class="mg-slider"
+                                            min="30"
+                                            max="120"
+                                            step="15"
+                                            value="60"
+                                            aria-label="Time duration in seconds"
                                         >
                                     </div>
+
+                                    <div class="room-access">
+                                        <div class="toggle-row">
+                                            <label class="toggle">
+                                                <input type="checkbox" id="public-toggle" aria-labelledby="public-toggle-label">
+                                                <img class="toggle-icon toggle-icon-on" src="/static/img/icons/ic-switch-on.svg" width="43.3333" height="35.2734" alt="">
+                                                <img class="toggle-icon toggle-icon-off" src="/static/img/icons/ic-switch-off.svg" width="43.3333" height="35.2734" alt="">
+                                            </label>
+                                            <span class="toggle-label" id="public-toggle-label">Public Room</span>
+                                            <span class="toggle-note" id="max-players-note">Maximum 10 players allowed.</span>
+                                        </div>
+
+                                    </div>
+                                </div>
+
+                                <div id="code-pane" class="hidden create-pane">
                                     <div>
                                         <label class="field-label" for="have-code-input">Room Code</label>
                                         <input
@@ -139,67 +154,26 @@
                                         >
                                     </div>
                                 </div>
-                                <button type="button" class="btn-yellow" id="join-room-btn">JOIN ROOM</button>
                             </div>
+
+                            <button type="button" class="btn-primary btn-cta" id="create-copy-btn">CREATE &amp; COPY LINK</button>
+                            <button type="button" class="btn-primary btn-cta btn-yellow hidden" id="join-room-btn">JOIN ROOM</button>
                         </div>
                     </div>
                 </section>
 
-                <!-- ===== Screen 2: Public rooms ===== -->
-                <section id="screen-public" class="screen" aria-label="Public rooms">
-                    <div class="film-card">
-                        <div class="film-inner">
-                            <h2 class="public-title">Public Rooms</h2>
-                            <div id="room-list" class="room-list">
-                                <p class="empty-state">Looking for active games...</p>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- ===== Screen 3: Enter name (create) / public join ===== -->
-                <section id="screen-name" class="screen name-screen" aria-label="Enter name">
-                    <div class="film-card">
-                        <form id="join-form" class="film-inner" action="/join" method="POST">
-                            <input type="hidden" name="name" id="field-name" value="">
-                            <input type="hidden" name="action" id="field-action" value="create">
-                            <input type="hidden" name="room_type" id="field-room-type" value="private">
-                            <input type="hidden" name="max_players" id="field-max-players" value="4">
-                            <input type="hidden" name="rounds" id="field-rounds" value="3">
-                            <input type="hidden" name="duration" id="field-duration" value="5">
-                            <input type="hidden" name="category" id="field-category" value="movies">
-                            <input type="hidden" name="room_code" id="field-room-code" value="">
-                            <input type="hidden" name="guest_id" id="field-guest-id" value="">
-
-                            <div id="public-join-header" class="public-join-header hidden">
-                                <div class="join-code-row">
-                                    <span id="join-room-id" class="join-room-id">------</span>
-                                    <button type="button" class="copy-code-btn" id="copy-join-code" title="Copy room code" aria-label="Copy room code">⧉</button>
-                                </div>
-                                <div id="join-room-meta" class="join-room-meta"></div>
-                                <hr class="join-divider">
-                            </div>
-
-                            <div class="name-field-block">
-                                <div class="field-row">
-                                    <label class="field-label" id="name-screen-label" for="player-name">Name</label>
-                                    <span class="char-count" id="player-name-count" aria-live="polite">0/10</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    id="player-name"
-                                    class="name-input"
-                                    placeholder="ENTER YOUR NAME"
-                                    maxlength="10"
-                                    autocomplete="nickname"
-                                    required
-                                >
-                                <p id="name-field-error" class="field-error hidden">PLEASE ENTER YOUR NAME</p>
-                            </div>
-                            <button type="submit" class="btn-primary" id="name-submit-btn">CREATE &amp; ENTER</button>
-                        </form>
-                    </div>
-                </section>
+                <!-- Submitted by lobby.js with the same fields POST /join already expects -->
+                <form id="join-form" class="hidden" action="/join" method="POST">
+                    <input type="hidden" name="name" id="field-name" value="">
+                    <input type="hidden" name="action" id="field-action" value="create">
+                    <input type="hidden" name="room_type" id="field-room-type" value="private">
+                    <input type="hidden" name="max_players" id="field-max-players" value="10">
+                    <input type="hidden" name="rounds" id="field-rounds" value="3">
+                    <input type="hidden" name="duration" id="field-duration" value="60">
+                    <input type="hidden" name="category" id="field-category" value="hollywood_movies">
+                    <input type="hidden" name="room_code" id="field-room-code" value="">
+                    <input type="hidden" name="guest_id" id="field-guest-id" value="">
+                </form>
             </div>
 
             <!-- Right cinema props — all 3 kept fully in view -->

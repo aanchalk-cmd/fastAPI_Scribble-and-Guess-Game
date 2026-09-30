@@ -8,7 +8,7 @@
     const STORAGE_KEY = "movie_guess_lobby_draft";
     const COPY_FLAG = "movie_guess_copy_invite";
     const NAME_MAX = 10;
-    const PRIVATE_MAX_PLAYERS = 10;
+    const MAX_PLAYERS = 10;
 
     const root = document.getElementById("lobby-app");
     if (!root) return;
@@ -88,10 +88,6 @@
         duration: document.getElementById("duration-slider"),
         durationVal: document.getElementById("duration-val"),
         publicToggle: document.getElementById("public-toggle"),
-        maxPlayersNote: document.getElementById("max-players-note"),
-        maxPlayersWrap: document.getElementById("max-players-wrap"),
-        maxPlayers: document.getElementById("max-players-slider"),
-        maxPlayersVal: document.getElementById("max-players-val"),
         roomCodeInput: document.getElementById("have-code-input"),
         createBtn: document.getElementById("create-copy-btn"),
         joinRoomBtn: document.getElementById("join-room-btn"),
@@ -117,7 +113,6 @@
         rounds: 3,
         duration: 60,
         publicRoom: false,
-        maxPlayers: 4,
         roomCode: "",
         name: "",
         rooms: [],
@@ -174,7 +169,6 @@
             rounds: state.rounds,
             duration: state.duration,
             publicRoom: state.publicRoom,
-            maxPlayers: state.maxPlayers,
             roomCode: state.roomCode,
             name: clampName(state.name),
         };
@@ -194,7 +188,6 @@
                 rounds: draft.rounds || state.rounds,
                 duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom === true,
-                maxPlayers: draft.maxPlayers || state.maxPlayers,
                 roomCode: draft.roomCode || "",
                 name: clampName(draft.name || ""),
             });
@@ -431,13 +424,7 @@
         setSliderFill(els.duration);
         els.durationVal.textContent = `${state.duration} SEC`;
 
-        // Private rooms seat up to 10; public rooms pick their own max (design).
         els.publicToggle.checked = state.publicRoom;
-        els.maxPlayersNote.classList.toggle("hidden", state.publicRoom);
-        els.maxPlayersWrap.classList.toggle("hidden", !state.publicRoom);
-        els.maxPlayers.value = state.maxPlayers;
-        setSliderFill(els.maxPlayers);
-        els.maxPlayersVal.textContent = String(state.maxPlayers);
 
         if (els.roomCodeInput.value !== state.roomCode) els.roomCodeInput.value = state.roomCode;
 
@@ -471,7 +458,7 @@
         els.fields.guestId.value = getOrCreateGuestId();
         els.fields.action.value = action;
         els.fields.roomType.value = roomType;
-        els.fields.maxPlayers.value = String(state.publicRoom ? state.maxPlayers : PRIVATE_MAX_PLAYERS);
+        els.fields.maxPlayers.value = String(MAX_PLAYERS);
         els.fields.rounds.value = String(state.rounds);
         els.fields.duration.value = String(state.duration);
         els.fields.category.value = state.categories.join(",");
@@ -662,12 +649,6 @@
 
     els.duration.addEventListener("input", () => {
         state.duration = Math.max(30, Math.min(120, Number(els.duration.value) || 60));
-        saveDraft();
-        render();
-    });
-
-    els.maxPlayers.addEventListener("input", () => {
-        state.maxPlayers = Number(els.maxPlayers.value) || 4;
         saveDraft();
         render();
     });

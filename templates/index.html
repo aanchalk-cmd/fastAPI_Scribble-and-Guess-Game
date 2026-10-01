@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=fill2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=resp1">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -46,6 +46,7 @@
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            min-height: 100dvh;
             overflow: hidden;
         }
 
@@ -137,7 +138,6 @@
             min-height: 0;
             transition: transform 0.25s ease;
         }
-        #sidebar.open-mobile { transform: translateX(0); }
         .sidebar-title {
             font-size: 11px;
             font-weight: 800;
@@ -470,7 +470,7 @@
             border: 1px solid var(--line-soft);
             flex-wrap: wrap;
         }
-        .btn, #sidebar-toggle {
+        .btn {
             padding: 10px 14px;
             cursor: pointer;
             border: 1px solid var(--line);
@@ -484,7 +484,7 @@
             touch-action: manipulation;
             transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         }
-        .btn:hover, #sidebar-toggle:hover {
+        .btn:hover {
             background: rgba(148, 163, 184, 0.16);
             border-color: rgba(148, 163, 184, 0.4);
         }
@@ -609,20 +609,47 @@
             text-align: center;
             box-shadow: 0 40px 80px -30px rgba(2, 6, 23, 0.95);
         }
-        #vote-kick-modal { border: 1px solid rgba(244, 63, 94, 0.5); }
-        #vote-kick-question { margin: 0 0 18px; font-size: 1.08rem; font-weight: 700; }
-        #vote-kick-countdown {
-            margin-bottom: 18px;
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: var(--accent);
+        /* Vote kick: non-blocking card pinned bottom-right, auto-dismisses. */
+        #vote-kick-modal {
+            position: fixed;
+            right: max(16px, env(safe-area-inset-right));
+            bottom: max(16px, env(safe-area-inset-bottom));
+            z-index: 10001;
+            width: min(276px, calc(100vw - 32px));
+            padding: 20px 22px;
+            background: #000;
+            border-radius: 18px;
+            font-family: var(--mg-font, inherit);
+            text-transform: uppercase;
         }
+        #vote-kick-modal.hidden { display: none; }
+        #vote-kick-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 400; color: #feba00; }
+        .vote-kick-row { display: flex; align-items: center; gap: 12px; }
+        #vote-kick-target {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.72rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        #vote-kick-modal button {
+            font: inherit;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            border: 0;
+            cursor: pointer;
+            padding: 6px 10px;
+            min-height: 40px;
+            touch-action: manipulation;
+            border-radius: 6px;
+            color: #fff;
+            background: transparent;
+        }
+        #vote-kick-modal #vote-yes-btn { background: #c92208; }
         .vote-actions { display: flex; gap: 10px; justify-content: center; }
         .vote-actions .btn { flex: 1; font-weight: 800; }
-        #vote-yes-btn { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.5); color: #4ade80; }
-        #vote-no-btn { background: rgba(244, 63, 94, 0.18); border-color: rgba(244, 63, 94, 0.5); color: #fb7185; }
-        #vote-kick-status { margin-top: 14px; font-size: 0.85rem; color: var(--text-dim); }
-        #vote-kick-overlay { z-index: 10000; }
 
         #disconnect-overlay {
             position: fixed;
@@ -656,12 +683,12 @@
             position: fixed;
             top: 0;
             right: 0;
-            width: 320px;
-            max-width: 100%;
+            width: min(360px, 100%);
             height: 100%;
             background: var(--sidebar-bg);
             border-left: 1px solid var(--line-soft);
-            padding: 20px;
+            padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 20px;
+            overscroll-behavior: contain;
             overflow-y: auto;
             z-index: 9999;
         }
@@ -690,83 +717,9 @@
             z-index: 9998;
         }
 
-        /* ---------- toasts ---------- */
-        #toast-container {
-            position: fixed;
-            bottom: 16px;
-            right: 16px;
-            left: auto;
-            width: min(340px, calc(100% - 32px));
-            z-index: 11000;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-        }
-        .toast {
-            background: rgba(27, 39, 64, 0.98);
-            border: 1px solid var(--line-soft);
-            border-left: 3px solid var(--primary);
-            color: var(--text-main);
-            padding: 12px 15px;
-            border-radius: 12px;
-            box-shadow: 0 18px 36px -18px rgba(2, 6, 23, 0.95);
-            margin-top: 10px;
-            font-weight: 600;
-            font-size: 0.88rem;
-            animation: slideIn 0.28s ease-out;
-            pointer-events: auto;
-            width: 100%;
-        }
-        @keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
         .hidden { display: none !important; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
-        /* ---------- responsive ---------- */
-        @media (max-width: 1024px) {
-            .main-container { flex-direction: column; }
-            #sidebar {
-                width: 100%;
-                border-right: none;
-                border-top: 1px solid var(--line-soft);
-                max-height: 240px;
-            }
-            #content { padding: 14px; }
-            #canvas { max-height: 45vh; }
-            .toolbar { gap: 6px; padding: 9px; }
-            .btn { font-size: 0.86rem; }
-        }
-        @media (max-width: 768px) {
-            header { padding: 10px 12px; }
-            #sidebar-toggle { display: inline-flex; }
-            #sidebar {
-                position: fixed;
-                left: 0;
-                top: 58px;
-                width: 78%;
-                max-width: 300px;
-                height: calc(100% - 58px);
-                transform: translateX(-105%);
-                z-index: 200;
-            }
-            #sidebar.open-mobile { transform: translateX(0); }
-            #sidebar.hidden-mobile { transform: translateX(-105%); }
-            #content { padding: 12px; }
-            #canvas { max-height: 38vh; }
-            .box-container { gap: 6px; }
-            .letter-input { width: 38px; height: 48px; font-size: 20px; }
-            .space { width: 30px; height: 48px; }
-            #history-modal { width: 100%; }
-            #lobby-waiting-area { padding: 26px 18px; }
-            #timer-display, #selection-timer-display { font-size: 0.85rem; padding: 6px 12px; }
-            #header-right { width: 100%; justify-content: space-between; }
-            .meta-chip { font-size: 0.7rem; padding: 5px 9px; }
-        }
-        @media (max-width: 480px) {
-            header h1 { display: none; }
-            .brand-mark { width: 32px; height: 32px; }
-        }
     </style>
 </head>
 <body class="mg-room">
@@ -778,11 +731,10 @@
         <img class="mg-bg-icon mg-bg-popcorn" src="/static/img/lobby/popcorn-thumb.png" alt="">
         <img class="mg-bg-icon mg-bg-camera" src="/static/img/lobby/camera.png" alt="">
     </div>
-    <div id="toast-container"></div>
     <header class="mg-header">
         <h1 class="mg-brand">Movie Guess</h1>
         <div class="mg-header-right">
-            <button id="sidebar-toggle" class="mg-header-btn mg-header-btn-ghost" type="button" onclick="toggleSidebar()">Players</button>
+            <div class="mg-header-meta">
             <div class="mg-badge" id="round-badge">
                 <span class="mg-badge-label">Round</span>
                 <span class="mg-badge-value" id="round-display">1</span>
@@ -803,6 +755,7 @@
                     </button>
                 </div>
             </div>
+            </div>
             <span id="player-welcome" class="hidden">{{ username }}</span>
             <button type="button" onclick="toggleHistory()" class="mg-header-btn mg-header-btn-history">History</button>
             <button type="button" onclick="leaveGame()" class="mg-header-btn mg-header-btn-leave">Leave Room</button>
@@ -812,7 +765,7 @@
     <div id="disconnect-overlay" class="hidden">
         <div class="emoji">🔌</div>
         <h2>Connection lost</h2>
-        <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
+        <button class="btn btn-primary-success" onclick="location.href='/'">Try Reconnecting</button>
     </div>
 
     <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050;">
@@ -828,16 +781,14 @@
         </div>
     </div>
 
-    <div id="vote-kick-modal" class="modal-card hidden">
-        <h2 id="vote-kick-question">Do you want to kick Player X?</h2>
-        <div id="vote-kick-countdown">⏱️ <span id="vote-kick-timer">15</span>s</div>
-        <div class="vote-actions">
-            <button id="vote-yes-btn" class="btn" onclick="submitVoteKickVote('yes')">✅ Yes</button>
-            <button id="vote-no-btn" class="btn" onclick="submitVoteKickVote('no')">❌ No</button>
+    <div id="vote-kick-modal" class="hidden" role="status">
+        <h2 id="vote-kick-title">Vote Kick</h2>
+        <div class="vote-kick-row">
+            <span id="vote-kick-target"></span>
+            <button id="vote-no-btn" type="button" onclick="submitVoteKickVote('no')">Keep</button>
+            <button id="vote-yes-btn" type="button" onclick="submitVoteKickVote('yes')">Remove</button>
         </div>
-        <div id="vote-kick-status"></div>
     </div>
-    <div id="vote-kick-overlay" class="modal-overlay hidden"></div>
 
     <!-- App shell (Figma 10:300): players | stage | chat, each side column with a
          secondary panel underneath. On desktop #sidebar is display:contents so its
@@ -1242,29 +1193,6 @@
         let rejoinInterval = null;
         let rejoinTimeLeft = 0;
 
-        // Global toast helper so copy handlers and other functions can show notifications
-        function showToast(message) {
-            try {
-                const container = document.getElementById('toast-container');
-                if (!container) {
-                    console.debug('[TOAST-DEBUG] toast-container not found, falling back to console');
-                    console.log(message);
-                    return;
-                }
-                const toast = document.createElement('div');
-                toast.className = 'toast';
-                toast.innerText = message;
-                container.appendChild(toast);
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    toast.style.transition = '0.5s';
-                    setTimeout(() => toast.remove(), 500);
-                }, 3000);
-            } catch (e) {
-                console.debug('[TOAST-DEBUG] showToast error', e);
-            }
-        }
-        
         const copiedResetTimers = new WeakMap();
         function markCopied(el) {
             if (!el) return;
@@ -1398,7 +1326,6 @@
                 // Server resolved a duplicate name (e.g. "Sam" -> "Sam(1)").
                 myName = data.new_name;
                 try { sessionStorage.setItem("movie_guess_player_name", myName); } catch (_) { /* ignore */ }
-                showToast("Name already taken — you are " + myName);
                 return;
             }
             if (data.type === "session_replaced") {
@@ -1432,10 +1359,7 @@
                 }
                 if (data.code === "banned") {
                     document.cookie = "room_id=; path=/; max-age=0";
-                    showToast("🚫 " + data.message);
-                    setTimeout(() => {
-                        window.location.href = "/?error=banned";
-                    }, 1500);
+                    window.location.href = "/?error=banned";
                     return;
                 }
                 const errorDiv = document.getElementById('start-error');
@@ -1443,17 +1367,11 @@
                     errorDiv.innerText = "❌ " + data.message;
                     errorDiv.classList.remove('hidden');
                 }
-                showToast("⚠️ " + data.message);
                 return;
             }
             if (data.type === "player_list") {
                 console.log(`[DEBUG-FRONTEND] player_list update: ${data.players.length} players, room_status=${currentRoomStatus}`);
                 data.players.forEach(p => {
-                    if (previousScores[p.name] !== undefined && p.score > previousScores[p.name]) {
-                        const pointsGained = p.score - previousScores[p.name];
-                        const displayName = (p.name === myName) ? "You" : p.name;
-                        showToast(`🎉 ${displayName} gained ${pointsGained} points!`);
-                    }
                     previousScores[p.name] = p.score;
                 });
                 window.lastPlayerData = data.players; 
@@ -1479,9 +1397,6 @@
                         catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
-            }
-            if (data.type === "drawer_disconnected") {
-                showToast(`⚠️ Drawer (${data.name}) has left. Selecting new drawer...`);
             }
             if (data.type === "timer_update" && data.timer_type === "selection") {
                 console.log('[DEBUG] selection timer update', data.time_left, 'drawer', data.drawer_name, 'role', myRole);
@@ -1517,7 +1432,6 @@
                 } catch (e) {}
                 document.getElementById('game-area')?.classList.add('hidden');
                 document.getElementById('setup-area')?.classList.remove('hidden');
-                showToast(data.message || "A player joined. Starting a new round!");
             }
             if (data.type === "timer_update" && data.timer_type === "rejoin") {
                 startRejoinTimer(data.time_left);
@@ -1534,7 +1448,7 @@
                     document.getElementById('drawer-input').classList.remove('hidden');
                     setGuesserWaitingVisible(false);
                     document.getElementById('controls').classList.remove('hidden');
-                    showToast(`🧩 You are now the drawer. Pick a word in 60 seconds.`);
+                    
                     startSelectionTimer(60);
                 } else {
                     myRole = "guesser";
@@ -1542,7 +1456,7 @@
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
                     setGuesserWaitingVisible(true);
-                    showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a word.`);
+                    
                     startSelectionTimer(60);
                 }
                 updateDrawerStatus(newDrawer);
@@ -1561,7 +1475,7 @@
                 }
             }
             if (data.type === "movie_selected") {
-                showToast(`✅ Word picked by drawer. Round is starting...`);
+                
                 stopSelectionTimer();
             }
 
@@ -1569,7 +1483,6 @@
 
                 console.log("[DEBUG-HOST] Host transferred to:", data.new_host);
 
-                showToast(`👑 ${data.new_host} is now the host!`);
                 currentHostName = data.new_host;
 
                 // If I became host
@@ -1599,46 +1512,29 @@
             }
             if (data.type === "vote_kick_started") {
                 console.log("[DEBUG-FRONTEND] Vote kick started for:", data.target_player);
-                showToast(`🗳️ Vote kick started against ${data.target_player}. You have ${data.timeout_seconds} seconds to vote.`);
                 showVoteKickModal(data.target_player, data.timeout_seconds);
             }
             if (data.type === "vote_kick_update") {
                 console.log("[DEBUG-FRONTEND] Vote update - YES:", data.yes_votes, "NO:", data.no_votes);
-                document.getElementById('vote-kick-status').innerText = `Votes: ${data.yes_votes} Yes, ${data.no_votes} No (${data.total_votes}/${data.eligible_voters})`;
             }
             if (data.type === "vote_kick_result") {
                 console.log("[DEBUG-FRONTEND] Vote result:", data.result);
                 closeVoteKickModal();
-
-                const isVoteTarget = myName === data.target_player;
-                if (data.result === "KICK") {
-                    showToast(`⚠️ ${data.target_player} has been kicked! (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                } else if (!isVoteTarget) {
-                    if (data.result === "TIE") {
-                        showToast(`🤝 Vote ended in a tie! ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                    } else {
-                        showToast(`✅ Vote failed. ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                    }
-                }
             }
             if (data.type === "vote_kick_cancelled") {
                 console.log("[DEBUG-FRONTEND] Vote kick cancelled:", data.reason);
                 closeVoteKickModal();
-                showToast(`❌ Vote kick cancelled (${data.reason})`);
             }
             if (data.type === "player_kicked") {
                 console.log("[DEBUG-FRONTEND] I was kicked!");
                 closeVoteKickModal();
                 document.cookie = "room_id=; path=/; max-age=0";
-                showToast("💥 You have been kicked from the room!");
-                setTimeout(() => {
-                    alert("You have been kicked from the room by vote. You cannot rejoin this room.");
-                    window.location.href = "/";
-                }, 2000);
+                alert("You have been kicked from the room by vote. You cannot rejoin this room.");
+                window.location.href = "/";
             }
             if (data.type === "player_kicked_notification") {
                 console.log("[DEBUG-FRONTEND] Player kicked notification:", data.kicked_player);
-                showToast(`💥 ${data.message}`);
+                
             }
             if (data.type === "init") {
                 console.log(`[DEBUG-FRONTEND] Init message received. room_status=${data.room_status}, role=${data.role}, player_count=${data.player_count}/${data.max_players}, room_type=${data.room_type}, selection_active=${data.selection_active}, movie_set=${data.movie_set}`);
@@ -1821,10 +1717,6 @@
                 populateRoundScoreList(null, null);
                 console.log(`[DEBUG-FRONTEND] Game started. Drawer: ${data.drawer_name}, Timer: ${data.time_left}s`);
             }
-            if (data.type === "correct_guess") {
-                // Room-wide notice (who guessed it) — never contains the answer.
-                if (data.message) showToast(data.message);
-            }
             if (data.type === "guess_result") {
                 // Private reply to our own guess; only a correct one carries the answer.
                 if (data.correct && data.answer) {
@@ -1880,7 +1772,6 @@
                         catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
-                showToast(data.message || "Continuing the game!");
             }
             if (data.type === "drawing" && myRole === "guesser") {
                 applyDrawStep(data);
@@ -2188,7 +2079,7 @@
                 if (kindLabelEl) kindLabelEl.innerText = "Guessed";
                 if (nameEl) { nameEl.innerText = `${multiMatch[1]} player(s)`; nameEl.classList.remove('hidden'); }
             } else {
-                if (sepEl) sepEl.classList.add('hidden');
+            if (sepEl) sepEl.classList.add('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "";
                 if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
             }
@@ -2390,7 +2281,6 @@
                 const errorDiv = document.getElementById('start-error');
                 errorDiv.innerText = "❌ At least 2 players are required to start the game.";
                 errorDiv.classList.remove('hidden');
-                showToast("⚠️ At least 2 players are required to start the game.");
                 return;
             }
             ws.send(JSON.stringify({type: "start_game"}));
@@ -2622,6 +2512,7 @@
             handleDrawMove(getCanvasCoords(touch.clientX, touch.clientY));
         };
         canvas.ontouchend = () => { drawing = false; };
+        canvas.ontouchcancel = () => { drawing = false; };
         function draw(x, y, tool, color) {
             ctx.lineWidth = (tool === 'erase') ? 25 : 4;
             ctx.lineCap = "round";
@@ -2757,7 +2648,6 @@
         // ============= VOTE KICK FUNCTIONALITY =============
         let currentVoteKickTarget = null;
         let voteKickTimer = null;
-        let voteKickTimeLeft = 15;
         let hasVotedInCurrentSession = false;
         
         function initiateVoteKick(targetPlayer) {
@@ -2768,72 +2658,35 @@
             }));
         }
         
+        // Non-blocking card: voting is optional and it dismisses itself when the
+        // server's vote window ends, so the game carries on underneath.
         function showVoteKickModal(targetPlayer, timeoutSeconds) {
-            console.log(`[DEBUG-FRONTEND] Showing vote kick modal for ${targetPlayer}`);
+            console.log(`[DEBUG-FRONTEND] Showing vote kick card for ${targetPlayer}`);
             currentVoteKickTarget = targetPlayer;
             hasVotedInCurrentSession = false;
-            voteKickTimeLeft = timeoutSeconds;
             
-            document.getElementById('vote-kick-question').innerText = `Do you want to kick ${targetPlayer}?`;
-            document.getElementById('vote-kick-overlay').classList.remove('hidden');
+            document.getElementById('vote-kick-target').innerText = targetPlayer;
             document.getElementById('vote-kick-modal').classList.remove('hidden');
             
-            // Enable buttons
-            document.getElementById('vote-yes-btn').disabled = false;
-            document.getElementById('vote-no-btn').disabled = false;
-            document.getElementById('vote-yes-btn').style.opacity = '1';
-            document.getElementById('vote-no-btn').style.opacity = '1';
-            document.getElementById('vote-yes-btn').style.cursor = 'pointer';
-            document.getElementById('vote-no-btn').style.cursor = 'pointer';
-            
-            startVoteKickTimer(timeoutSeconds);
-        }
-        
-        function startVoteKickTimer(seconds) {
-            if (voteKickTimer) clearInterval(voteKickTimer);
-            voteKickTimeLeft = seconds;
-            updateVoteKickTimer();
-            voteKickTimer = setInterval(() => {
-                voteKickTimeLeft--;
-                updateVoteKickTimer();
-                if (voteKickTimeLeft <= 0) {
-                    clearInterval(voteKickTimer);
-                }
-            }, 1000);
-        }
-        
-        function updateVoteKickTimer() {
-            document.getElementById('vote-kick-timer').innerText = voteKickTimeLeft;
+            if (voteKickTimer) clearTimeout(voteKickTimer);
+            voteKickTimer = setTimeout(closeVoteKickModal, timeoutSeconds * 1000);
         }
         
         function submitVoteKickVote(vote) {
-            if (hasVotedInCurrentSession) {
-                showToast("⚠️ You have already voted!");
-                return;
-            }
+            if (hasVotedInCurrentSession) return;
             
             console.log(`[DEBUG-FRONTEND] Submitting vote: ${vote}`);
-            hasVotedInCurrentSession = true;
-            
-            // Disable buttons after voting
-            document.getElementById('vote-yes-btn').disabled = true;
-            document.getElementById('vote-no-btn').disabled = true;
-            document.getElementById('vote-yes-btn').style.opacity = '0.5';
-            document.getElementById('vote-no-btn').style.opacity = '0.5';
-            document.getElementById('vote-yes-btn').style.cursor = 'not-allowed';
-            document.getElementById('vote-no-btn').style.cursor = 'not-allowed';
-            
-            document.getElementById('vote-kick-status').innerText = `You voted ${vote.toUpperCase()}. Waiting for others...`;
-            
             ws.send(JSON.stringify({
                 type: "vote_kick_response",
                 vote: vote
             }));
+            closeVoteKickModal();
+            hasVotedInCurrentSession = true;
         }
         
         function closeVoteKickModal() {
-            if (voteKickTimer) clearInterval(voteKickTimer);
-            document.getElementById('vote-kick-overlay').classList.add('hidden');
+            if (voteKickTimer) clearTimeout(voteKickTimer);
+            voteKickTimer = null;
             document.getElementById('vote-kick-modal').classList.add('hidden');
             currentVoteKickTarget = null;
             hasVotedInCurrentSession = false;
@@ -2871,17 +2724,6 @@
                 div.innerText = `${index + 1}. ${movie}`;
                 container.appendChild(div);
             });
-        }
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            // Phone overlay starts just below the (wrapping) header so it never hides behind it
-            const header = document.querySelector('header.mg-header');
-            if (header) {
-                const top = Math.max(12, Math.round(header.getBoundingClientRect().bottom) + 8);
-                sidebar.style.setProperty('--overlay-top', `${top}px`);
-            }
-            sidebar.classList.toggle('open-mobile');
-            sidebar.classList.toggle('hidden-mobile');
         }
         function toggleHistory() {
             const modal = document.getElementById("history-modal");

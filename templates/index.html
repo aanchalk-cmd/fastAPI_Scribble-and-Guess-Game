@@ -1195,33 +1195,21 @@
         // Masked display (e.g. "_I_E_-_A_") and what we've already asked the server about.
         let currentDisplay = "", submittedGuess = "", submittedWords = {};
         let wordRanges = [], revealedWordKeys = new Set();
-        let roomCategory = "hollywood_movies";
+        let roomCategory = "hollywood";
         let currentHostName = null;
 
-        // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-        const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
-
-        function splitCategory(id) {
-            const value = LEGACY_CATEGORIES[id] || String(id || "");
-            const cut = value.lastIndexOf("_");
-            return cut > 0
-                ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
-                : { genre: value, kind: "" };
-        }
-
-        function titleizeCategoryPart(value) {
-            return String(value || "")
+        // One category per genre ("bollywood", "asian_dramas"); older ids carried a
+        // "_movies" / "_characters" suffix.
+        function formatCategoryLabel(id) {
+            const value = String(id || "");
+            const genre = (value === "movies" || value === "characters")
+                ? "hollywood"
+                : value.replace(/_(movies|characters)$/, "");
+            return genre
                 .split("_")
                 .filter(Boolean)
                 .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(" ");
-        }
-
-        function formatCategoryLabel(id) {
-            const { genre, kind } = splitCategory(id);
-            return kind
-                ? `${titleizeCategoryPart(genre)} · ${titleizeCategoryPart(kind)}`
-                : titleizeCategoryPart(genre);
         }
 
         let countdownInterval = null;

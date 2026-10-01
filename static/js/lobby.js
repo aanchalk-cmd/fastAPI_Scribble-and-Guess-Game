@@ -17,24 +17,18 @@
         try {
             return JSON.parse(root.dataset.categories || "[]");
         } catch {
-            return ["hollywood_movies", "hollywood_characters"];
+            return ["hollywood"];
         }
     })();
 
-    // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-    const GENRE_ORDER = ["bollywood", "hollywood", "anime", "asian_dramas", "cartoon"];
-    const KIND_ORDER = ["movies", "characters"];
-    // Wording from the design ("Asian Drama Character", "Hollywood Movies").
-    const GENRE_LABELS = { asian_dramas: "Asian Drama" };
-    const KIND_LABELS = { characters: "Character", movies: "Movies" };
-    const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
+    // One category per genre; movies and characters share its pool.
+    const GENRE_ORDER = ["hollywood", "bollywood", "asian_dramas", "anime", "cartoon"];
 
-    function splitCategory(id) {
-        const value = LEGACY_CATEGORIES[id] || String(id || "");
-        const cut = value.lastIndexOf("_");
-        return cut > 0
-            ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
-            : { genre: value, kind: "" };
+    // Ids from when movies and characters were separate ("bollywood_movies"), or flat.
+    function normalizeCategory(id) {
+        const value = String(id || "");
+        if (value === "movies" || value === "characters") return "hollywood";
+        return value.replace(/_(movies|characters)$/, "");
     }
 
     function titleize(value) {
@@ -46,10 +40,7 @@
     }
 
     function categoryLabel(id) {
-        const { genre, kind } = splitCategory(id);
-        const genreLabel = GENRE_LABELS[genre] || titleize(genre);
-        const kindLabel = kind ? (KIND_LABELS[kind] || titleize(kind)) : "";
-        return `${genreLabel} ${kindLabel}`.trim().toUpperCase();
+        return titleize(normalizeCategory(id)).toUpperCase();
     }
 
     function orderIndex(list, value) {
@@ -57,18 +48,16 @@
         return i === -1 ? list.length : i;
     }
 
-    // Dropdown options: one per category id, grouped by genre (design order).
+    // Dropdown options: one per category id.
     const categoryOptions = categories
-        .map((id) => ({ id, ...splitCategory(id) }))
+        .slice()
         .sort((a, b) =>
-            orderIndex(GENRE_ORDER, a.genre) - orderIndex(GENRE_ORDER, b.genre)
-            || a.genre.localeCompare(b.genre)
-            || orderIndex(KIND_ORDER, a.kind) - orderIndex(KIND_ORDER, b.kind))
-        .map((c) => ({ id: c.id, label: categoryLabel(c.id) }));
+            orderIndex(GENRE_ORDER, a) - orderIndex(GENRE_ORDER, b) || a.localeCompare(b))
+        .map((id) => ({ id, label: categoryLabel(id) }));
 
-    const DEFAULT_CATEGORY = categories.includes("hollywood_movies")
-        ? "hollywood_movies"
-        : (categoryOptions[0] && categoryOptions[0].id) || "hollywood_movies";
+    const DEFAULT_CATEGORY = categories.includes("hollywood")
+        ? "hollywood"
+        : (categoryOptions[0] && categoryOptions[0].id) || "hollywood";
 
     const els = {
         error: document.getElementById("error-banner"),
@@ -112,7 +101,7 @@
         categories: [DEFAULT_CATEGORY],
         rounds: 3,
         duration: 60,
-        publicRoom: false,
+        publicRoom: true, // rooms are public unless the host switches the toggle off
         roomCode: "",
         name: "",
         rooms: [],
@@ -187,12 +176,12 @@
                 createTab: draft.createTab === "code" ? "code" : "create",
                 rounds: draft.rounds || state.rounds,
                 duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
-                publicRoom: draft.publicRoom === true,
+                publicRoom: draft.publicRoom !== false,
                 roomCode: draft.roomCode || "",
                 name: clampName(draft.name || ""),
             });
             const saved = Array.isArray(draft.categories)
-                ? draft.categories.filter((id) => categories.includes(id))
+                ? [...new Set(draft.categories.map(normalizeCategory))].filter((id) => categories.includes(id))
                 : [];
             if (saved.length) state.categories = saved;
         } catch (_) { /* ignore */ }
@@ -356,7 +345,7 @@
         const list = Array.isArray(room.categories) && room.categories.length
             ? room.categories
             : [room.category || DEFAULT_CATEGORY];
-        return list.map(categoryLabel).join(", ");
+        return [...new Set(list.map(categoryLabel))].join(", ");
     }
 
     function renderRooms() {

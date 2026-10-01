@@ -129,7 +129,7 @@
                                     <div class="room-access">
                                         <div class="toggle-row">
                                             <label class="toggle">
-                                                <input type="checkbox" id="public-toggle" aria-labelledby="public-toggle-label">
+                                                <input type="checkbox" id="public-toggle" aria-labelledby="public-toggle-label" checked>
                                                 <img class="toggle-icon toggle-icon-on" src="/static/img/icons/ic-switch-on.svg" width="43.3333" height="35.2734" alt="">
                                                 <img class="toggle-icon toggle-icon-off" src="/static/img/icons/ic-switch-off.svg" width="43.3333" height="35.2734" alt="">
                                             </label>
@@ -166,11 +166,11 @@
                 <form id="join-form" class="hidden" action="/join" method="POST">
                     <input type="hidden" name="name" id="field-name" value="">
                     <input type="hidden" name="action" id="field-action" value="create">
-                    <input type="hidden" name="room_type" id="field-room-type" value="private">
+                    <input type="hidden" name="room_type" id="field-room-type" value="public">
                     <input type="hidden" name="max_players" id="field-max-players" value="10">
                     <input type="hidden" name="rounds" id="field-rounds" value="3">
                     <input type="hidden" name="duration" id="field-duration" value="60">
-                    <input type="hidden" name="category" id="field-category" value="hollywood_movies">
+                    <input type="hidden" name="category" id="field-category" value="hollywood">
                     <input type="hidden" name="room_code" id="field-room-code" value="">
                     <input type="hidden" name="guest_id" id="field-guest-id" value="">
                 </form>
@@ -185,6 +185,6 @@
         </div>
     </div>
 
-    <script src="/static/js/lobby.js?v=names1" defer></script>
+    <script src="/static/js/lobby.js?v=cats2" defer></script>
 </body>
 </html>

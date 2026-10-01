@@ -149,6 +149,7 @@ body.lobby-body {
     font-size: 24px;
     line-height: normal;
     padding: 18px;
+    min-height: 44px;
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
@@ -879,7 +880,7 @@ body.lobby-body {
     .mg-select-option,
     .btn-cta { font-size: 16px; }
     .mode-tab { padding: 14px 8px; }
-    .name-input { padding: 16px 18px; font-size: 14px; }
+    .name-input { padding: 16px 18px; font-size: 16px; }
     .mg-select-option { height: 48px; }
     .mg-select-list { max-height: calc(8 * 48px); }
     .field-label, .toggle-label, .toggle-note { font-size: 13px; }

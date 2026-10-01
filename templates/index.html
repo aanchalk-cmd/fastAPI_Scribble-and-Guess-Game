@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=fill2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=resp1">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -46,6 +46,7 @@
             display: flex;
             flex-direction: column;
             min-height: 100vh;
+            min-height: 100dvh;
             overflow: hidden;
         }
 
@@ -137,7 +138,6 @@
             min-height: 0;
             transition: transform 0.25s ease;
         }
-        #sidebar.open-mobile { transform: translateX(0); }
         .sidebar-title {
             font-size: 11px;
             font-weight: 800;
@@ -470,7 +470,7 @@
             border: 1px solid var(--line-soft);
             flex-wrap: wrap;
         }
-        .btn, #sidebar-toggle {
+        .btn {
             padding: 10px 14px;
             cursor: pointer;
             border: 1px solid var(--line);
@@ -484,7 +484,7 @@
             touch-action: manipulation;
             transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
         }
-        .btn:hover, #sidebar-toggle:hover {
+        .btn:hover {
             background: rgba(148, 163, 184, 0.16);
             border-color: rgba(148, 163, 184, 0.4);
         }
@@ -612,8 +612,8 @@
         /* Vote kick: non-blocking card pinned bottom-right, auto-dismisses. */
         #vote-kick-modal {
             position: fixed;
-            right: 24px;
-            bottom: 24px;
+            right: max(16px, env(safe-area-inset-right));
+            bottom: max(16px, env(safe-area-inset-bottom));
             z-index: 10001;
             width: min(276px, calc(100vw - 32px));
             padding: 20px 22px;
@@ -640,7 +640,9 @@
             text-transform: uppercase;
             border: 0;
             cursor: pointer;
-            padding: 6px 8px;
+            padding: 6px 10px;
+            min-height: 40px;
+            touch-action: manipulation;
             border-radius: 6px;
             color: #fff;
             background: transparent;
@@ -681,12 +683,12 @@
             position: fixed;
             top: 0;
             right: 0;
-            width: 320px;
-            max-width: 100%;
+            width: min(360px, 100%);
             height: 100%;
             background: var(--sidebar-bg);
             border-left: 1px solid var(--line-soft);
-            padding: 20px;
+            padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) 20px;
+            overscroll-behavior: contain;
             overflow-y: auto;
             z-index: 9999;
         }
@@ -718,50 +720,6 @@
         .hidden { display: none !important; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
-        /* ---------- responsive ---------- */
-        @media (max-width: 1024px) {
-            .main-container { flex-direction: column; }
-            #sidebar {
-                width: 100%;
-                border-right: none;
-                border-top: 1px solid var(--line-soft);
-                max-height: 240px;
-            }
-            #content { padding: 14px; }
-            #canvas { max-height: 45vh; }
-            .toolbar { gap: 6px; padding: 9px; }
-            .btn { font-size: 0.86rem; }
-        }
-        @media (max-width: 768px) {
-            header { padding: 10px 12px; }
-            #sidebar-toggle { display: inline-flex; }
-            #sidebar {
-                position: fixed;
-                left: 0;
-                top: 58px;
-                width: 78%;
-                max-width: 300px;
-                height: calc(100% - 58px);
-                transform: translateX(-105%);
-                z-index: 200;
-            }
-            #sidebar.open-mobile { transform: translateX(0); }
-            #sidebar.hidden-mobile { transform: translateX(-105%); }
-            #content { padding: 12px; }
-            #canvas { max-height: 38vh; }
-            .box-container { gap: 6px; }
-            .letter-input { width: 38px; height: 48px; font-size: 20px; }
-            .space { width: 30px; height: 48px; }
-            #history-modal { width: 100%; }
-            #lobby-waiting-area { padding: 26px 18px; }
-            #timer-display, #selection-timer-display { font-size: 0.85rem; padding: 6px 12px; }
-            #header-right { width: 100%; justify-content: space-between; }
-            .meta-chip { font-size: 0.7rem; padding: 5px 9px; }
-        }
-        @media (max-width: 480px) {
-            header h1 { display: none; }
-            .brand-mark { width: 32px; height: 32px; }
-        }
     </style>
 </head>
 <body class="mg-room">
@@ -776,7 +734,7 @@
     <header class="mg-header">
         <h1 class="mg-brand">Movie Guess</h1>
         <div class="mg-header-right">
-            <button id="sidebar-toggle" class="mg-header-btn mg-header-btn-ghost" type="button" onclick="toggleSidebar()">Players</button>
+            <div class="mg-header-meta">
             <div class="mg-badge" id="round-badge">
                 <span class="mg-badge-label">Round</span>
                 <span class="mg-badge-value" id="round-display">1</span>
@@ -797,6 +755,7 @@
                     </button>
                 </div>
             </div>
+            </div>
             <span id="player-welcome" class="hidden">{{ username }}</span>
             <button type="button" onclick="toggleHistory()" class="mg-header-btn mg-header-btn-history">History</button>
             <button type="button" onclick="leaveGame()" class="mg-header-btn mg-header-btn-leave">Leave Room</button>
@@ -806,7 +765,7 @@
     <div id="disconnect-overlay" class="hidden">
         <div class="emoji">🔌</div>
         <h2>Connection lost</h2>
-        <button class="btn btn-primary-success" onclick="location.href='http://127.0.0.1:8000/'">Try Reconnecting</button>
+        <button class="btn btn-primary-success" onclick="location.href='/'">Try Reconnecting</button>
     </div>
 
     <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050;">
@@ -2553,6 +2512,7 @@
             handleDrawMove(getCanvasCoords(touch.clientX, touch.clientY));
         };
         canvas.ontouchend = () => { drawing = false; };
+        canvas.ontouchcancel = () => { drawing = false; };
         function draw(x, y, tool, color) {
             ctx.lineWidth = (tool === 'erase') ? 25 : 4;
             ctx.lineCap = "round";
@@ -2764,17 +2724,6 @@
                 div.innerText = `${index + 1}. ${movie}`;
                 container.appendChild(div);
             });
-        }
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            // Phone overlay starts just below the (wrapping) header so it never hides behind it
-            const header = document.querySelector('header.mg-header');
-            if (header) {
-                const top = Math.max(12, Math.round(header.getBoundingClientRect().bottom) + 8);
-                sidebar.style.setProperty('--overlay-top', `${top}px`);
-            }
-            sidebar.classList.toggle('open-mobile');
-            sidebar.classList.toggle('hidden-mobile');
         }
         function toggleHistory() {
             const modal = document.getElementById("history-modal");

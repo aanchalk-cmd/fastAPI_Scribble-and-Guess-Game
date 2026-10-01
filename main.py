@@ -688,7 +688,7 @@ class ConnectionManager:
         
         # Vote Kick State
         self.active_vote_kick = None  # Will store: {target_player, initiator, votes_yes, votes_no, voters, timeout_task}
-        self.vote_kick_timeout = 15  # seconds
+        self.vote_kick_timeout = 5  # seconds
         self.active_vote_kick_db_id: Optional[int] = None
         self.current_db_round_id: Optional[int] = None
         # Cached word choices for the current selection phase (survive drawer refresh)
@@ -1428,7 +1428,7 @@ class ConnectionManager:
         return True
 
     async def _start_vote_kick_timer(self):
-        """Start the 15-second timeout for vote kick."""
+        """Start the timeout for vote kick."""
         if not self.active_vote_kick:
             return
         

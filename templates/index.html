@@ -609,20 +609,45 @@
             text-align: center;
             box-shadow: 0 40px 80px -30px rgba(2, 6, 23, 0.95);
         }
-        #vote-kick-modal { border: 1px solid rgba(244, 63, 94, 0.5); }
-        #vote-kick-question { margin: 0 0 18px; font-size: 1.08rem; font-weight: 700; }
-        #vote-kick-countdown {
-            margin-bottom: 18px;
-            font-size: 1.3rem;
-            font-weight: 800;
-            color: var(--accent);
+        /* Vote kick: non-blocking card pinned bottom-right, auto-dismisses. */
+        #vote-kick-modal {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            z-index: 10001;
+            width: min(276px, calc(100vw - 32px));
+            padding: 20px 22px;
+            background: #000;
+            border-radius: 18px;
+            font-family: var(--mg-font, inherit);
+            text-transform: uppercase;
         }
+        #vote-kick-modal.hidden { display: none; }
+        #vote-kick-title { margin: 0 0 14px; font-size: 1.05rem; font-weight: 400; color: #feba00; }
+        .vote-kick-row { display: flex; align-items: center; gap: 12px; }
+        #vote-kick-target {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.72rem;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        #vote-kick-modal button {
+            font: inherit;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            border: 0;
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 6px;
+            color: #fff;
+            background: transparent;
+        }
+        #vote-kick-modal #vote-yes-btn { background: #c92208; }
         .vote-actions { display: flex; gap: 10px; justify-content: center; }
         .vote-actions .btn { flex: 1; font-weight: 800; }
-        #vote-yes-btn { background: rgba(34, 197, 94, 0.18); border-color: rgba(34, 197, 94, 0.5); color: #4ade80; }
-        #vote-no-btn { background: rgba(244, 63, 94, 0.18); border-color: rgba(244, 63, 94, 0.5); color: #fb7185; }
-        #vote-kick-status { margin-top: 14px; font-size: 0.85rem; color: var(--text-dim); }
-        #vote-kick-overlay { z-index: 10000; }
 
         #disconnect-overlay {
             position: fixed;
@@ -828,16 +853,14 @@
         </div>
     </div>
 
-    <div id="vote-kick-modal" class="modal-card hidden">
-        <h2 id="vote-kick-question">Do you want to kick Player X?</h2>
-        <div id="vote-kick-countdown">⏱️ <span id="vote-kick-timer">15</span>s</div>
-        <div class="vote-actions">
-            <button id="vote-yes-btn" class="btn" onclick="submitVoteKickVote('yes')">✅ Yes</button>
-            <button id="vote-no-btn" class="btn" onclick="submitVoteKickVote('no')">❌ No</button>
+    <div id="vote-kick-modal" class="hidden" role="status">
+        <h2 id="vote-kick-title">Vote Kick</h2>
+        <div class="vote-kick-row">
+            <span id="vote-kick-target"></span>
+            <button id="vote-no-btn" type="button" onclick="submitVoteKickVote('no')">Keep</button>
+            <button id="vote-yes-btn" type="button" onclick="submitVoteKickVote('yes')">Remove</button>
         </div>
-        <div id="vote-kick-status"></div>
     </div>
-    <div id="vote-kick-overlay" class="modal-overlay hidden"></div>
 
     <!-- App shell (Figma 10:300): players | stage | chat, each side column with a
          secondary panel underneath. On desktop #sidebar is display:contents so its
@@ -1599,12 +1622,10 @@
             }
             if (data.type === "vote_kick_started") {
                 console.log("[DEBUG-FRONTEND] Vote kick started for:", data.target_player);
-                showToast(`🗳️ Vote kick started against ${data.target_player}. You have ${data.timeout_seconds} seconds to vote.`);
                 showVoteKickModal(data.target_player, data.timeout_seconds);
             }
             if (data.type === "vote_kick_update") {
                 console.log("[DEBUG-FRONTEND] Vote update - YES:", data.yes_votes, "NO:", data.no_votes);
-                document.getElementById('vote-kick-status').innerText = `Votes: ${data.yes_votes} Yes, ${data.no_votes} No (${data.total_votes}/${data.eligible_voters})`;
             }
             if (data.type === "vote_kick_result") {
                 console.log("[DEBUG-FRONTEND] Vote result:", data.result);
@@ -2188,7 +2209,7 @@
                 if (kindLabelEl) kindLabelEl.innerText = "Guessed";
                 if (nameEl) { nameEl.innerText = `${multiMatch[1]} player(s)`; nameEl.classList.remove('hidden'); }
             } else {
-                if (sepEl) sepEl.classList.add('hidden');
+            if (sepEl) sepEl.classList.add('hidden');
                 if (kindLabelEl) kindLabelEl.innerText = "";
                 if (nameEl) { nameEl.innerText = cleaned; nameEl.classList.remove('hidden'); }
             }
@@ -2757,7 +2778,6 @@
         // ============= VOTE KICK FUNCTIONALITY =============
         let currentVoteKickTarget = null;
         let voteKickTimer = null;
-        let voteKickTimeLeft = 15;
         let hasVotedInCurrentSession = false;
         
         function initiateVoteKick(targetPlayer) {
@@ -2768,72 +2788,35 @@
             }));
         }
         
+        // Non-blocking card: voting is optional and it dismisses itself when the
+        // server's vote window ends, so the game carries on underneath.
         function showVoteKickModal(targetPlayer, timeoutSeconds) {
-            console.log(`[DEBUG-FRONTEND] Showing vote kick modal for ${targetPlayer}`);
+            console.log(`[DEBUG-FRONTEND] Showing vote kick card for ${targetPlayer}`);
             currentVoteKickTarget = targetPlayer;
             hasVotedInCurrentSession = false;
-            voteKickTimeLeft = timeoutSeconds;
             
-            document.getElementById('vote-kick-question').innerText = `Do you want to kick ${targetPlayer}?`;
-            document.getElementById('vote-kick-overlay').classList.remove('hidden');
+            document.getElementById('vote-kick-target').innerText = targetPlayer;
             document.getElementById('vote-kick-modal').classList.remove('hidden');
             
-            // Enable buttons
-            document.getElementById('vote-yes-btn').disabled = false;
-            document.getElementById('vote-no-btn').disabled = false;
-            document.getElementById('vote-yes-btn').style.opacity = '1';
-            document.getElementById('vote-no-btn').style.opacity = '1';
-            document.getElementById('vote-yes-btn').style.cursor = 'pointer';
-            document.getElementById('vote-no-btn').style.cursor = 'pointer';
-            
-            startVoteKickTimer(timeoutSeconds);
-        }
-        
-        function startVoteKickTimer(seconds) {
-            if (voteKickTimer) clearInterval(voteKickTimer);
-            voteKickTimeLeft = seconds;
-            updateVoteKickTimer();
-            voteKickTimer = setInterval(() => {
-                voteKickTimeLeft--;
-                updateVoteKickTimer();
-                if (voteKickTimeLeft <= 0) {
-                    clearInterval(voteKickTimer);
-                }
-            }, 1000);
-        }
-        
-        function updateVoteKickTimer() {
-            document.getElementById('vote-kick-timer').innerText = voteKickTimeLeft;
+            if (voteKickTimer) clearTimeout(voteKickTimer);
+            voteKickTimer = setTimeout(closeVoteKickModal, timeoutSeconds * 1000);
         }
         
         function submitVoteKickVote(vote) {
-            if (hasVotedInCurrentSession) {
-                showToast("⚠️ You have already voted!");
-                return;
-            }
+            if (hasVotedInCurrentSession) return;
             
             console.log(`[DEBUG-FRONTEND] Submitting vote: ${vote}`);
-            hasVotedInCurrentSession = true;
-            
-            // Disable buttons after voting
-            document.getElementById('vote-yes-btn').disabled = true;
-            document.getElementById('vote-no-btn').disabled = true;
-            document.getElementById('vote-yes-btn').style.opacity = '0.5';
-            document.getElementById('vote-no-btn').style.opacity = '0.5';
-            document.getElementById('vote-yes-btn').style.cursor = 'not-allowed';
-            document.getElementById('vote-no-btn').style.cursor = 'not-allowed';
-            
-            document.getElementById('vote-kick-status').innerText = `You voted ${vote.toUpperCase()}. Waiting for others...`;
-            
             ws.send(JSON.stringify({
                 type: "vote_kick_response",
                 vote: vote
             }));
+            closeVoteKickModal();
+            hasVotedInCurrentSession = true;
         }
         
         function closeVoteKickModal() {
-            if (voteKickTimer) clearInterval(voteKickTimer);
-            document.getElementById('vote-kick-overlay').classList.add('hidden');
+            if (voteKickTimer) clearTimeout(voteKickTimer);
+            voteKickTimer = null;
             document.getElementById('vote-kick-modal').classList.add('hidden');
             currentVoteKickTarget = null;
             hasVotedInCurrentSession = false;

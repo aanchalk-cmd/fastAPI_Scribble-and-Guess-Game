@@ -71,14 +71,14 @@ body.mg-room > .main-container {
     z-index: 1;
 }
 
-/* #toast-container, #disconnect-overlay, #rejoin-wait-overlay, #vote-kick-modal,
+/* #disconnect-overlay, #rejoin-wait-overlay, #vote-kick-modal,
    #vote-kick-overlay, #history-modal and #history-overlay are all deliberately left
    out of the rule above: their base <style> rules already set position:fixed with a
    z-index of 9998+ (see index.html), so they don't need this treatment — and giving
    them position:relative instead breaks their fixed/centered overlay positioning
-   (this bit several of them before it was caught: the toast popups pushed the page
-   down, and the "opponent left" modal's striped border rendered detached from the
-   card because top/left percentages resolve differently under position:relative). */
+   (this bit several of them before it was caught: the "opponent left" modal's
+   striped border rendered detached from the card because top/left percentages
+   resolve differently under position:relative). */
 
 body.mg-room > header {
     z-index: 5;
@@ -1968,13 +1968,6 @@ body.mg-room #history-modal {
     background: #fff !important;
     border-left: 3px solid var(--mg-line) !important;
     color: var(--mg-ink);
-}
-
-body.mg-room .toast {
-    background: #fff !important;
-    color: var(--mg-ink) !important;
-    border: 2.5px solid var(--mg-line) !important;
-    border-left-width: 4px !important;
 }
 
 @media (max-height: 900px) {

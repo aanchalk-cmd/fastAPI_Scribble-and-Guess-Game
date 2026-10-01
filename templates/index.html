@@ -715,36 +715,6 @@
             z-index: 9998;
         }
 
-        /* ---------- toasts ---------- */
-        #toast-container {
-            position: fixed;
-            bottom: 16px;
-            right: 16px;
-            left: auto;
-            width: min(340px, calc(100% - 32px));
-            z-index: 11000;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            align-items: flex-end;
-        }
-        .toast {
-            background: rgba(27, 39, 64, 0.98);
-            border: 1px solid var(--line-soft);
-            border-left: 3px solid var(--primary);
-            color: var(--text-main);
-            padding: 12px 15px;
-            border-radius: 12px;
-            box-shadow: 0 18px 36px -18px rgba(2, 6, 23, 0.95);
-            margin-top: 10px;
-            font-weight: 600;
-            font-size: 0.88rem;
-            animation: slideIn 0.28s ease-out;
-            pointer-events: auto;
-            width: 100%;
-        }
-        @keyframes slideIn { from { transform: translateX(24px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
         .hidden { display: none !important; }
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
@@ -803,7 +773,6 @@
         <img class="mg-bg-icon mg-bg-popcorn" src="/static/img/lobby/popcorn-thumb.png" alt="">
         <img class="mg-bg-icon mg-bg-camera" src="/static/img/lobby/camera.png" alt="">
     </div>
-    <div id="toast-container"></div>
     <header class="mg-header">
         <h1 class="mg-brand">Movie Guess</h1>
         <div class="mg-header-right">
@@ -1265,29 +1234,6 @@
         let rejoinInterval = null;
         let rejoinTimeLeft = 0;
 
-        // Global toast helper so copy handlers and other functions can show notifications
-        function showToast(message) {
-            try {
-                const container = document.getElementById('toast-container');
-                if (!container) {
-                    console.debug('[TOAST-DEBUG] toast-container not found, falling back to console');
-                    console.log(message);
-                    return;
-                }
-                const toast = document.createElement('div');
-                toast.className = 'toast';
-                toast.innerText = message;
-                container.appendChild(toast);
-                setTimeout(() => {
-                    toast.style.opacity = '0';
-                    toast.style.transition = '0.5s';
-                    setTimeout(() => toast.remove(), 500);
-                }, 3000);
-            } catch (e) {
-                console.debug('[TOAST-DEBUG] showToast error', e);
-            }
-        }
-        
         const copiedResetTimers = new WeakMap();
         function markCopied(el) {
             if (!el) return;
@@ -1421,7 +1367,6 @@
                 // Server resolved a duplicate name (e.g. "Sam" -> "Sam(1)").
                 myName = data.new_name;
                 try { sessionStorage.setItem("movie_guess_player_name", myName); } catch (_) { /* ignore */ }
-                showToast("Name already taken — you are " + myName);
                 return;
             }
             if (data.type === "session_replaced") {
@@ -1455,10 +1400,7 @@
                 }
                 if (data.code === "banned") {
                     document.cookie = "room_id=; path=/; max-age=0";
-                    showToast("🚫 " + data.message);
-                    setTimeout(() => {
-                        window.location.href = "/?error=banned";
-                    }, 1500);
+                    window.location.href = "/?error=banned";
                     return;
                 }
                 const errorDiv = document.getElementById('start-error');
@@ -1466,17 +1408,11 @@
                     errorDiv.innerText = "❌ " + data.message;
                     errorDiv.classList.remove('hidden');
                 }
-                showToast("⚠️ " + data.message);
                 return;
             }
             if (data.type === "player_list") {
                 console.log(`[DEBUG-FRONTEND] player_list update: ${data.players.length} players, room_status=${currentRoomStatus}`);
                 data.players.forEach(p => {
-                    if (previousScores[p.name] !== undefined && p.score > previousScores[p.name]) {
-                        const pointsGained = p.score - previousScores[p.name];
-                        const displayName = (p.name === myName) ? "You" : p.name;
-                        showToast(`🎉 ${displayName} gained ${pointsGained} points!`);
-                    }
                     previousScores[p.name] = p.score;
                 });
                 window.lastPlayerData = data.players; 
@@ -1502,9 +1438,6 @@
                         catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
-            }
-            if (data.type === "drawer_disconnected") {
-                showToast(`⚠️ Drawer (${data.name}) has left. Selecting new drawer...`);
             }
             if (data.type === "timer_update" && data.timer_type === "selection") {
                 console.log('[DEBUG] selection timer update', data.time_left, 'drawer', data.drawer_name, 'role', myRole);
@@ -1540,7 +1473,6 @@
                 } catch (e) {}
                 document.getElementById('game-area')?.classList.add('hidden');
                 document.getElementById('setup-area')?.classList.remove('hidden');
-                showToast(data.message || "A player joined. Starting a new round!");
             }
             if (data.type === "timer_update" && data.timer_type === "rejoin") {
                 startRejoinTimer(data.time_left);
@@ -1557,7 +1489,7 @@
                     document.getElementById('drawer-input').classList.remove('hidden');
                     setGuesserWaitingVisible(false);
                     document.getElementById('controls').classList.remove('hidden');
-                    showToast(`🧩 You are now the drawer. Pick a word in 60 seconds.`);
+                    
                     startSelectionTimer(60);
                 } else {
                     myRole = "guesser";
@@ -1565,7 +1497,7 @@
                     document.getElementById('drawer-input').classList.add('hidden');
                     document.getElementById('controls').classList.add('hidden');
                     setGuesserWaitingVisible(true);
-                    showToast(`🎬 New drawer is ${newDrawer}. Wait for them to choose a word.`);
+                    
                     startSelectionTimer(60);
                 }
                 updateDrawerStatus(newDrawer);
@@ -1584,7 +1516,7 @@
                 }
             }
             if (data.type === "movie_selected") {
-                showToast(`✅ Word picked by drawer. Round is starting...`);
+                
                 stopSelectionTimer();
             }
 
@@ -1592,7 +1524,6 @@
 
                 console.log("[DEBUG-HOST] Host transferred to:", data.new_host);
 
-                showToast(`👑 ${data.new_host} is now the host!`);
                 currentHostName = data.new_host;
 
                 // If I became host
@@ -1630,36 +1561,21 @@
             if (data.type === "vote_kick_result") {
                 console.log("[DEBUG-FRONTEND] Vote result:", data.result);
                 closeVoteKickModal();
-
-                const isVoteTarget = myName === data.target_player;
-                if (data.result === "KICK") {
-                    showToast(`⚠️ ${data.target_player} has been kicked! (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                } else if (!isVoteTarget) {
-                    if (data.result === "TIE") {
-                        showToast(`🤝 Vote ended in a tie! ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                    } else {
-                        showToast(`✅ Vote failed. ${data.target_player} stays. (${data.yes_votes} Yes, ${data.no_votes} No)`);
-                    }
-                }
             }
             if (data.type === "vote_kick_cancelled") {
                 console.log("[DEBUG-FRONTEND] Vote kick cancelled:", data.reason);
                 closeVoteKickModal();
-                showToast(`❌ Vote kick cancelled (${data.reason})`);
             }
             if (data.type === "player_kicked") {
                 console.log("[DEBUG-FRONTEND] I was kicked!");
                 closeVoteKickModal();
                 document.cookie = "room_id=; path=/; max-age=0";
-                showToast("💥 You have been kicked from the room!");
-                setTimeout(() => {
-                    alert("You have been kicked from the room by vote. You cannot rejoin this room.");
-                    window.location.href = "/";
-                }, 2000);
+                alert("You have been kicked from the room by vote. You cannot rejoin this room.");
+                window.location.href = "/";
             }
             if (data.type === "player_kicked_notification") {
                 console.log("[DEBUG-FRONTEND] Player kicked notification:", data.kicked_player);
-                showToast(`💥 ${data.message}`);
+                
             }
             if (data.type === "init") {
                 console.log(`[DEBUG-FRONTEND] Init message received. room_status=${data.room_status}, role=${data.role}, player_count=${data.player_count}/${data.max_players}, room_type=${data.room_type}, selection_active=${data.selection_active}, movie_set=${data.movie_set}`);
@@ -1842,10 +1758,6 @@
                 populateRoundScoreList(null, null);
                 console.log(`[DEBUG-FRONTEND] Game started. Drawer: ${data.drawer_name}, Timer: ${data.time_left}s`);
             }
-            if (data.type === "correct_guess") {
-                // Room-wide notice (who guessed it) — never contains the answer.
-                if (data.message) showToast(data.message);
-            }
             if (data.type === "guess_result") {
                 // Private reply to our own guess; only a correct one carries the answer.
                 if (data.correct && data.answer) {
@@ -1901,7 +1813,6 @@
                         catLabel.innerText = "Category: " + formatCategoryLabel(roomCategory);
                     }
                 }
-                showToast(data.message || "Continuing the game!");
             }
             if (data.type === "drawing" && myRole === "guesser") {
                 applyDrawStep(data);
@@ -2411,7 +2322,6 @@
                 const errorDiv = document.getElementById('start-error');
                 errorDiv.innerText = "❌ At least 2 players are required to start the game.";
                 errorDiv.classList.remove('hidden');
-                showToast("⚠️ At least 2 players are required to start the game.");
                 return;
             }
             ws.send(JSON.stringify({type: "start_game"}));

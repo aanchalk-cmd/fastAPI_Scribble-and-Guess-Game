@@ -1136,17 +1136,31 @@
         try {
             if (myName) sessionStorage.setItem("movie_guess_player_name", myName);
         } catch (_) { /* ignore */ }
-        // Secret session token from /join — the only thing the server accepts as
-        // proof of which player this tab is. Kept per tab (sessionStorage) so two
-        // tabs of the same browser can still be two different players; the cookie
-        // only hands it over on the first load after /join.
-        const playerTokenKey = `movie_guess_player_token:${currentRoom || ""}`;
-        let playerToken = null;
-        try { playerToken = sessionStorage.getItem(playerTokenKey); } catch (_) { /* ignore */ }
-        if (!playerToken) {
-            playerToken = decodeURIComponent(getCookie(`player_token_${currentRoom}`) || "").replace(/^"|"$/g, "") || null;
-            try { if (playerToken) sessionStorage.setItem(playerTokenKey, playerToken); } catch (_) { /* ignore */ }
+        // Drop any session token saved by older pages. The live token is an
+        // HttpOnly cookie; this tab only remembers which cookie is its own.
+        try { sessionStorage.removeItem(`movie_guess_player_token:${currentRoom || ""}`); } catch (_) { /* ignore */ }
+        function getOrCreateTabId() {
+            const key = "movie_guess_tab_id";
+            try {
+                const existing = sessionStorage.getItem(key);
+                if (existing) return existing;
+            } catch (_) { /* ignore */ }
+            let id = "";
+            try { id = decodeURIComponent(getCookie("tab_id") || ""); } catch (_) { /* ignore */ }
+            if (!id) {
+                if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+                    id = crypto.randomUUID();
+                } else {
+                    id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+                        const r = (Math.random() * 16) | 0;
+                        return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+                    });
+                }
+            }
+            try { sessionStorage.setItem(key, id); } catch (_) { /* ignore */ }
+            return id;
         }
+        const tabId = getOrCreateTabId();
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1176,7 +1190,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&token=${encodeURIComponent(playerToken || "")}`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&tab=${encodeURIComponent(tabId)}`);
         let canvas = document.getElementById('canvas');
         // willReadFrequently: the fill tool reads pixels back, and without this Chrome
         // switches the canvas from GPU to CPU mid-game, which changes stroke
@@ -1381,7 +1395,6 @@
                     // No valid session for this room (never joined here, left, or
                     // the name was taken over by a new join) — go join properly.
                     publicRoomClosed = true;
-                    try { sessionStorage.removeItem(playerTokenKey); } catch (_) { /* ignore */ }
                     const invite = currentRoom ? `&invite=${encodeURIComponent(btoa(currentRoom))}` : "";
                     window.location.replace(`/?error=rejoin${invite}`);
                     return;
@@ -2671,7 +2684,6 @@
         };
         function submitLeave() {
             try {
-                sessionStorage.removeItem(playerTokenKey);
                 sessionStorage.removeItem("movie_guess_player_name");
                 sessionStorage.removeItem("movie_guess_room_id");
             } catch (_) { /* ignore */ }
@@ -2682,11 +2694,11 @@
             roomInput.type = "hidden";
             roomInput.name = "room_id";
             roomInput.value = currentRoom || "";
-            const tokenInput = document.createElement("input");
-            tokenInput.type = "hidden";
-            tokenInput.name = "token";
-            tokenInput.value = playerToken || "";
-            form.append(roomInput, tokenInput);
+            const tabInput = document.createElement("input");
+            tabInput.type = "hidden";
+            tabInput.name = "tab_id";
+            tabInput.value = tabId || "";
+            form.append(roomInput, tabInput);
             document.body.appendChild(form);
             form.submit();
         }

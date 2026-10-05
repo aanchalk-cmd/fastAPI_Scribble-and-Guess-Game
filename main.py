@@ -350,8 +350,59 @@ def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
 
 
-def player_token_cookie_name(room_id: str) -> str:
-    return f"player_token_{room_id}"
+def normalize_room_code(room_id: Optional[str]) -> Optional[str]:
+    code = (room_id or "").strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{6}", code):
+        return code
+    return None
+
+
+def player_token_cookie_name(room_id: str, tab_id: Optional[str]) -> Optional[str]:
+    """Cookie name for this tab's session. The value is the secret, never this name."""
+    code = normalize_room_code(room_id)
+    tab = validate_guest_id(tab_id)
+    if not code or not tab:
+        return None
+    return f"player_token_{code}_{tab}"
+
+
+def legacy_player_token_cookie_name(room_id: str) -> Optional[str]:
+    code = normalize_room_code(room_id)
+    return f"player_token_{code}" if code else None
+
+
+def request_is_https(request: Request) -> bool:
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    proto = forwarded.split(",")[0].strip().lower() if forwarded else request.url.scheme
+    return proto == "https"
+
+
+def set_player_token_cookie(response, request: Request, room_id: str, tab_id: str, token: str):
+    """Store the session where page scripts cannot read it and it is not in a URL."""
+    name = player_token_cookie_name(room_id, tab_id)
+    if not name:
+        return
+    response.set_cookie(
+        name,
+        token,
+        httponly=True,
+        secure=request_is_https(request),
+        samesite="lax",
+        path="/",
+    )
+    legacy = legacy_player_token_cookie_name(room_id)
+    if legacy:
+        response.delete_cookie(legacy, path="/")
+
+
+def clear_player_token_cookie(response, request: Request, room_id: str, tab_id: Optional[str]):
+    name = player_token_cookie_name(room_id, tab_id)
+    secure = request_is_https(request)
+    if name:
+        response.delete_cookie(name, path="/", secure=secure, httponly=True, samesite="lax")
+    legacy = legacy_player_token_cookie_name(room_id)
+    if legacy:
+        response.delete_cookie(legacy, path="/", secure=secure, samesite="lax")
 
 
 def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
@@ -367,6 +418,7 @@ def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
 
 @app.post("/join")
 async def join(
+    request: Request,
     name: str = Form(""),  # blank -> a random funny name from the room's categories
     room_code: str = Form(None),
     action: str = Form(...),
@@ -376,6 +428,7 @@ async def join(
     rounds: int = Form(3),  # New: rounds selection
     category: str = Form("movies"),  # Word category id(s) from words.json, comma-separated
     guest_id: str = Form(None),
+    tab_id: str = Form(None),
 ):
     guest_id = ensure_guest_id(guest_id)
     wants_random_name = not str(name or "").strip()
@@ -557,15 +610,27 @@ async def join(
     # The room is encoded directly in the redirect URL (not just the shared
     # `room_id` cookie) so that a later browser refresh keeps working even if
     # a *different* tab's /leave call clears that cookie — see /game below.
+    submitted_tab = validate_guest_id(tab_id)
+    tab_id = submitted_tab or str(uuid.uuid4())
     player_token = room.issue_player_token(name)
     response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
     # URL-encoded: cookie values must be Latin-1, and names may be in any script
     # (e.g. "प्रिया"). The game page decodes it with decodeURIComponent.
     response.set_cookie(player_cookie_name(room_code), quote(name, safe=""))
-    # Readable by the game page so each tab can keep its own copy (sessionStorage);
-    # the server only ever trusts this token, never the display name.
-    response.set_cookie(player_token_cookie_name(room_code), player_token, samesite="lax")
+    # HttpOnly: the browser attaches this on the socket and on /leave. Scripts
+    # never see the value, and it is not placed on the WebSocket URL.
+    # One cookie per tab, so a second player in this browser does not replace
+    # the first tab's session.
+    set_player_token_cookie(response, request, room_code, tab_id, player_token)
+    if not submitted_tab:
+        response.set_cookie(
+            "tab_id",
+            tab_id,
+            samesite="lax",
+            path="/",
+            secure=request_is_https(request),
+        )
     response.set_cookie("guest_id", guest_id, max_age=31536000)
     return response
 
@@ -578,16 +643,16 @@ async def leave_page():
 @app.post("/leave")
 async def leave(
     request: Request,
-    token: str = Form(None),
     room_id: str = Form(None),
+    tab_id: str = Form(None),
     room_id_cookie: str = Cookie(None, alias="room_id"),
 ):
-    # The per-tab token from the game page wins over the shared cookie, so one
-    # tab cannot leave a different player who joined later in this browser.
-    # A display name is never accepted: it used to let any link remove anyone.
-    room_id = (room_id or room_id_cookie or "").strip()
+    # Identity is the HttpOnly cookie for this tab. A token in the form body is
+    # ignored, and a display name is never accepted.
+    room_id = normalize_room_code(room_id or room_id_cookie) or ""
     room = rooms.get(room_id)
-    player_token = token or (request.cookies.get(player_token_cookie_name(room_id)) if room_id else None)
+    cookie_name = player_token_cookie_name(room_id, tab_id)
+    player_token = request.cookies.get(cookie_name) if cookie_name else None
     username = room.resolve_player_token(player_token) if room else None
     if room and username:
         room = rooms[room_id]
@@ -663,10 +728,9 @@ async def leave(
 
     response = RedirectResponse(url="/", status_code=303)
     if username:
-        response.delete_cookie("room_id")
-        if room_id and request.cookies.get(player_token_cookie_name(room_id)) == player_token:
-            response.delete_cookie(player_token_cookie_name(room_id))
-            response.delete_cookie(player_cookie_name(room_id))
+        response.delete_cookie("room_id", path="/")
+        clear_player_token_cookie(response, request, room_id, tab_id)
+        response.delete_cookie(player_cookie_name(room_id), path="/")
     return response
 
 @app.on_event("shutdown")
@@ -2817,12 +2881,14 @@ async def websocket_endpoint(
     guest_id: str = Cookie(None),
     player_name: str = Query(None),
     room_id_param: str = Query(None, alias="room_id"),
-    token_param: str = Query(None, alias="token"),
+    tab_id: str = Query(None, alias="tab"),
 ):
     # Same reasoning as /game: prefer the room_id the client sent explicitly
     # (from its own per-tab state) over the shared cookie, which a sibling
     # tab's /leave may have deleted without this tab's involvement.
-    room_id = room_id_param or room_id
+    # `tab` only selects which HttpOnly cookie to read. It is not a credential,
+    # and a token in the query string is ignored so a logged URL cannot be reused.
+    room_id = normalize_room_code(room_id_param or room_id) or ""
     room = rooms.get(room_id)
 
     if room_id and room_id not in rooms and room_id in discarded_public_rooms:
@@ -2846,10 +2912,10 @@ async def websocket_endpoint(
         await websocket.close()
         return
 
-    # Identity comes only from the secret token issued by /join — a client can
-    # not become another player just by sending their name. The per-tab token
-    # (query) wins over the shared cookie so two tabs can hold different players.
-    player_token = token_param or websocket.cookies.get(player_token_cookie_name(room_id))
+    # Identity comes only from the HttpOnly cookie set by /join. The tab id
+    # picks this tab's cookie so two players in one browser stay distinct.
+    cookie_name = player_token_cookie_name(room_id, tab_id)
+    player_token = websocket.cookies.get(cookie_name) if cookie_name else None
     username = rooms[room_id].resolve_player_token(player_token)
     if not username:
         print(

@@ -92,6 +92,7 @@
             category: document.getElementById("field-category"),
             roomCode: document.getElementById("field-room-code"),
             guestId: document.getElementById("field-guest-id"),
+            tabId: document.getElementById("field-tab-id"),
         },
     };
 
@@ -148,6 +149,17 @@
         }
         document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
         return guestId;
+    }
+
+    function getOrCreateTabId() {
+        const key = "movie_guess_tab_id";
+        try {
+            const existing = sessionStorage.getItem(key);
+            if (existing) return existing;
+        } catch (_) { /* ignore */ }
+        const id = createGuestId();
+        try { sessionStorage.setItem(key, id); } catch (_) { /* ignore */ }
+        return id;
     }
 
     function saveDraft() {
@@ -445,6 +457,7 @@
         state.roomCode = roomCode;
         els.fields.name.value = name;
         els.fields.guestId.value = getOrCreateGuestId();
+        if (els.fields.tabId) els.fields.tabId.value = getOrCreateTabId();
         els.fields.action.value = action;
         els.fields.roomType.value = roomType;
         els.fields.maxPlayers.value = String(MAX_PLAYERS);
@@ -458,8 +471,8 @@
             // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
             // name from the join cookie and stores it for this tab's refreshes.
             sessionStorage.removeItem("movie_guess_player_name");
-            // A fresh /join issues a new session token; drop any old per-tab copies
-            // so the game page picks the new one up from the cookie.
+            // Older pages kept the session token here, where any script could read it.
+            // The live token is an HttpOnly cookie, so drop those copies.
             Object.keys(sessionStorage)
                 .filter((key) => key.startsWith("movie_guess_player_token:"))
                 .forEach((key) => sessionStorage.removeItem(key));

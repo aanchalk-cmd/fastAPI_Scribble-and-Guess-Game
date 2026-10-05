@@ -2234,7 +2234,7 @@
         }
 
         function quitGame() {
-            window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
+            submitLeave();
         }
 
         function updateDrawerStatus(name) {
@@ -2669,9 +2669,30 @@
             document.getElementById('disconnect-overlay').classList.remove('hidden');
             document.getElementById('drawer-status').innerText = "🔌 Connection Lost";
         };
+        function submitLeave() {
+            try {
+                sessionStorage.removeItem(playerTokenKey);
+                sessionStorage.removeItem("movie_guess_player_name");
+                sessionStorage.removeItem("movie_guess_room_id");
+            } catch (_) { /* ignore */ }
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "/leave";
+            const roomInput = document.createElement("input");
+            roomInput.type = "hidden";
+            roomInput.name = "room_id";
+            roomInput.value = currentRoom || "";
+            const tokenInput = document.createElement("input");
+            tokenInput.type = "hidden";
+            tokenInput.name = "token";
+            tokenInput.value = playerToken || "";
+            form.append(roomInput, tokenInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
         function leaveGame() {
             if (confirm("Are you sure you want to leave the room?")) {
-                window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
+                submitLeave();
             }
         }
         

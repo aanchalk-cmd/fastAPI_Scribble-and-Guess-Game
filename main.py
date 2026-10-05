@@ -570,14 +570,26 @@ async def join(
     return response
 
 @app.get("/leave")
+async def leave_page():
+    """A link or cross-site navigation must not remove anyone from a room."""
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/leave")
 async def leave(
     request: Request,
-    player_name: str = Query(None),
-    room_id: str = Cookie(None),
+    token: str = Form(None),
+    room_id: str = Form(None),
+    room_id_cookie: str = Cookie(None, alias="room_id"),
 ):
-    cookie_name = request.cookies.get(player_cookie_name(room_id)) if room_id else None
-    username = player_name or (unquote(cookie_name) if cookie_name else None)
-    if room_id in rooms and username:
+    # The per-tab token from the game page wins over the shared cookie, so one
+    # tab cannot leave a different player who joined later in this browser.
+    # A display name is never accepted: it used to let any link remove anyone.
+    room_id = (room_id or room_id_cookie or "").strip()
+    room = rooms.get(room_id)
+    player_token = token or (request.cookies.get(player_token_cookie_name(room_id)) if room_id else None)
+    username = room.resolve_player_token(player_token) if room else None
+    if room and username:
         room = rooms[room_id]
         manager = room.manager
         print(f"[PLAYER_LEAVE] Player {username} leaving room {room_id} via /leave")
@@ -650,7 +662,11 @@ async def leave(
             await broadcast_lobby_update()
 
     response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie("room_id")
+    if username:
+        response.delete_cookie("room_id")
+        if room_id and request.cookies.get(player_token_cookie_name(room_id)) == player_token:
+            response.delete_cookie(player_token_cookie_name(room_id))
+            response.delete_cookie(player_cookie_name(room_id))
     return response
 
 @app.on_event("shutdown")

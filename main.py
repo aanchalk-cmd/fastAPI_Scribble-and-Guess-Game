@@ -112,6 +112,11 @@ class GameRoom:
         self.player_db_ids[name] = player_db_id
 
     def register_player_guest(self, name: str, guest_id: str):
+        # Keep the id this player joined with. A later connection must not swap it
+        # for a new one, or a vote-kick ban on the original id would miss them.
+        current = self.player_guest_ids.get(name)
+        if current and current != guest_id:
+            return
         self.player_guest_ids[name] = guest_id
 
     def get_player_db_id(self, name: str) -> Optional[int]:
@@ -317,6 +322,30 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
     return validated if validated else str(uuid.uuid4())
 
 
+def resolve_guest_id(cookie_value: Optional[str]) -> str:
+    """The browser cookie is the only guest identity. A value sent by page script is ignored."""
+    return ensure_guest_id(cookie_value)
+
+
+def set_guest_cookie(response, request: Request, guest_id: str):
+    """Lock the guest id where page script cannot read or replace it."""
+    response.set_cookie(
+        "guest_id",
+        guest_id,
+        max_age=31536000,
+        httponly=True,
+        secure=request_is_https(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def redirect_with_guest(request: Request, guest_id: str, url: str, status_code: int = 303):
+    response = RedirectResponse(url=url, status_code=status_code)
+    set_guest_cookie(response, request, guest_id)
+    return response
+
+
 # Same limit as the name inputs on the landing page (lobby.js NAME_MAX).
 PLAYER_NAME_MAX = 10
 _PLAYER_NAME_EXTRA_CHARS = frozenset(" _.'-")
@@ -427,10 +456,10 @@ async def join(
     duration: int = Form(60),
     rounds: int = Form(3),  # New: rounds selection
     category: str = Form("movies"),  # Word category id(s) from words.json, comma-separated
-    guest_id: str = Form(None),
     tab_id: str = Form(None),
+    guest_id_cookie: str = Cookie(None, alias="guest_id"),
 ):
-    guest_id = ensure_guest_id(guest_id)
+    guest_id = resolve_guest_id(guest_id_cookie)
     wants_random_name = not str(name or "").strip()
     cleaned_name = None if wants_random_name else clean_player_name(name)
     if not wants_random_name and not cleaned_name:
@@ -439,7 +468,7 @@ async def join(
         if action == "join" and room_code and room_code.strip():
             # Send them back to the "I have a code" tab with the code filled in.
             query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
-        return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
+        return redirect_with_guest(request, guest_id, f"/?{urlencode(query)}")
     name = cleaned_name  # None until the room's categories are known (random name)
     print(f"[MATCHMAKING] Action={action} user={name or '(random)'} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
@@ -512,7 +541,7 @@ async def join(
 
     elif action == "join":
         if not room_code:
-            return RedirectResponse(url="/?error=missing_code", status_code=303)
+            return redirect_with_guest(request, guest_id, "/?error=missing_code")
 
         room_code = room_code.upper().strip()
         print(f"[PLAYER_JOIN] Attempting join room={room_code} user={name}")
@@ -520,7 +549,7 @@ async def join(
         if room_code not in rooms:
             print(f"[SKIP] Room destroyed")
             print(f"[PLAYER_JOIN] Failed: room {room_code} not found")
-            return RedirectResponse(url=f"/?error=not_found&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=not_found&code={room_code}")
 
         room = rooms[room_code]
         players_before = len(room.players)
@@ -529,20 +558,17 @@ async def join(
 
         if is_guest_banned_in_room(room, guest_id):
             print(f"[PLAYER_JOIN] Failed: guest {guest_id} banned from room {room_code}")
-            return RedirectResponse(
-                url=f"/?error=banned&code={room_code}",
-                status_code=303,
-            )
+            return redirect_with_guest(request, guest_id, f"/?error=banned&code={room_code}")
 
         if room.status == "ENDED":
             print(f"[PLAYER_JOIN] Failed: room {room_code} has ended")
-            return RedirectResponse(url=f"/?error=ended&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=ended&code={room_code}")
 
         # Capacity check for both private and public (including mid-game public joins)
         if room.is_full():
             print(f"[SKIP] Room already full")
             print(f"[PLAYER_JOIN] Failed: room {room_code} is full")
-            return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
 
         joining_running = room.game_started and room.status == "PLAYING"
         if wants_random_name:
@@ -553,7 +579,7 @@ async def join(
         if not added:
             print(f"[SKIP] Room already full")
             print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
-            return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
 
         # A rejoin immediately ends the vacancy wait, before the new socket connects.
         had_rejoin_wait = (
@@ -605,7 +631,7 @@ async def join(
         log_room_state(room)
         await broadcast_lobby_update()
     else:
-        return RedirectResponse(url="/", status_code=303)
+        return redirect_with_guest(request, guest_id, "/")
 
     # The room is encoded directly in the redirect URL (not just the shared
     # `room_id` cookie) so that a later browser refresh keeps working even if
@@ -631,7 +657,7 @@ async def join(
             path="/",
             secure=request_is_https(request),
         )
-    response.set_cookie("guest_id", guest_id, max_age=31536000)
+    set_guest_cookie(response, request, guest_id)
     return response
 
 @app.get("/leave")
@@ -1702,15 +1728,16 @@ class ConnectionManager:
                     with get_db_session() as db:
                         guest_id = get_guest_id_for_player(db, self.room.db_id, player_db_id)
 
-        if guest_id and self.room and self.room.db_id:
-            with get_db_session() as db:
-                ban_guest_from_room(
-                    db,
-                    self.room.db_id,
-                    guest_id,
-                    reason="vote_kick",
-                )
+        if guest_id and self.room:
             self.room.ban_guest(guest_id)
+            if self.room.db_id:
+                with get_db_session() as db:
+                    ban_guest_from_room(
+                        db,
+                        self.room.db_id,
+                        guest_id,
+                        reason="vote_kick",
+                    )
             print(f"[DEBUG-VOTE] Banned guest {guest_id} from room {self.room.room_id}")
 
         if self.room and self.room.db_id:

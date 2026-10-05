@@ -91,7 +91,6 @@
             duration: document.getElementById("field-duration"),
             category: document.getElementById("field-category"),
             roomCode: document.getElementById("field-room-code"),
-            guestId: document.getElementById("field-guest-id"),
             tabId: document.getElementById("field-tab-id"),
         },
     };
@@ -139,16 +138,6 @@
             const r = (Math.random() * 16) | 0;
             return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
         });
-    }
-
-    function getOrCreateGuestId() {
-        let guestId = localStorage.getItem("scribble_guest_id");
-        if (!guestId) {
-            guestId = createGuestId();
-            localStorage.setItem("scribble_guest_id", guestId);
-        }
-        document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
-        return guestId;
     }
 
     function getOrCreateTabId() {
@@ -456,7 +445,6 @@
         state.name = name;
         state.roomCode = roomCode;
         els.fields.name.value = name;
-        els.fields.guestId.value = getOrCreateGuestId();
         if (els.fields.tabId) els.fields.tabId.value = getOrCreateTabId();
         els.fields.action.value = action;
         els.fields.roomType.value = roomType;
@@ -686,10 +674,6 @@
     els.createBtn.addEventListener("click", createRoom);
     els.joinRoomBtn.addEventListener("click", joinWithCode);
 
-    // Boot. Guest-id setup must not block pills — HTTP LAN is not a secure context.
-    try {
-        getOrCreateGuestId();
-    } catch (_) { /* ignore */ }
     loadDraft();
     parseQuery();
     setScreen(state.screen);

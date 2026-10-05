@@ -1,4 +1,5 @@
 import base64
+import math
 import os
 import random
 import re
@@ -203,6 +204,11 @@ LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
 # How long the round-result score card stays up before the next round (or the
 # final Game Over) starts on its own. There is no manual "Next Round" action.
 ROUND_RESULT_SECONDS = 5
+# The game canvas is fixed in the page markup. Strokes outside it are dropped.
+CANVAS_WIDTH = 800
+CANVAS_HEIGHT = 500
+_DRAW_TOOLS = frozenset({"draw", "erase", "fill"})
+_DRAW_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def reconnect_grace_key(room_id: str, username: str) -> str:
@@ -987,14 +993,63 @@ class ConnectionManager:
         )
         return points
 
-    async def begin_round(self, movie: str, show_vowels: bool = True):
+    def match_offered_word(self, movie: str) -> Optional[str]:
+        """The offered title `movie` matches, or None if it was not one of the three."""
+        candidate = self.normalize_guess(movie)
+        if not candidate:
+            return None
+        for option in self.last_word_options:
+            if self.normalize_guess(option) == candidate:
+                return option.strip().upper()
+        return None
+
+    def sanitize_draw_step(self, data: dict) -> Optional[dict]:
+        """A drawing stroke limited to the fields and canvas the clients render."""
+        try:
+            x = float(data.get("x"))
+            y = float(data.get("y"))
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(x) or not math.isfinite(y):
+            return None
+        if x < -1 or y < -1 or x > CANVAS_WIDTH + 1 or y > CANVAS_HEIGHT + 1:
+            return None
+        tool = data.get("tool")
+        color = data.get("color")
+        if tool not in _DRAW_TOOLS or not isinstance(color, str) or not _DRAW_COLOR.match(color):
+            return None
+        is_new = data.get("isNewPath")
+        return {
+            "type": "drawing",
+            "x": min(float(CANVAS_WIDTH), max(0.0, x)),
+            "y": min(float(CANVAS_HEIGHT), max(0.0, y)),
+            "tool": tool,
+            "isNewPath": is_new if isinstance(is_new, bool) else True,
+            "color": color,
+        }
+
+    async def begin_round(self, username: str, movie: str, show_vowels: bool = True) -> bool:
         """
-        Start the guessing phase for `movie`. Guessers only get the masked
-        display; the answer itself is sent to players allowed to see it.
+        Start the guessing phase for one of the titles offered to this drawer.
+
+        A second call is ignored once a title is locked in, so the timer and
+        correct guesses cannot be reset by sending the choice again.
         """
+        if username != self.game_state.get("drawer_name"):
+            return False
+        if self.game_state.get("is_round_active") or self.game_state.get("movie"):
+            return False
+        if not self.game_state.get("selection_active"):
+            return False
+        chosen = self.match_offered_word(movie)
+        if not chosen:
+            return False
+        if not isinstance(show_vowels, bool):
+            show_vowels = True
+
         self.cancel_selection_timer()
         state = self.game_state
-        state["movie"] = (movie or "").strip().upper()
+        state["movie"] = chosen
         state["show_vowels"] = show_vowels
         state["word_guessed"] = False
         state["revealed_movie"] = None
@@ -1023,6 +1078,7 @@ class ConnectionManager:
                 await ws.send_json(payload)
             except Exception:
                 continue
+        return True
 
     async def handle_guess(self, username: str, guess) -> Optional[int]:
         """
@@ -2993,31 +3049,59 @@ async def websocket_endpoint(
                     await manager.continue_game()
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
-            if data["type"] == "set_movie":
-                # Only the drawer may choose the word.
-                if name == manager.game_state["drawer_name"]:
-                    await manager.begin_round(
+            if data["type"] in ("set_movie", "select_movie"):
+                # Only the drawer, only during word selection, only an offered title.
+                # A repeat after the round has started is ignored.
+                drawer_name = manager.game_state.get("drawer_name")
+                already_chosen = (
+                    manager.game_state.get("is_round_active")
+                    or bool(manager.game_state.get("movie"))
+                )
+                if name == drawer_name and not already_chosen:
+                    started = await manager.begin_round(
+                        name, 
                         str(data.get("movie") or ""),
                         data.get("show_vowels", True),
                     )
+                    if not started:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Pick one of the titles you were offered.",
+                        })
             elif data["type"] == "guess":
                 await manager.handle_guess(username, data.get("guess"))
             # There is no client "restart": rounds advance automatically after the
             # result card (schedule_round_advance). Accepting it let any player
             # skip rounds at will.
             elif data["type"] == "drawing":
-                manager.draw_history.append(data)
-                await manager.broadcast(data)
+                step = manager.sanitize_draw_step(data)
+                if (
+                    step
+                    and name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("is_round_active")
+                ):
+                    manager.draw_history.append(step)
+                    await manager.broadcast(step)
             elif data["type"] == "word_revealed":
                 await manager.handle_word_check(
                     username, data.get("index"), data.get("word")
                 )
             elif data["type"] == "clear":
-                manager.draw_history = []
-                await manager.broadcast(data)
+                if (
+                    name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("is_round_active")
+                ):
+                    manager.draw_history = []
+                    await manager.broadcast({"type": "clear"})
             elif data["type"] == "random_movie":
-                # Drawer requested a fresh set of word options (uses room category)
-                if name == manager.game_state["drawer_name"]:
+                # A fresh set of titles, only while this drawer is still choosing.
+                choosing = (
+                    name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("selection_active")
+                    and not manager.game_state.get("movie")
+                    and not manager.game_state.get("is_round_active")
+                )
+                if choosing:
                     # Prefer room category; allow optional override from client
                     requested = data.get("category") or data.get("section")
                     # A room category in the request just means "the room pool".
@@ -3042,16 +3126,6 @@ async def websocket_endpoint(
                         })
                     else:
                         await manager.send_word_options_to_drawer(count=3)
-            elif data["type"] == "select_movie":
-                if name == manager.game_state["drawer_name"]:
-                    print(
-                        f"[WORD_MANAGER] Drawer {name} selected a word "
-                        f"category={manager.get_room_category()}"
-                    )
-                    await manager.begin_round(
-                        str(data.get("movie") or ""),
-                        data.get("show_vowels", True),
-                    )
             elif data["type"] == "initiate_vote_kick":
                 target_player = data.get("target_player")
                 success = await manager.initiate_vote_kick(name, target_player)

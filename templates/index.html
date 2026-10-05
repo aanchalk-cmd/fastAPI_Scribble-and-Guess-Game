@@ -945,13 +945,13 @@
                         <div class="drawer-pick-main">
                             <div class="drawer-pick-copy">
                                 <p class="drawer-pick-title">Pick a movie to give clues for</p>
-                                <p class="drawer-pick-sub">Choose a category, type a title — or let us surprise you. Others will try to guess it from your clues.</p>
+                                <p class="drawer-pick-sub">Pick one of the three titles, or ask for a new set. Others will try to guess it from your clues.</p>
                                 <p id="category-label">Category: —</p>
                             </div>
 
                             <div class="drawer-pick-controls">
                                 <div class="drawer-pick-field">
-                                    <input type="text" id="movieInput" placeholder="Type a title" autocomplete="off">
+                                    <input type="text" id="movieInput" placeholder="Pick a title" autocomplete="off" readonly>
                                 </div>
 
                                 <label class="hint-toggle">
@@ -2314,16 +2314,18 @@
             }
             ws.send(JSON.stringify({type: "start_game"}));
         }
+        let offeredMovies = [];
         function sendMovie() {
-            let val = document.getElementById('movieInput').value.trim();
-            let showVowels = document.getElementById('hintToggle').checked;
-            if(val) {
-                ws.send(JSON.stringify({
-                    type: "set_movie",
-                    movie: val,
-                    show_vowels: showVowels
-                }));
-            }
+            const input = document.getElementById('movieInput');
+            const typed = (input && input.value || "").trim().toUpperCase();
+            const movie = offeredMovies.find((option) => String(option).toUpperCase() === typed);
+            if (!movie) return;
+            const showVowels = document.getElementById('hintToggle').checked;
+            ws.send(JSON.stringify({
+                type: "select_movie",
+                movie: movie,
+                show_vowels: showVowels
+            }));
         }
         function createGuessingBoxes(displayStr) {
             let container = document.getElementById('movie-display'); 
@@ -2462,14 +2464,13 @@
             const container = document.getElementById("movie-options");
             container.innerHTML = "";
             const input = document.getElementById("movieInput");
+            offeredMovies = Array.isArray(options) ? options.slice() : [];
+            if (input) input.value = offeredMovies[0] || "";
             options.forEach((movie, index) => {
                 let btn = document.createElement("button");
                 btn.type = "button";
                 btn.className = "btn word-choice" + (index === 0 ? " is-selected" : "");
                 btn.innerText = movie;
-                if (index === 0 && input && !input.value) {
-                    input.value = movie;
-                }
                 btn.onclick = () => {
                     container.querySelectorAll(".word-choice").forEach((el) => el.classList.remove("is-selected"));
                     btn.classList.add("is-selected");
@@ -2648,9 +2649,10 @@
             document.getElementById('fillBtn').classList.toggle('active-tool', t === 'fill');
             updateCanvasCursor();
         }
-        function clearCanvasSync() { 
-            ctx.clearRect(0, 0, canvas.width, canvas.height); 
-            ws.send(JSON.stringify({type: "clear"})); 
+        function clearCanvasSync() {
+            if (myRole !== "drawer") return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ws.send(JSON.stringify({type: "clear"}));
         }
         function generateMovie() { 
             // Request a fresh set of 3 words from the room's category

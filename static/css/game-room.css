@@ -22,8 +22,10 @@
     /* App shell spacing (Figma 10:300 @1920: 30px margins/gutters, 24px side
        panels, 30px stage) — scales down with the viewport width */
     --mg-gutter: clamp(14px, 1.5625vw, 30px);
-    --mg-pad-panel: clamp(16px, 1.25vw, 24px);
-    --mg-pad-stage: clamp(18px, 1.5625vw, 30px);
+    /* Figma measures padding from the card's outer edge (its 4px stroke sits
+       inside it), so the CSS padding is 4px less: 24 -> 20, 30 -> 26 */
+    --mg-pad-panel: clamp(12px, 1.0417vw, 20px);
+    --mg-pad-stage: clamp(14px, 1.3542vw, 26px);
     --mg-pill-h: 64px;
 }
 
@@ -145,8 +147,13 @@ body.mg-room .mg-badge-label {
 body.mg-room .mg-badge-value {
     font-size: 1.5rem;
     color: var(--mg-ink);
-    line-height: 1.1;
+    line-height: normal;
     text-transform: uppercase;
+}
+
+/* Waiting room (Figma 5:591) shows Round + Rooom only; Turn appears once play starts */
+body.mg-room:has(#setup-area.is-lobby) #turn-badge {
+    display: none;
 }
 
 body.mg-room .mg-badge-row {
@@ -253,7 +260,8 @@ body.mg-room #sidebar-toggle.mg-header-btn-ghost {
 body.mg-room .main-container {
     background: transparent;
     gap: var(--mg-gutter);
-    padding: var(--mg-gutter);
+    /* Figma: panels start 24px under the 90px header, 30px from the other edges */
+    padding: calc(var(--mg-gutter) * 0.8) var(--mg-gutter) var(--mg-gutter);
     align-items: stretch;
     min-height: 0;
 }
@@ -519,7 +527,7 @@ body.mg-room .chat-row {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    max-width: 78%;
+    max-width: 85%;
 }
 
 body.mg-room .chat-row.is-me {
@@ -560,13 +568,29 @@ body.mg-room .chat-row.is-other .chat-bubble {
     border-radius: 12px 12px 12px 0;
 }
 
+/* Room notice between messages, e.g. "PLAYER 2 HAS BEEN KICKED" (Figma 5:992) */
+body.mg-room .chat-notice {
+    align-self: stretch;
+    flex-shrink: 0;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(201, 34, 8, 0.1);
+    color: var(--mg-red);
+    font-size: 14px;
+    line-height: normal;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    text-align: center;
+    word-break: break-word;
+}
+
 body.mg-room .chat-compose {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 0;
     min-height: 72px;
-    padding: 8px 8px 8px 24px;
+    padding: 8px 10px 8px 24px;
     border: none;
     background: var(--mg-panel);
     border-radius: var(--mg-radius);
@@ -641,7 +665,8 @@ body.mg-room #room-display {
 
 body.mg-room #lobby-waiting-area h2 {
     color: var(--mg-ink);
-    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-size: 24px;
+    line-height: normal;
     margin: 0;
 }
 
@@ -650,7 +675,7 @@ body.mg-room #room-code-display {
     border: none;
     padding: 0;
     border-radius: 0;
-    font-size: 1.15rem;
+    font-size: inherit;
     letter-spacing: 0;
     color: var(--mg-ink);
 }
@@ -661,7 +686,7 @@ body.mg-room #host-controls {
 
 body.mg-room #host-controls > p.lobby-host-label {
     color: var(--mg-muted);
-    font-size: 0.8rem;
+    font-size: 16px;
 }
 
 /* ---------- Content / lobby waiting ---------- */
@@ -797,20 +822,21 @@ body.mg-room .lobby-hero {
     align-items: center;
     justify-content: center;
     text-align: center;
-    gap: 30px;
-    padding: 12px 8px;
+    gap: 40px;
+    padding: 0;
 }
 
 body.mg-room .lobby-heading {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
 body.mg-room .lobby-hero h2 {
     margin: 0;
-    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-size: 24px;
+    line-height: normal;
     letter-spacing: 0;
     text-transform: uppercase;
     color: var(--mg-ink) !important;
@@ -819,7 +845,7 @@ body.mg-room .lobby-hero h2 {
 body.mg-room .lobby-heading p,
 body.mg-room .lobby-hero > p {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 16px;
     line-height: 1.5;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -829,20 +855,21 @@ body.mg-room .lobby-hero > p {
 body.mg-room .lobby-share-row {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 16px;
     align-items: stretch;
-    width: 100%;
-    max-width: 340px;
+    /* hugs the wider chip (the invite link); the room chip stretches to match */
+    width: fit-content;
+    max-width: 100%;
 }
 
 body.mg-room .lobby-share-chip {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
     background: var(--mg-panel);
     border: none;
     border-radius: var(--mg-radius);
-    padding: 10px 15px;
+    padding: 10px 20px;
     font-family: var(--mg-font);
     text-transform: uppercase;
     text-align: left;
@@ -855,7 +882,7 @@ body.mg-room .lobby-share-chip:active {
 }
 
 body.mg-room .lobby-share-label {
-    font-size: 0.8rem;
+    font-size: 16px;
     line-height: 1.5;
     color: var(--mg-muted);
 }
@@ -864,19 +891,20 @@ body.mg-room .lobby-share-value {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 20px;
+    gap: 26px;
+    /* set here so the room code (#room-code-display) and link text both inherit it */
+    font-size: 24px;
+    line-height: normal;
 }
 
 body.mg-room .lobby-share-value strong {
-    font-size: 1.15rem;
+    font-size: inherit;
     font-weight: inherit;
     color: var(--mg-ink);
-    line-height: 1.1;
+    white-space: nowrap;
 }
 
 body.mg-room .lobby-share-value img.share-icon-copy {
-    width: 18px;
-    height: 18px;
     display: block;
     flex-shrink: 0;
 }
@@ -917,14 +945,14 @@ body.mg-room .lobby-actions {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 16px;
     width: 100%;
-    max-width: 360px;
+    max-width: 480px;
 }
 
 body.mg-room .lobby-host-label {
-    margin: 0 0 12px;
-    font-size: 0.8rem;
+    margin: 0 0 16px;
+    font-size: 16px;
     line-height: 1.5;
     letter-spacing: 0;
     text-transform: uppercase;
@@ -939,10 +967,11 @@ body.mg-room #host-controls .start-btn {
     background: var(--mg-red) !important;
     color: #fff !important;
     font-family: var(--mg-font) !important;
-    font-size: 1.15rem !important;
+    font-size: 24px !important;
+    line-height: normal;
     letter-spacing: 0;
     text-transform: uppercase;
-    padding: 14px 15px !important;
+    padding: 18px 20px !important;
     cursor: pointer;
     box-shadow: none !important;
     transition: transform 0.08s ease, filter 0.08s ease;
@@ -2375,7 +2404,6 @@ body.mg-room #rejoin-wait-backdrop {
         max-width: 100%;
     }
     body.mg-room .lobby-share-value strong {
-        font-size: 1rem;
         min-width: 0;
         overflow-wrap: anywhere;
     }
@@ -2623,4 +2651,33 @@ body.mg-room .round-result-card {
         max-height: calc(100dvh - 24px);
         overflow-y: auto !important;
     }
+}
+
+/* ---------- Waiting room on smaller screens: Figma sizes one step down ---------- */
+@media (max-width: 1280px), (max-height: 800px) {
+    body.mg-room .lobby-hero { gap: 24px; }
+    body.mg-room .lobby-heading { gap: 8px; }
+    body.mg-room .lobby-hero h2,
+    body.mg-room #lobby-waiting-area h2 { font-size: 20px; }
+    body.mg-room #host-controls > p.lobby-host-label { font-size: 13px; }
+    body.mg-room .lobby-heading p,
+    body.mg-room .lobby-hero > p,
+    body.mg-room .lobby-share-label,
+    body.mg-room .lobby-host-label { font-size: 13px; }
+    body.mg-room .lobby-share-row { gap: 12px; }
+    body.mg-room .lobby-share-chip { gap: 4px; padding: 8px 16px; }
+    body.mg-room .lobby-share-value { font-size: 18px; }
+    body.mg-room .lobby-host-label { margin-bottom: 10px; }
+    body.mg-room .lobby-actions { max-width: 360px; }
+    body.mg-room .start-btn,
+    body.mg-room #host-controls .start-btn {
+        font-size: 20px !important;
+        padding: 14px 16px !important;
+    }
+}
+
+@media (max-width: 720px) {
+    body.mg-room .lobby-share-row { width: 100%; max-width: 360px; }
+    body.mg-room .lobby-share-value { font-size: 16px; }
+    body.mg-room .lobby-share-value strong { white-space: normal; }
 }

@@ -70,7 +70,6 @@
         },
         topBtn: document.getElementById("top-nav-btn"),
         nameInputs: Array.from(document.querySelectorAll(".js-name-input")),
-        playingAs: document.getElementById("playing-as"),
         playingName: document.getElementById("playing-name-input"),
         playingNameSizer: document.getElementById("playing-name-sizer"),
         playingNameEdit: document.getElementById("playing-name-edit"),
@@ -208,9 +207,8 @@
         });
         // Design: Public list offers "Create Rooom"; Create offers "Back".
         const onPublic = name === "public";
-        // The header box always shows a name; Create has its own name field.
-        if (onPublic && !state.name.trim()) state.name = RANDOM_NAME;
-        els.playingAs.classList.toggle("hidden", !onPublic);
+        // The header box is the only name field, so it always shows a name.
+        if (!state.name.trim()) state.name = RANDOM_NAME;
         els.topBtn.textContent = onPublic ? "CREATE ROOOM" : "BACK";
         els.topBtn.dataset.action = onPublic ? "create" : "public";
         saveDraft();
@@ -348,9 +346,6 @@
         state.name = clampName(state.name);
         els.nameInputs.forEach((input) => {
             if (input.value !== state.name) input.value = state.name;
-            const field = input.closest(".name-field");
-            const count = field && field.querySelector(".js-name-count");
-            if (count) count.textContent = `${state.name.length}/${NAME_MAX}`;
         });
         // The header box hugs its name (the sizer mirrors the input's text).
         els.playingNameSizer.dataset.value = state.name;
@@ -444,9 +439,7 @@
     // "" when it was left blank (the server then picks a funny name from the room's
     // categories), or null when the typed name isn't allowed.
     function requireName() {
-        const input = state.screen === "public"
-            ? els.playingName
-            : els.screens[state.screen].querySelector(".js-name-input");
+        const input = els.playingName;
         const name = clampName(state.name).trim();
         if (name && !isValidName(name)) {
             showError(INVALID_NAME_MESSAGE);
@@ -614,11 +607,6 @@
             state.name = clampName(input.value);
             renderNameInputs();
             saveDraft();
-        });
-        input.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter" || state.screen !== "create") return;
-            event.preventDefault();
-            if (state.createTab === "code") joinWithCode(); else createRoom();
         });
     });
 

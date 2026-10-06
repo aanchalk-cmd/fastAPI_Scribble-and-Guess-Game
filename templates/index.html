@@ -1499,6 +1499,11 @@
                 console.log("[DEBUG-HOST] Host transferred to:", data.new_host);
 
                 currentHostName = data.new_host;
+                if (data.new_host) {
+                    appendChatNotice(myName === data.new_host
+                        ? "You are now the host"
+                        : `${data.new_host} is now the host`);
+                }
 
                 // If I became host
                 if (myName === data.new_host) {
@@ -2698,6 +2703,12 @@
         
         function initiateVoteKick(targetPlayer) {
             console.log(`[DEBUG-FRONTEND] Initiating vote kick against ${targetPlayer}`);
+            // A kick is decided by the other players' votes, so two players can't hold one.
+            // Only the player who clicked sees this notice.
+            if ((window.lastPlayerData || []).length <= 2) {
+                appendChatNotice("You cannot kick if there are only two players");
+                return;
+            }
             ws.send(JSON.stringify({
                 type: "initiate_vote_kick",
                 target_player: targetPlayer

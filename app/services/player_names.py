@@ -2,7 +2,7 @@
 PlayerNameGenerator — funny fallback names for players who leave the name blank.
 
 Names live in app/data/player_names.json, grouped by word category id (the same
-ids as words.json, e.g. "bollywood_movies"), so a room's random names match the
+ids as words.json, e.g. "bollywood"), so a room's random names match the
 categories it is playing.
 """
 import json

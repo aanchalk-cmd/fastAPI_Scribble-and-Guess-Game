@@ -17,24 +17,18 @@
         try {
             return JSON.parse(root.dataset.categories || "[]");
         } catch {
-            return ["hollywood_movies", "hollywood_characters"];
+            return ["hollywood"];
         }
     })();
 
-    // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-    const GENRE_ORDER = ["bollywood", "hollywood", "anime", "asian_dramas", "cartoon"];
-    const KIND_ORDER = ["movies", "characters"];
-    // Wording from the design ("Asian Drama Character", "Hollywood Movies").
-    const GENRE_LABELS = { asian_dramas: "Asian Drama" };
-    const KIND_LABELS = { characters: "Character", movies: "Movies" };
-    const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
+    // One category per genre; movies and characters share its pool.
+    const GENRE_ORDER = ["hollywood", "bollywood", "asian_dramas", "anime", "cartoon"];
 
-    function splitCategory(id) {
-        const value = LEGACY_CATEGORIES[id] || String(id || "");
-        const cut = value.lastIndexOf("_");
-        return cut > 0
-            ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
-            : { genre: value, kind: "" };
+    // Ids from when movies and characters were separate ("bollywood_movies"), or flat.
+    function normalizeCategory(id) {
+        const value = String(id || "");
+        if (value === "movies" || value === "characters") return "hollywood";
+        return value.replace(/_(movies|characters)$/, "");
     }
 
     function titleize(value) {
@@ -46,10 +40,7 @@
     }
 
     function categoryLabel(id) {
-        const { genre, kind } = splitCategory(id);
-        const genreLabel = GENRE_LABELS[genre] || titleize(genre);
-        const kindLabel = kind ? (KIND_LABELS[kind] || titleize(kind)) : "";
-        return `${genreLabel} ${kindLabel}`.trim().toUpperCase();
+        return titleize(normalizeCategory(id)).toUpperCase();
     }
 
     function orderIndex(list, value) {
@@ -57,18 +48,19 @@
         return i === -1 ? list.length : i;
     }
 
-    // Dropdown options: one per category id, grouped by genre (design order).
+    // Dropdown options: one per category id.
     const categoryOptions = categories
-        .map((id) => ({ id, ...splitCategory(id) }))
+        .slice()
         .sort((a, b) =>
-            orderIndex(GENRE_ORDER, a.genre) - orderIndex(GENRE_ORDER, b.genre)
-            || a.genre.localeCompare(b.genre)
-            || orderIndex(KIND_ORDER, a.kind) - orderIndex(KIND_ORDER, b.kind))
-        .map((c) => ({ id: c.id, label: categoryLabel(c.id) }));
+            orderIndex(GENRE_ORDER, a) - orderIndex(GENRE_ORDER, b) || a.localeCompare(b))
+        .map((id) => ({ id, label: categoryLabel(id) }));
 
-    const DEFAULT_CATEGORY = categories.includes("hollywood_movies")
-        ? "hollywood_movies"
-        : (categoryOptions[0] && categoryOptions[0].id) || "hollywood_movies";
+    // Server-picked funny name shown in the header's "Playing as" box.
+    const RANDOM_NAME = String(root.dataset.randomName || "").slice(0, NAME_MAX);
+
+    const DEFAULT_CATEGORY = categories.includes("hollywood")
+        ? "hollywood"
+        : (categoryOptions[0] && categoryOptions[0].id) || "hollywood";
 
     const els = {
         error: document.getElementById("error-banner"),
@@ -78,6 +70,9 @@
         },
         topBtn: document.getElementById("top-nav-btn"),
         nameInputs: Array.from(document.querySelectorAll(".js-name-input")),
+        playingName: document.getElementById("playing-name-input"),
+        playingNameSizer: document.getElementById("playing-name-sizer"),
+        playingNameEdit: document.getElementById("playing-name-edit"),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
         categorySelect: document.getElementById("category-select"),
@@ -102,7 +97,7 @@
             duration: document.getElementById("field-duration"),
             category: document.getElementById("field-category"),
             roomCode: document.getElementById("field-room-code"),
-            guestId: document.getElementById("field-guest-id"),
+            tabId: document.getElementById("field-tab-id"),
         },
     };
 
@@ -112,9 +107,9 @@
         categories: [DEFAULT_CATEGORY],
         rounds: 3,
         duration: 60,
-        publicRoom: false,
+        publicRoom: true, // rooms are public unless the host switches the toggle off
         roomCode: "",
-        name: "",
+        name: RANDOM_NAME, // until the player types their own
         rooms: [],
     };
 
@@ -151,14 +146,15 @@
         });
     }
 
-    function getOrCreateGuestId() {
-        let guestId = localStorage.getItem("scribble_guest_id");
-        if (!guestId) {
-            guestId = createGuestId();
-            localStorage.setItem("scribble_guest_id", guestId);
-        }
-        document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
-        return guestId;
+    function getOrCreateTabId() {
+        const key = "movie_guess_tab_id";
+        try {
+            const existing = sessionStorage.getItem(key);
+            if (existing) return existing;
+        } catch (_) { /* ignore */ }
+        const id = createGuestId();
+        try { sessionStorage.setItem(key, id); } catch (_) { /* ignore */ }
+        return id;
     }
 
     function saveDraft() {
@@ -187,12 +183,12 @@
                 createTab: draft.createTab === "code" ? "code" : "create",
                 rounds: draft.rounds || state.rounds,
                 duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
-                publicRoom: draft.publicRoom === true,
+                publicRoom: draft.publicRoom !== false,
                 roomCode: draft.roomCode || "",
-                name: clampName(draft.name || ""),
+                name: clampName(draft.name || "") || state.name,
             });
             const saved = Array.isArray(draft.categories)
-                ? draft.categories.filter((id) => categories.includes(id))
+                ? [...new Set(draft.categories.map(normalizeCategory))].filter((id) => categories.includes(id))
                 : [];
             if (saved.length) state.categories = saved;
         } catch (_) { /* ignore */ }
@@ -205,12 +201,15 @@
 
     function setScreen(name) {
         state.screen = name;
+        root.dataset.screen = name;
         Object.entries(els.screens).forEach(([key, node]) => {
             node.classList.toggle("is-active", key === name);
         });
-        // Design: Public list offers "Private Rooom"; Create offers "Back".
+        // Design: Public list offers "Create Rooom"; Create offers "Back".
         const onPublic = name === "public";
-        els.topBtn.textContent = onPublic ? "PRIVATE ROOOM" : "BACK";
+        // The header box is the only name field, so it always shows a name.
+        if (!state.name.trim()) state.name = RANDOM_NAME;
+        els.topBtn.textContent = onPublic ? "CREATE ROOOM" : "BACK";
         els.topBtn.dataset.action = onPublic ? "create" : "public";
         saveDraft();
         render();
@@ -347,16 +346,16 @@
         state.name = clampName(state.name);
         els.nameInputs.forEach((input) => {
             if (input.value !== state.name) input.value = state.name;
-            const count = input.closest(".name-field").querySelector(".js-name-count");
-            if (count) count.textContent = `${state.name.length}/${NAME_MAX}`;
         });
+        // The header box hugs its name (the sizer mirrors the input's text).
+        els.playingNameSizer.dataset.value = state.name;
     }
 
     function roomCategories(room) {
         const list = Array.isArray(room.categories) && room.categories.length
             ? room.categories
             : [room.category || DEFAULT_CATEGORY];
-        return list.map(categoryLabel).join(", ");
+        return [...new Set(list.map(categoryLabel))].join(", ");
     }
 
     function renderRooms() {
@@ -440,7 +439,7 @@
     // "" when it was left blank (the server then picks a funny name from the room's
     // categories), or null when the typed name isn't allowed.
     function requireName() {
-        const input = els.screens[state.screen].querySelector(".js-name-input");
+        const input = els.playingName;
         const name = clampName(state.name).trim();
         if (name && !isValidName(name)) {
             showError(INVALID_NAME_MESSAGE);
@@ -455,7 +454,7 @@
         state.name = name;
         state.roomCode = roomCode;
         els.fields.name.value = name;
-        els.fields.guestId.value = getOrCreateGuestId();
+        if (els.fields.tabId) els.fields.tabId.value = getOrCreateTabId();
         els.fields.action.value = action;
         els.fields.roomType.value = roomType;
         els.fields.maxPlayers.value = String(MAX_PLAYERS);
@@ -469,8 +468,8 @@
             // (e.g. "Sam" -> "Sam(1)"). The game page picks up the server-assigned
             // name from the join cookie and stores it for this tab's refreshes.
             sessionStorage.removeItem("movie_guess_player_name");
-            // A fresh /join issues a new session token; drop any old per-tab copies
-            // so the game page picks the new one up from the cookie.
+            // Older pages kept the session token here, where any script could read it.
+            // The live token is an HttpOnly cookie, so drop those copies.
             Object.keys(sessionStorage)
                 .filter((key) => key.startsWith("movie_guess_player_token:"))
                 .forEach((key) => sessionStorage.removeItem(key));
@@ -609,11 +608,23 @@
             renderNameInputs();
             saveDraft();
         });
-        input.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter" || state.screen !== "create") return;
-            event.preventDefault();
-            if (state.createTab === "code") joinWithCode(); else createRoom();
-        });
+    });
+
+    els.playingNameEdit.addEventListener("click", () => {
+        els.playingName.focus();
+        els.playingName.select();
+    });
+
+    // An emptied box falls back to the random name rather than sitting blank.
+    els.playingName.addEventListener("blur", () => {
+        if (state.name.trim()) return;
+        state.name = RANDOM_NAME;
+        renderNameInputs();
+        saveDraft();
+    });
+
+    els.playingName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === "Escape") els.playingName.blur();
     });
 
     els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));
@@ -684,10 +695,6 @@
     els.createBtn.addEventListener("click", createRoom);
     els.joinRoomBtn.addEventListener("click", joinWithCode);
 
-    // Boot. Guest-id setup must not block pills — HTTP LAN is not a secure context.
-    try {
-        getOrCreateGuestId();
-    } catch (_) { /* ignore */ }
     loadDraft();
     parseQuery();
     setScreen(state.screen);

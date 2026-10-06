@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/game-room.css?v=fill2">
+    <link rel="stylesheet" href="/static/css/game-room.css?v=wait3">
     <style>
         /* ---------- design tokens ---------- */
         :root {
@@ -786,7 +786,7 @@
                 <span class="mg-badge-value" id="turn-display">1</span>
             </div>
             <div class="mg-badge" id="room-badge">
-                <span class="mg-badge-label">Room</span>
+                <span class="mg-badge-label">Rooom</span>
                 <div class="mg-badge-row">
                     <span class="mg-badge-value" id="room-display">{{ room_code }}</span>
                     <button type="button" class="mg-copy-icon" id="header-copy-code" onclick="copyRoomCode(event)" title="Copy room code" aria-label="Copy room code">
@@ -799,7 +799,7 @@
             </div>
             <span id="player-welcome" class="hidden">{{ username }}</span>
             <button type="button" onclick="toggleHistory()" class="mg-header-btn mg-header-btn-history">History</button>
-            <button type="button" onclick="leaveGame()" class="mg-header-btn mg-header-btn-leave">Leave Room</button>
+            <button type="button" onclick="leaveGame()" class="mg-header-btn mg-header-btn-leave">Leave Rooom</button>
         </div>
     </header>
 
@@ -872,13 +872,13 @@
                     <div class="lobby-hero">
                         <div class="lobby-heading">
                             <h2>Get ready to play!</h2>
-                            <p id="lobby-hero-sub">The host will start the game soon.</p>
+                            <p id="lobby-hero-sub">The host will start the game soon</p>
                         </div>
                         <p id="lobby-count-text" class="hidden">Waiting for players ...</p>
 
                         <div class="lobby-share-row" id="lobby-share-row">
                             <button type="button" class="lobby-share-chip" id="lobby-room-chip" onclick="copyRoomCode(event)" title="Copy room code">
-                                <span class="lobby-share-label">Room</span>
+                                <span class="lobby-share-label">Rooom</span>
                                 <span class="lobby-share-value">
                                     <strong id="room-code-display">{{ room_code }}</strong>
                                     <span class="share-icon">
@@ -945,13 +945,13 @@
                         <div class="drawer-pick-main">
                             <div class="drawer-pick-copy">
                                 <p class="drawer-pick-title">Pick a movie to give clues for</p>
-                                <p class="drawer-pick-sub">Choose a category, type a title — or let us surprise you. Others will try to guess it from your clues.</p>
+                                <p class="drawer-pick-sub">Pick one of the three titles, or ask for a new set. Others will try to guess it from your clues.</p>
                                 <p id="category-label">Category: —</p>
                             </div>
 
                             <div class="drawer-pick-controls">
                                 <div class="drawer-pick-field">
-                                    <input type="text" id="movieInput" placeholder="Type a title" autocomplete="off">
+                                    <input type="text" id="movieInput" placeholder="Pick a title" autocomplete="off" readonly>
                                 </div>
 
                                 <label class="hint-toggle">
@@ -1068,33 +1068,6 @@
         </div>
     </div>
     <script>
-        const currentGuestId = (function ensureGuestId() {
-            function createGuestId() {
-                if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-                    return crypto.randomUUID();
-                }
-                if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-                    const bytes = new Uint8Array(16);
-                    crypto.getRandomValues(bytes);
-                    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-                    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-                    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-                    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-                }
-                return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-                    const r = (Math.random() * 16) | 0;
-                    return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
-                });
-            }
-            let guestId = localStorage.getItem('scribble_guest_id');
-            if (!guestId) {
-                guestId = createGuestId();
-                localStorage.setItem('scribble_guest_id', guestId);
-            }
-            document.cookie = `guest_id=${guestId}; path=/; max-age=31536000; SameSite=Lax`;
-            return guestId;
-        })();
-
         let currentRound = 0;
         let totalRounds = 3;  // Default, will be updated from init
         // A round = every player draws once; a turn = one drawer's go.
@@ -1136,17 +1109,31 @@
         try {
             if (myName) sessionStorage.setItem("movie_guess_player_name", myName);
         } catch (_) { /* ignore */ }
-        // Secret session token from /join — the only thing the server accepts as
-        // proof of which player this tab is. Kept per tab (sessionStorage) so two
-        // tabs of the same browser can still be two different players; the cookie
-        // only hands it over on the first load after /join.
-        const playerTokenKey = `movie_guess_player_token:${currentRoom || ""}`;
-        let playerToken = null;
-        try { playerToken = sessionStorage.getItem(playerTokenKey); } catch (_) { /* ignore */ }
-        if (!playerToken) {
-            playerToken = decodeURIComponent(getCookie(`player_token_${currentRoom}`) || "").replace(/^"|"$/g, "") || null;
-            try { if (playerToken) sessionStorage.setItem(playerTokenKey, playerToken); } catch (_) { /* ignore */ }
+        // Drop any session token saved by older pages. The live token is an
+        // HttpOnly cookie; this tab only remembers which cookie is its own.
+        try { sessionStorage.removeItem(`movie_guess_player_token:${currentRoom || ""}`); } catch (_) { /* ignore */ }
+        function getOrCreateTabId() {
+            const key = "movie_guess_tab_id";
+            try {
+                const existing = sessionStorage.getItem(key);
+                if (existing) return existing;
+            } catch (_) { /* ignore */ }
+            let id = "";
+            try { id = decodeURIComponent(getCookie("tab_id") || ""); } catch (_) { /* ignore */ }
+            if (!id) {
+                if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+                    id = crypto.randomUUID();
+                } else {
+                    id = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+                        const r = (Math.random() * 16) | 0;
+                        return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+                    });
+                }
+            }
+            try { sessionStorage.setItem(key, id); } catch (_) { /* ignore */ }
+            return id;
         }
+        const tabId = getOrCreateTabId();
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1176,7 +1163,7 @@
         }
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&token=${encodeURIComponent(playerToken || "")}`);
+        let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&tab=${encodeURIComponent(tabId)}`);
         let canvas = document.getElementById('canvas');
         // willReadFrequently: the fill tool reads pixels back, and without this Chrome
         // switches the canvas from GPU to CPU mid-game, which changes stroke
@@ -1195,33 +1182,21 @@
         // Masked display (e.g. "_I_E_-_A_") and what we've already asked the server about.
         let currentDisplay = "", submittedGuess = "", submittedWords = {};
         let wordRanges = [], revealedWordKeys = new Set();
-        let roomCategory = "hollywood_movies";
+        let roomCategory = "hollywood";
         let currentHostName = null;
 
-        // Category ids are "<genre>_<type>", e.g. "bollywood_movies", "asian_dramas_characters".
-        const LEGACY_CATEGORIES = { movies: "hollywood_movies", characters: "hollywood_characters" };
-
-        function splitCategory(id) {
-            const value = LEGACY_CATEGORIES[id] || String(id || "");
-            const cut = value.lastIndexOf("_");
-            return cut > 0
-                ? { genre: value.slice(0, cut), kind: value.slice(cut + 1) }
-                : { genre: value, kind: "" };
-        }
-
-        function titleizeCategoryPart(value) {
-            return String(value || "")
+        // One category per genre ("bollywood", "asian_dramas"); older ids carried a
+        // "_movies" / "_characters" suffix.
+        function formatCategoryLabel(id) {
+            const value = String(id || "");
+            const genre = (value === "movies" || value === "characters")
+                ? "hollywood"
+                : value.replace(/_(movies|characters)$/, "");
+            return genre
                 .split("_")
                 .filter(Boolean)
                 .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(" ");
-        }
-
-        function formatCategoryLabel(id) {
-            const { genre, kind } = splitCategory(id);
-            return kind
-                ? `${titleizeCategoryPart(genre)} · ${titleizeCategoryPart(kind)}`
-                : titleizeCategoryPart(genre);
         }
 
         let countdownInterval = null;
@@ -1393,7 +1368,6 @@
                     // No valid session for this room (never joined here, left, or
                     // the name was taken over by a new join) — go join properly.
                     publicRoomClosed = true;
-                    try { sessionStorage.removeItem(playerTokenKey); } catch (_) { /* ignore */ }
                     const invite = currentRoom ? `&invite=${encodeURIComponent(btoa(currentRoom))}` : "";
                     window.location.replace(`/?error=rejoin${invite}`);
                     return;
@@ -1575,7 +1549,7 @@
             }
             if (data.type === "player_kicked_notification") {
                 console.log("[DEBUG-FRONTEND] Player kicked notification:", data.kicked_player);
-                
+                if (data.kicked_player) appendChatNotice(`${data.kicked_player} has been kicked`);
             }
             if (data.type === "init") {
                 console.log(`[DEBUG-FRONTEND] Init message received. room_status=${data.room_status}, role=${data.role}, player_count=${data.player_count}/${data.max_players}, room_type=${data.room_type}, selection_active=${data.selection_active}, movie_set=${data.movie_set}`);
@@ -1835,6 +1809,16 @@
                 <div class="chat-bubble">${escapeHtml(message)}</div>
             `;
             box.appendChild(row);
+            box.scrollTop = box.scrollHeight;
+        }
+        // A centred room notice in the chat feed (not a player's message).
+        function appendChatNotice(text) {
+            const box = document.getElementById("chat-messages");
+            if (!box || !text) return;
+            const notice = document.createElement("div");
+            notice.className = "chat-notice";
+            notice.textContent = text;
+            box.appendChild(notice);
             box.scrollTop = box.scrollHeight;
         }
         function escapeHtml(str) {
@@ -2246,7 +2230,7 @@
         }
 
         function quitGame() {
-            window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
+            submitLeave();
         }
 
         function updateDrawerStatus(name) {
@@ -2287,7 +2271,7 @@
             createGuessingBoxes(display);
         }
         function getGuessDraftStorageKey() {
-            return `movie_guess_draft:${currentRoom || 'unknown'}:${currentGuestId}:${currentRound}:${currentTurn}`;
+            return `movie_guess_draft:${currentRoom || 'unknown'}:${tabId}:${currentRound}:${currentTurn}`;
         }
         function saveGuessDraft() {
             if (myRole === "drawer") return;
@@ -2326,16 +2310,18 @@
             }
             ws.send(JSON.stringify({type: "start_game"}));
         }
+        let offeredMovies = [];
         function sendMovie() {
-            let val = document.getElementById('movieInput').value.trim();
-            let showVowels = document.getElementById('hintToggle').checked;
-            if(val) {
-                ws.send(JSON.stringify({
-                    type: "set_movie",
-                    movie: val,
-                    show_vowels: showVowels
-                }));
-            }
+            const input = document.getElementById('movieInput');
+            const typed = (input && input.value || "").trim().toUpperCase();
+            const movie = offeredMovies.find((option) => String(option).toUpperCase() === typed);
+            if (!movie) return;
+            const showVowels = document.getElementById('hintToggle').checked;
+            ws.send(JSON.stringify({
+                type: "select_movie",
+                movie: movie,
+                show_vowels: showVowels
+            }));
         }
         function createGuessingBoxes(displayStr) {
             let container = document.getElementById('movie-display'); 
@@ -2474,14 +2460,13 @@
             const container = document.getElementById("movie-options");
             container.innerHTML = "";
             const input = document.getElementById("movieInput");
+            offeredMovies = Array.isArray(options) ? options.slice() : [];
+            if (input) input.value = offeredMovies[0] || "";
             options.forEach((movie, index) => {
                 let btn = document.createElement("button");
                 btn.type = "button";
                 btn.className = "btn word-choice" + (index === 0 ? " is-selected" : "");
                 btn.innerText = movie;
-                if (index === 0 && input && !input.value) {
-                    input.value = movie;
-                }
                 btn.onclick = () => {
                     container.querySelectorAll(".word-choice").forEach((el) => el.classList.remove("is-selected"));
                     btn.classList.add("is-selected");
@@ -2660,9 +2645,10 @@
             document.getElementById('fillBtn').classList.toggle('active-tool', t === 'fill');
             updateCanvasCursor();
         }
-        function clearCanvasSync() { 
-            ctx.clearRect(0, 0, canvas.width, canvas.height); 
-            ws.send(JSON.stringify({type: "clear"})); 
+        function clearCanvasSync() {
+            if (myRole !== "drawer") return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ws.send(JSON.stringify({type: "clear"}));
         }
         function generateMovie() { 
             // Request a fresh set of 3 words from the room's category
@@ -2679,9 +2665,29 @@
             document.getElementById('disconnect-overlay').classList.remove('hidden');
             document.getElementById('drawer-status').innerText = "🔌 Connection Lost";
         };
+        function submitLeave() {
+            try {
+                sessionStorage.removeItem("movie_guess_player_name");
+                sessionStorage.removeItem("movie_guess_room_id");
+            } catch (_) { /* ignore */ }
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "/leave";
+            const roomInput = document.createElement("input");
+            roomInput.type = "hidden";
+            roomInput.name = "room_id";
+            roomInput.value = currentRoom || "";
+            const tabInput = document.createElement("input");
+            tabInput.type = "hidden";
+            tabInput.name = "tab_id";
+            tabInput.value = tabId || "";
+            form.append(roomInput, tabInput);
+            document.body.appendChild(form);
+            form.submit();
+        }
         function leaveGame() {
             if (confirm("Are you sure you want to leave the room?")) {
-                window.location.href = `/leave?player_name=${encodeURIComponent(myName)}`;
+                submitLeave();
             }
         }
         

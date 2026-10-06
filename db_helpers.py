@@ -108,7 +108,7 @@ def join_room_record(
             )
         )
         db.flush()
-    elif guest_id and existing.guest_id != guest_id:
+    elif guest_id and not existing.guest_id:
         existing.guest_id = guest_id
         db.flush()
 

@@ -25,11 +25,13 @@ class CategoryNotFoundError(KeyError):
         super().__init__(msg)
 
 
-# Old flat category ids (pre genre/type split) that rooms or clients may still send.
+# Old category ids that rooms or clients may still send: the original flat ones,
+# and the "<genre>_<type>" ids from when movies and characters were separate.
 CATEGORY_ALIASES = {
-    "movies": "hollywood_movies",
-    "characters": "hollywood_characters",
+    "movies": "hollywood",
+    "characters": "hollywood",
 }
+LEGACY_KIND_SUFFIXES = ("_movies", "_characters")
 
 
 def _clean_words(words) -> List[str]:
@@ -55,8 +57,8 @@ class WordManager:
     In-memory word pool loaded once from words.json.
 
     words.json is grouped as {genre: {type: [words]}}, e.g.
-    {"bollywood": {"movies": [...], "characters": [...]}}. Each genre/type pair
-    becomes a flat category id "<genre>_<type>" (e.g. "bollywood_movies").
+    {"bollywood": {"movies": [...], "characters": [...]}}. Each genre is one
+    category (e.g. "bollywood") whose pool combines all of its types.
     A plain {category: [words]} entry is still accepted as a flat category.
     """
 
@@ -83,11 +85,15 @@ class WordManager:
             categories: Dict[str, List[str]] = {}
             for name, value in raw.items():
                 if isinstance(value, dict):
-                    for kind, words in value.items():
-                        if isinstance(words, list):
-                            cleaned = _clean_words(words)
-                            if cleaned:
-                                categories[f"{name}_{kind}"] = cleaned
+                    combined = [
+                        word
+                        for words in value.values()
+                        if isinstance(words, list)
+                        for word in words
+                    ]
+                    cleaned = _clean_words(combined)
+                    if cleaned:
+                        categories[str(name)] = cleaned
                 elif isinstance(value, list):
                     cleaned = _clean_words(value)
                     if cleaned:
@@ -111,7 +117,14 @@ class WordManager:
 
     @staticmethod
     def resolve_alias(category: Optional[str]) -> Optional[str]:
-        return CATEGORY_ALIASES.get(category, category) if category else category
+        if not category:
+            return category
+        if category in CATEGORY_ALIASES:
+            return CATEGORY_ALIASES[category]
+        for suffix in LEGACY_KIND_SUFFIXES:
+            if category.endswith(suffix):
+                return category[: -len(suffix)]
+        return category
 
     def _require_category(self, category: str) -> List[str]:
         category = self.resolve_alias(category)
@@ -165,7 +178,7 @@ class WordManager:
 
     def parse_categories(self, value: Optional[str]) -> List[str]:
         """
-        Parse a comma-separated category list (e.g. "bollywood_movies,anime_characters")
+        Parse a comma-separated category list (e.g. "bollywood,anime")
         into valid, de-duplicated ids. Falls back to [default] if none are valid.
         """
         found: List[str] = []
@@ -179,7 +192,7 @@ class WordManager:
         with self._lock:
             return self.resolve_alias(category) in self._categories
 
-    def normalize_category(self, category: Optional[str], default: str = "hollywood_movies") -> str:
+    def normalize_category(self, category: Optional[str], default: str = "hollywood") -> str:
         """
         Validate a category name; fall back to default (or first available) if invalid.
         """

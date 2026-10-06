@@ -1,4 +1,5 @@
 import base64
+import math
 import os
 import random
 import re
@@ -111,6 +112,11 @@ class GameRoom:
         self.player_db_ids[name] = player_db_id
 
     def register_player_guest(self, name: str, guest_id: str):
+        # Keep the id this player joined with. A later connection must not swap it
+        # for a new one, or a vote-kick ban on the original id would miss them.
+        current = self.player_guest_ids.get(name)
+        if current and current != guest_id:
+            return
         self.player_guest_ids[name] = guest_id
 
     def get_player_db_id(self, name: str) -> Optional[int]:
@@ -203,6 +209,11 @@ LOBBY_AUTO_START_SECONDS = 300  # 5 minutes
 # How long the round-result score card stays up before the next round (or the
 # final Game Over) starts on its own. There is no manual "Next Round" action.
 ROUND_RESULT_SECONDS = 5
+# The game canvas is fixed in the page markup. Strokes outside it are dropped.
+CANVAS_WIDTH = 800
+CANVAS_HEIGHT = 500
+_DRAW_TOOLS = frozenset({"draw", "erase", "fill"})
+_DRAW_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 def reconnect_grace_key(room_id: str, username: str) -> str:
@@ -311,6 +322,30 @@ def ensure_guest_id(guest_id: Optional[str]) -> str:
     return validated if validated else str(uuid.uuid4())
 
 
+def resolve_guest_id(cookie_value: Optional[str]) -> str:
+    """The browser cookie is the only guest identity. A value sent by page script is ignored."""
+    return ensure_guest_id(cookie_value)
+
+
+def set_guest_cookie(response, request: Request, guest_id: str):
+    """Lock the guest id where page script cannot read or replace it."""
+    response.set_cookie(
+        "guest_id",
+        guest_id,
+        max_age=31536000,
+        httponly=True,
+        secure=request_is_https(request),
+        samesite="lax",
+        path="/",
+    )
+
+
+def redirect_with_guest(request: Request, guest_id: str, url: str, status_code: int = 303):
+    response = RedirectResponse(url=url, status_code=status_code)
+    set_guest_cookie(response, request, guest_id)
+    return response
+
+
 # Same limit as the name inputs on the landing page (lobby.js NAME_MAX).
 PLAYER_NAME_MAX = 10
 _PLAYER_NAME_EXTRA_CHARS = frozenset(" _.'-")
@@ -344,8 +379,59 @@ def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
 
 
-def player_token_cookie_name(room_id: str) -> str:
-    return f"player_token_{room_id}"
+def normalize_room_code(room_id: Optional[str]) -> Optional[str]:
+    code = (room_id or "").strip().upper()
+    if re.fullmatch(r"[A-Z0-9]{6}", code):
+        return code
+    return None
+
+
+def player_token_cookie_name(room_id: str, tab_id: Optional[str]) -> Optional[str]:
+    """Cookie name for this tab's session. The value is the secret, never this name."""
+    code = normalize_room_code(room_id)
+    tab = validate_guest_id(tab_id)
+    if not code or not tab:
+        return None
+    return f"player_token_{code}_{tab}"
+
+
+def legacy_player_token_cookie_name(room_id: str) -> Optional[str]:
+    code = normalize_room_code(room_id)
+    return f"player_token_{code}" if code else None
+
+
+def request_is_https(request: Request) -> bool:
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    proto = forwarded.split(",")[0].strip().lower() if forwarded else request.url.scheme
+    return proto == "https"
+
+
+def set_player_token_cookie(response, request: Request, room_id: str, tab_id: str, token: str):
+    """Store the session where page scripts cannot read it and it is not in a URL."""
+    name = player_token_cookie_name(room_id, tab_id)
+    if not name:
+        return
+    response.set_cookie(
+        name,
+        token,
+        httponly=True,
+        secure=request_is_https(request),
+        samesite="lax",
+        path="/",
+    )
+    legacy = legacy_player_token_cookie_name(room_id)
+    if legacy:
+        response.delete_cookie(legacy, path="/")
+
+
+def clear_player_token_cookie(response, request: Request, room_id: str, tab_id: Optional[str]):
+    name = player_token_cookie_name(room_id, tab_id)
+    secure = request_is_https(request)
+    if name:
+        response.delete_cookie(name, path="/", secure=secure, httponly=True, samesite="lax")
+    legacy = legacy_player_token_cookie_name(room_id)
+    if legacy:
+        response.delete_cookie(legacy, path="/", secure=secure, samesite="lax")
 
 
 def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
@@ -361,6 +447,7 @@ def is_guest_banned_in_room(room: GameRoom, guest_id: str) -> bool:
 
 @app.post("/join")
 async def join(
+    request: Request,
     name: str = Form(""),  # blank -> a random funny name from the room's categories
     room_code: str = Form(None),
     action: str = Form(...),
@@ -369,9 +456,10 @@ async def join(
     duration: int = Form(60),
     rounds: int = Form(3),  # New: rounds selection
     category: str = Form("movies"),  # Word category id(s) from words.json, comma-separated
-    guest_id: str = Form(None),
+    tab_id: str = Form(None),
+    guest_id_cookie: str = Cookie(None, alias="guest_id"),
 ):
-    guest_id = ensure_guest_id(guest_id)
+    guest_id = resolve_guest_id(guest_id_cookie)
     wants_random_name = not str(name or "").strip()
     cleaned_name = None if wants_random_name else clean_player_name(name)
     if not wants_random_name and not cleaned_name:
@@ -380,7 +468,7 @@ async def join(
         if action == "join" and room_code and room_code.strip():
             # Send them back to the "I have a code" tab with the code filled in.
             query["invite"] = base64.b64encode(room_code.strip().upper().encode()).decode()
-        return RedirectResponse(url=f"/?{urlencode(query)}", status_code=303)
+        return redirect_with_guest(request, guest_id, f"/?{urlencode(query)}")
     name = cleaned_name  # None until the room's categories are known (random name)
     print(f"[MATCHMAKING] Action={action} user={name or '(random)'} room_type={room_type} rounds={rounds} category={category} guest={guest_id}")
     if action == "create":
@@ -453,7 +541,7 @@ async def join(
 
     elif action == "join":
         if not room_code:
-            return RedirectResponse(url="/?error=missing_code", status_code=303)
+            return redirect_with_guest(request, guest_id, "/?error=missing_code")
 
         room_code = room_code.upper().strip()
         print(f"[PLAYER_JOIN] Attempting join room={room_code} user={name}")
@@ -461,7 +549,7 @@ async def join(
         if room_code not in rooms:
             print(f"[SKIP] Room destroyed")
             print(f"[PLAYER_JOIN] Failed: room {room_code} not found")
-            return RedirectResponse(url=f"/?error=not_found&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=not_found&code={room_code}")
 
         room = rooms[room_code]
         players_before = len(room.players)
@@ -470,20 +558,17 @@ async def join(
 
         if is_guest_banned_in_room(room, guest_id):
             print(f"[PLAYER_JOIN] Failed: guest {guest_id} banned from room {room_code}")
-            return RedirectResponse(
-                url=f"/?error=banned&code={room_code}",
-                status_code=303,
-            )
+            return redirect_with_guest(request, guest_id, f"/?error=banned&code={room_code}")
 
         if room.status == "ENDED":
             print(f"[PLAYER_JOIN] Failed: room {room_code} has ended")
-            return RedirectResponse(url=f"/?error=ended&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=ended&code={room_code}")
 
         # Capacity check for both private and public (including mid-game public joins)
         if room.is_full():
             print(f"[SKIP] Room already full")
             print(f"[PLAYER_JOIN] Failed: room {room_code} is full")
-            return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
 
         joining_running = room.game_started and room.status == "PLAYING"
         if wants_random_name:
@@ -494,7 +579,7 @@ async def join(
         if not added:
             print(f"[SKIP] Room already full")
             print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
-            return RedirectResponse(url=f"/?error=full&code={room_code}", status_code=303)
+            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
 
         # A rejoin immediately ends the vacancy wait, before the new socket connects.
         had_rejoin_wait = (
@@ -546,32 +631,56 @@ async def join(
         log_room_state(room)
         await broadcast_lobby_update()
     else:
-        return RedirectResponse(url="/", status_code=303)
+        return redirect_with_guest(request, guest_id, "/")
 
     # The room is encoded directly in the redirect URL (not just the shared
     # `room_id` cookie) so that a later browser refresh keeps working even if
     # a *different* tab's /leave call clears that cookie — see /game below.
+    submitted_tab = validate_guest_id(tab_id)
+    tab_id = submitted_tab or str(uuid.uuid4())
     player_token = room.issue_player_token(name)
     response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
     response.set_cookie("room_id", room_code)
     # URL-encoded: cookie values must be Latin-1, and names may be in any script
     # (e.g. "प्रिया"). The game page decodes it with decodeURIComponent.
     response.set_cookie(player_cookie_name(room_code), quote(name, safe=""))
-    # Readable by the game page so each tab can keep its own copy (sessionStorage);
-    # the server only ever trusts this token, never the display name.
-    response.set_cookie(player_token_cookie_name(room_code), player_token, samesite="lax")
-    response.set_cookie("guest_id", guest_id, max_age=31536000)
+    # HttpOnly: the browser attaches this on the socket and on /leave. Scripts
+    # never see the value, and it is not placed on the WebSocket URL.
+    # One cookie per tab, so a second player in this browser does not replace
+    # the first tab's session.
+    set_player_token_cookie(response, request, room_code, tab_id, player_token)
+    if not submitted_tab:
+        response.set_cookie(
+            "tab_id",
+            tab_id,
+            samesite="lax",
+            path="/",
+            secure=request_is_https(request),
+        )
+    set_guest_cookie(response, request, guest_id)
     return response
 
 @app.get("/leave")
+async def leave_page():
+    """A link or cross-site navigation must not remove anyone from a room."""
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/leave")
 async def leave(
     request: Request,
-    player_name: str = Query(None),
-    room_id: str = Cookie(None),
+    room_id: str = Form(None),
+    tab_id: str = Form(None),
+    room_id_cookie: str = Cookie(None, alias="room_id"),
 ):
-    cookie_name = request.cookies.get(player_cookie_name(room_id)) if room_id else None
-    username = player_name or (unquote(cookie_name) if cookie_name else None)
-    if room_id in rooms and username:
+    # Identity is the HttpOnly cookie for this tab. A token in the form body is
+    # ignored, and a display name is never accepted.
+    room_id = normalize_room_code(room_id or room_id_cookie) or ""
+    room = rooms.get(room_id)
+    cookie_name = player_token_cookie_name(room_id, tab_id)
+    player_token = request.cookies.get(cookie_name) if cookie_name else None
+    username = room.resolve_player_token(player_token) if room else None
+    if room and username:
         room = rooms[room_id]
         manager = room.manager
         print(f"[PLAYER_LEAVE] Player {username} leaving room {room_id} via /leave")
@@ -644,7 +753,10 @@ async def leave(
             await broadcast_lobby_update()
 
     response = RedirectResponse(url="/", status_code=303)
-    response.delete_cookie("room_id")
+    if username:
+        response.delete_cookie("room_id", path="/")
+        clear_player_token_cookie(response, request, room_id, tab_id)
+        response.delete_cookie(player_cookie_name(room_id), path="/")
     return response
 
 @app.on_event("shutdown")
@@ -653,6 +765,17 @@ def shutdown_event():
 
 
 # CSV movie loader removed — words now come from app/data/words.json via WordManager.
+
+def decide_vote_kick(yes_votes: int, no_votes: int) -> str:
+    """Kick only when counted YES ballots strictly exceed counted NO ballots.
+
+    Abstentions are not passed in. They are not YES and they are not NO, and
+    the eligible-voter count is not a percentage of the room. A tie
+    (including nobody voting) keeps the player.
+    """
+    if yes_votes > no_votes:
+        return "KICK"
+    return "NO_KICK"
 
 
 class ConnectionManager:
@@ -987,14 +1110,63 @@ class ConnectionManager:
         )
         return points
 
-    async def begin_round(self, movie: str, show_vowels: bool = True):
+    def match_offered_word(self, movie: str) -> Optional[str]:
+        """The offered title `movie` matches, or None if it was not one of the three."""
+        candidate = self.normalize_guess(movie)
+        if not candidate:
+            return None
+        for option in self.last_word_options:
+            if self.normalize_guess(option) == candidate:
+                return option.strip().upper()
+        return None
+
+    def sanitize_draw_step(self, data: dict) -> Optional[dict]:
+        """A drawing stroke limited to the fields and canvas the clients render."""
+        try:
+            x = float(data.get("x"))
+            y = float(data.get("y"))
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(x) or not math.isfinite(y):
+            return None
+        if x < -1 or y < -1 or x > CANVAS_WIDTH + 1 or y > CANVAS_HEIGHT + 1:
+            return None
+        tool = data.get("tool")
+        color = data.get("color")
+        if tool not in _DRAW_TOOLS or not isinstance(color, str) or not _DRAW_COLOR.match(color):
+            return None
+        is_new = data.get("isNewPath")
+        return {
+            "type": "drawing",
+            "x": min(float(CANVAS_WIDTH), max(0.0, x)),
+            "y": min(float(CANVAS_HEIGHT), max(0.0, y)),
+            "tool": tool,
+            "isNewPath": is_new if isinstance(is_new, bool) else True,
+            "color": color,
+        }
+
+    async def begin_round(self, username: str, movie: str, show_vowels: bool = True) -> bool:
         """
-        Start the guessing phase for `movie`. Guessers only get the masked
-        display; the answer itself is sent to players allowed to see it.
+        Start the guessing phase for one of the titles offered to this drawer.
+
+        A second call is ignored once a title is locked in, so the timer and
+        correct guesses cannot be reset by sending the choice again.
         """
+        if username != self.game_state.get("drawer_name"):
+            return False
+        if self.game_state.get("is_round_active") or self.game_state.get("movie"):
+            return False
+        if not self.game_state.get("selection_active"):
+            return False
+        chosen = self.match_offered_word(movie)
+        if not chosen:
+            return False
+        if not isinstance(show_vowels, bool):
+            show_vowels = True
+
         self.cancel_selection_timer()
         state = self.game_state
-        state["movie"] = (movie or "").strip().upper()
+        state["movie"] = chosen
         state["show_vowels"] = show_vowels
         state["word_guessed"] = False
         state["revealed_movie"] = None
@@ -1023,6 +1195,7 @@ class ConnectionManager:
                 await ws.send_json(payload)
             except Exception:
                 continue
+        return True
 
     async def handle_guess(self, username: str, guess) -> Optional[int]:
         """
@@ -1460,9 +1633,17 @@ class ConnectionManager:
             print(f"[DEBUG-VOTE] {voter} already voted")
             return False
         
+        # Only an explicit YES or NO is a ballot. Anything else (missing,
+        # blank, or a client-invented value) is not a vote and must not be
+        # stored as NO. The voter can still cast a real ballot afterward.
+        ballot = vote.strip().lower() if isinstance(vote, str) else ""
+        if ballot not in ("yes", "no"):
+            print(f"[DEBUG-VOTE] {voter} sent a non-ballot ({vote!r}); ignored")
+            return False
+
         # Record vote
         self.active_vote_kick["voters"].add(voter)
-        if vote.lower() == "yes":
+        if ballot == "yes":
             self.active_vote_kick["votes_yes"] += 1
             print(f"[DEBUG-VOTE] {voter} voted YES. Current: YES={self.active_vote_kick['votes_yes']} NO={self.active_vote_kick['votes_no']}")
         else:
@@ -1477,7 +1658,7 @@ class ConnectionManager:
                         db,
                         self.active_vote_kick_db_id,
                         voter_db_id,
-                        vote.lower() == "yes",
+                        ballot == "yes",
                     )
         
         # Broadcast vote update to all players
@@ -1489,45 +1670,49 @@ class ConnectionManager:
             "eligible_voters": len(self.active_vote_kick["eligible_voters"])
         })
         
-        # Check if all eligible voters have voted
-        if len(self.active_vote_kick["voters"]) == len(self.active_vote_kick["eligible_voters"]):
+        # Everyone who can vote has sent a ballot. Resolve now, unless the
+        # timer already claimed this session during the update broadcast.
+        if (
+            self.active_vote_kick
+            and len(self.active_vote_kick["voters"])
+            == len(self.active_vote_kick["eligible_voters"])
+        ):
             print(f"[DEBUG-VOTE] All eligible voters have voted. Resolving immediately.")
-            if self.active_vote_kick["timeout_task"]:
-                self.active_vote_kick["timeout_task"].cancel()
+            timeout_task = self.active_vote_kick["timeout_task"]
+            if timeout_task:
+                timeout_task.cancel()
             await self._resolve_vote_kick()
         
         return True
 
     async def _resolve_vote_kick(self):
-        """Resolve the vote kick and apply result."""
-        if not self.active_vote_kick:
+        """Resolve the vote kick once and apply the server's tally."""
+        session = self.active_vote_kick
+        if not session:
             return
-        
-        target = self.active_vote_kick["target_player"]
-        initiator = self.active_vote_kick["initiator"]
-        yes_votes = self.active_vote_kick["votes_yes"]
-        no_votes = self.active_vote_kick["votes_no"]
-        
-        print(f"[DEBUG-VOTE] Resolving vote kick for {target}. YES={yes_votes} NO={no_votes}")
-        
-        # Vote result logic:
-        # - If yes >= 1 and no == 0: KICK
-        # - If yes >= 1 and no >= 1: TIE (no kick)
-        # - If yes == 0 and no >= 1: NO KICK
-        # - If yes == 0 and no == 0: NO KICK (timeout, no votes)
-        
-        result = None
-        if yes_votes >= 1 and no_votes == 0:
-            result = "KICK"
-            print(f"[DEBUG-VOTE] RESULT: KICK - {target} has been removed")
-        elif yes_votes >= 1 and no_votes >= 1:
-            result = "TIE"
-            print(f"[DEBUG-VOTE] RESULT: TIE - Conflicting votes, no action")
+
+        # Claim the session before the first await. The 5-second timer and the
+        # "everyone has voted" path can otherwise both apply a result.
+        target = session["target_player"]
+        yes_votes = session["votes_yes"]
+        no_votes = session["votes_no"]
+        eligible = len(session["eligible_voters"])
+        empty_votes = eligible - len(session["voters"])
+        db_id = self.active_vote_kick_db_id
+        self.active_vote_kick = None
+        self.active_vote_kick_db_id = None
+
+        # EMPTY voters never incremented either counter. Compare YES and NO only.
+        print(
+            f"[DEBUG-VOTE] Resolving vote kick for {target}. "
+            f"YES={yes_votes} NO={no_votes} EMPTY={empty_votes} ELIGIBLE={eligible}"
+        )
+        result = decide_vote_kick(yes_votes, no_votes)
+        if result == "KICK":
+            print(f"[DEBUG-VOTE] RESULT: KICK - YES {yes_votes} > NO {no_votes}")
         else:
-            result = "NO_KICK"
-            print(f"[DEBUG-VOTE] RESULT: NO_KICK - Insufficient yes votes")
-        
-        # Broadcast result to all
+            print(f"[DEBUG-VOTE] RESULT: NO_KICK - YES {yes_votes} <= NO {no_votes}")
+
         await self.broadcast({
             "type": "vote_kick_result",
             "target_player": target,
@@ -1535,23 +1720,18 @@ class ConnectionManager:
             "yes_votes": yes_votes,
             "no_votes": no_votes
         })
-        
-        # Execute kick if result is KICK
+
         if result == "KICK":
             await self._execute_player_kick(target)
 
-        if self.active_vote_kick_db_id:
-            status_map = {"KICK": "PASSED", "TIE": "FAILED", "NO_KICK": "FAILED"}
+        if db_id:
+            status_map = {"KICK": "PASSED", "NO_KICK": "FAILED"}
             with get_db_session() as db:
                 resolve_vote_kick_record(
                     db,
-                    self.active_vote_kick_db_id,
+                    db_id,
                     status_map.get(result, "CANCELLED"),
                 )
-        
-        # Clear vote session
-        self.active_vote_kick = None
-        self.active_vote_kick_db_id = None
 
     async def _execute_player_kick(self, player_name: str):
         """Remove player from room and close their connection. Handles host transfer if needed."""
@@ -1566,15 +1746,16 @@ class ConnectionManager:
                     with get_db_session() as db:
                         guest_id = get_guest_id_for_player(db, self.room.db_id, player_db_id)
 
-        if guest_id and self.room and self.room.db_id:
-            with get_db_session() as db:
-                ban_guest_from_room(
-                    db,
-                    self.room.db_id,
-                    guest_id,
-                    reason="vote_kick",
-                )
+        if guest_id and self.room:
             self.room.ban_guest(guest_id)
+            if self.room.db_id:
+                with get_db_session() as db:
+                    ban_guest_from_room(
+                        db,
+                        self.room.db_id,
+                        guest_id,
+                        reason="vote_kick",
+                    )
             print(f"[DEBUG-VOTE] Banned guest {guest_id} from room {self.room.room_id}")
 
         if self.room and self.room.db_id:
@@ -2405,6 +2586,8 @@ async def get(request: Request):
         {
             "request": request,
             "categories": word_manager.get_categories(),
+            # Shown in the lobby's "Playing as" box; the player can edit it there.
+            "random_name": player_names.random_name([], max_length=PLAYER_NAME_MAX),
         },
     )
 
@@ -2745,12 +2928,14 @@ async def websocket_endpoint(
     guest_id: str = Cookie(None),
     player_name: str = Query(None),
     room_id_param: str = Query(None, alias="room_id"),
-    token_param: str = Query(None, alias="token"),
+    tab_id: str = Query(None, alias="tab"),
 ):
     # Same reasoning as /game: prefer the room_id the client sent explicitly
     # (from its own per-tab state) over the shared cookie, which a sibling
     # tab's /leave may have deleted without this tab's involvement.
-    room_id = room_id_param or room_id
+    # `tab` only selects which HttpOnly cookie to read. It is not a credential,
+    # and a token in the query string is ignored so a logged URL cannot be reused.
+    room_id = normalize_room_code(room_id_param or room_id) or ""
     room = rooms.get(room_id)
 
     if room_id and room_id not in rooms and room_id in discarded_public_rooms:
@@ -2774,10 +2959,10 @@ async def websocket_endpoint(
         await websocket.close()
         return
 
-    # Identity comes only from the secret token issued by /join — a client can
-    # not become another player just by sending their name. The per-tab token
-    # (query) wins over the shared cookie so two tabs can hold different players.
-    player_token = token_param or websocket.cookies.get(player_token_cookie_name(room_id))
+    # Identity comes only from the HttpOnly cookie set by /join. The tab id
+    # picks this tab's cookie so two players in one browser stay distinct.
+    cookie_name = player_token_cookie_name(room_id, tab_id)
+    player_token = websocket.cookies.get(cookie_name) if cookie_name else None
     username = rooms[room_id].resolve_player_token(player_token)
     if not username:
         print(
@@ -2993,31 +3178,59 @@ async def websocket_endpoint(
                     await manager.continue_game()
             if data["type"] not in ["drawing"]: 
                 print(f"[DEBUG] WS Message from {username} in {room_id}: {data['type']}")
-            if data["type"] == "set_movie":
-                # Only the drawer may choose the word.
-                if name == manager.game_state["drawer_name"]:
-                    await manager.begin_round(
+            if data["type"] in ("set_movie", "select_movie"):
+                # Only the drawer, only during word selection, only an offered title.
+                # A repeat after the round has started is ignored.
+                drawer_name = manager.game_state.get("drawer_name")
+                already_chosen = (
+                    manager.game_state.get("is_round_active")
+                    or bool(manager.game_state.get("movie"))
+                )
+                if name == drawer_name and not already_chosen:
+                    started = await manager.begin_round(
+                        name, 
                         str(data.get("movie") or ""),
                         data.get("show_vowels", True),
                     )
+                    if not started:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Pick one of the titles you were offered.",
+                        })
             elif data["type"] == "guess":
                 await manager.handle_guess(username, data.get("guess"))
             # There is no client "restart": rounds advance automatically after the
             # result card (schedule_round_advance). Accepting it let any player
             # skip rounds at will.
             elif data["type"] == "drawing":
-                manager.draw_history.append(data)
-                await manager.broadcast(data)
+                step = manager.sanitize_draw_step(data)
+                if (
+                    step
+                    and name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("is_round_active")
+                ):
+                    manager.draw_history.append(step)
+                    await manager.broadcast(step)
             elif data["type"] == "word_revealed":
                 await manager.handle_word_check(
                     username, data.get("index"), data.get("word")
                 )
             elif data["type"] == "clear":
-                manager.draw_history = []
-                await manager.broadcast(data)
+                if (
+                    name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("is_round_active")
+                ):
+                    manager.draw_history = []
+                    await manager.broadcast({"type": "clear"})
             elif data["type"] == "random_movie":
-                # Drawer requested a fresh set of word options (uses room category)
-                if name == manager.game_state["drawer_name"]:
+                # A fresh set of titles, only while this drawer is still choosing.
+                choosing = (
+                    name == manager.game_state.get("drawer_name")
+                    and manager.game_state.get("selection_active")
+                    and not manager.game_state.get("movie")
+                    and not manager.game_state.get("is_round_active")
+                )
+                if choosing:
                     # Prefer room category; allow optional override from client
                     requested = data.get("category") or data.get("section")
                     # A room category in the request just means "the room pool".
@@ -3042,16 +3255,6 @@ async def websocket_endpoint(
                         })
                     else:
                         await manager.send_word_options_to_drawer(count=3)
-            elif data["type"] == "select_movie":
-                if name == manager.game_state["drawer_name"]:
-                    print(
-                        f"[WORD_MANAGER] Drawer {name} selected a word "
-                        f"category={manager.get_room_category()}"
-                    )
-                    await manager.begin_round(
-                        str(data.get("movie") or ""),
-                        data.get("show_vowels", True),
-                    )
             elif data["type"] == "initiate_vote_kick":
                 target_player = data.get("target_player")
                 success = await manager.initiate_vote_kick(name, target_player)

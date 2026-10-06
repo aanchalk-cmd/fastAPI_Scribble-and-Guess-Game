@@ -8,17 +8,42 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/lobby.css?v=rooms2">
+    <link rel="stylesheet" href="/static/css/lobby.css?v=rooms3">
 </head>
 <body class="lobby-body">
     <div
         id="lobby-app"
         class="lobby-shell"
         data-categories='{{ categories | tojson }}'
+        data-random-name="{{ random_name }}"
+        data-screen="public"
     >
         <header class="lobby-top">
             <h1 class="brand-title" id="brand-title">Movie Guess</h1>
-            <button type="button" class="top-btn" id="top-nav-btn" data-action="create">PRIVATE ROOOM</button>
+            <div class="top-actions">
+                <!-- The name this player joins with: a random one until they edit it -->
+                <div class="playing-as" id="playing-as">
+                    <label class="playing-as-label" for="playing-name-input">Playing as</label>
+                    <div class="playing-as-row">
+                        <span class="playing-as-name" id="playing-name-sizer" data-value="{{ random_name }}">
+                            <input
+                                type="text"
+                                id="playing-name-input"
+                                class="playing-as-input js-name-input"
+                                value="{{ random_name }}"
+                                maxlength="10"
+                                size="1"
+                                autocomplete="nickname"
+                                spellcheck="false"
+                            >
+                        </span>
+                        <button type="button" class="playing-as-edit" id="playing-name-edit" aria-label="Edit name">
+                            <img src="/static/img/icons/ic-edit.svg" width="30.875" height="31.6577" alt="">
+                        </button>
+                    </div>
+                </div>
+                <button type="button" class="top-btn" id="top-nav-btn" data-action="create">CREATE ROOOM</button>
+            </div>
         </header>
 
         <div id="error-banner" class="error-banner" role="alert"></div>
@@ -34,24 +59,9 @@
             <div class="lobby-main">
                 <!-- ===== Public rooms (landing) ===== -->
                 <section id="screen-public" class="screen" aria-label="Public rooms">
-                    <div class="film-card film-card-flush">
+                    <div class="film-card">
                         <div class="film-inner public-inner">
                             <h2 class="public-title">Public Roooms</h2>
-
-                            <div class="name-field">
-                                <div class="field-row field-row-tight">
-                                    <label class="field-label" for="public-name-input">Name</label>
-                                    <span class="field-label js-name-count" aria-live="polite">0/10</span>
-                                </div>
-                                <input
-                                    type="text"
-                                    id="public-name-input"
-                                    class="name-input js-name-input"
-                                    placeholder="ENTER YOUR NAME"
-                                    maxlength="10"
-                                    autocomplete="nickname"
-                                >
-                            </div>
 
                             <div id="room-list" class="room-list mg-scroll">
                                 <p class="empty-state">Looking for active games...</p>
@@ -185,6 +195,6 @@
         </div>
     </div>
 
-    <script src="/static/js/lobby.js?v=guest1" defer></script>
+    <script src="/static/js/lobby.js?v=guest2" defer></script>
 </body>
 </html>

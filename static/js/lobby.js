@@ -55,6 +55,9 @@
             orderIndex(GENRE_ORDER, a) - orderIndex(GENRE_ORDER, b) || a.localeCompare(b))
         .map((id) => ({ id, label: categoryLabel(id) }));
 
+    // Server-picked funny name shown in the header's "Playing as" box.
+    const RANDOM_NAME = String(root.dataset.randomName || "").slice(0, NAME_MAX);
+
     const DEFAULT_CATEGORY = categories.includes("hollywood")
         ? "hollywood"
         : (categoryOptions[0] && categoryOptions[0].id) || "hollywood";
@@ -67,6 +70,10 @@
         },
         topBtn: document.getElementById("top-nav-btn"),
         nameInputs: Array.from(document.querySelectorAll(".js-name-input")),
+        playingAs: document.getElementById("playing-as"),
+        playingName: document.getElementById("playing-name-input"),
+        playingNameSizer: document.getElementById("playing-name-sizer"),
+        playingNameEdit: document.getElementById("playing-name-edit"),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
         categorySelect: document.getElementById("category-select"),
@@ -103,7 +110,7 @@
         duration: 60,
         publicRoom: true, // rooms are public unless the host switches the toggle off
         roomCode: "",
-        name: "",
+        name: RANDOM_NAME, // until the player types their own
         rooms: [],
     };
 
@@ -179,7 +186,7 @@
                 duration: Math.max(30, Math.min(120, draft.duration || state.duration)),
                 publicRoom: draft.publicRoom !== false,
                 roomCode: draft.roomCode || "",
-                name: clampName(draft.name || ""),
+                name: clampName(draft.name || "") || state.name,
             });
             const saved = Array.isArray(draft.categories)
                 ? [...new Set(draft.categories.map(normalizeCategory))].filter((id) => categories.includes(id))
@@ -195,12 +202,16 @@
 
     function setScreen(name) {
         state.screen = name;
+        root.dataset.screen = name;
         Object.entries(els.screens).forEach(([key, node]) => {
             node.classList.toggle("is-active", key === name);
         });
-        // Design: Public list offers "Private Rooom"; Create offers "Back".
+        // Design: Public list offers "Create Rooom"; Create offers "Back".
         const onPublic = name === "public";
-        els.topBtn.textContent = onPublic ? "PRIVATE ROOOM" : "BACK";
+        // The header box always shows a name; Create has its own name field.
+        if (onPublic && !state.name.trim()) state.name = RANDOM_NAME;
+        els.playingAs.classList.toggle("hidden", !onPublic);
+        els.topBtn.textContent = onPublic ? "CREATE ROOOM" : "BACK";
         els.topBtn.dataset.action = onPublic ? "create" : "public";
         saveDraft();
         render();
@@ -337,9 +348,12 @@
         state.name = clampName(state.name);
         els.nameInputs.forEach((input) => {
             if (input.value !== state.name) input.value = state.name;
-            const count = input.closest(".name-field").querySelector(".js-name-count");
+            const field = input.closest(".name-field");
+            const count = field && field.querySelector(".js-name-count");
             if (count) count.textContent = `${state.name.length}/${NAME_MAX}`;
         });
+        // The header box hugs its name (the sizer mirrors the input's text).
+        els.playingNameSizer.dataset.value = state.name;
     }
 
     function roomCategories(room) {
@@ -430,7 +444,9 @@
     // "" when it was left blank (the server then picks a funny name from the room's
     // categories), or null when the typed name isn't allowed.
     function requireName() {
-        const input = els.screens[state.screen].querySelector(".js-name-input");
+        const input = state.screen === "public"
+            ? els.playingName
+            : els.screens[state.screen].querySelector(".js-name-input");
         const name = clampName(state.name).trim();
         if (name && !isValidName(name)) {
             showError(INVALID_NAME_MESSAGE);
@@ -604,6 +620,23 @@
             event.preventDefault();
             if (state.createTab === "code") joinWithCode(); else createRoom();
         });
+    });
+
+    els.playingNameEdit.addEventListener("click", () => {
+        els.playingName.focus();
+        els.playingName.select();
+    });
+
+    // An emptied box falls back to the random name rather than sitting blank.
+    els.playingName.addEventListener("blur", () => {
+        if (state.name.trim()) return;
+        state.name = RANDOM_NAME;
+        renderNameInputs();
+        saveDraft();
+    });
+
+    els.playingName.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === "Escape") els.playingName.blur();
     });
 
     els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));

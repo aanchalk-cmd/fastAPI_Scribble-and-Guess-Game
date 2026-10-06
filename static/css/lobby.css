@@ -12,12 +12,12 @@
     --mg-slider-fill: #fbcd16;
     --mg-slider-track: #6e5800;
     --mg-option-hover: #ffeab2;
+    --mg-chip: #efeeec;
     --font-display: "Bowlby One", system-ui, -apple-system, sans-serif;
     /* Figma "Create Room" frame: 788px film card, 60px sprocket strips, 30px padding */
     --card-w: min(788px, calc(100vw - 48px));
-    /* 43px top + 74px header + 27px gap above; 30px below (Figma) */
+    /* 30px top + 90px header + 24px gap above; 30px below (Figma) */
     --card-min-h: min(906px, calc(100dvh - 174px));
-    --room-list-h: 540px;
     --film-strip-h: 60px;
     --film-pad: 30px;
     --radius-ctl: 18px;
@@ -56,9 +56,9 @@ body.lobby-body {
     min-height: 100vh;
     min-height: 100dvh;
     padding:
-        calc(43px + var(--safe-top))
+        calc(30px + var(--safe-top))
         30px
-        calc(24px + var(--safe-bottom));
+        calc(30px + var(--safe-bottom));
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -126,7 +126,7 @@ body.lobby-body {
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 27px;
+    margin-bottom: 24px;
 }
 
 .brand-title {
@@ -138,9 +138,100 @@ body.lobby-body {
     text-align: left;
 }
 
-.top-btn {
+.top-actions {
     flex-shrink: 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+/* "Playing as" box (Figma: #efeeec, 90px tall, 20px/10px padding) */
+.playing-as {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-ctl);
+    background: var(--mg-chip);
+}
+
+.playing-as-label {
+    font-size: 16px;
+    line-height: 1.5;
+    color: rgba(0, 0, 0, 0.6);
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.playing-as-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+/* The hidden ::after copy of the name sets the width; the input fills it */
+.playing-as-name {
+    display: inline-grid;
+    min-width: 2ch;
+    font-size: 24px;
+    line-height: 38px;
+    text-transform: uppercase;
+}
+
+.playing-as-name::after {
+    content: attr(data-value);
+    grid-area: 1 / 1;
+    visibility: hidden;
+    white-space: pre;
+}
+
+.playing-as-input {
+    grid-area: 1 / 1;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
     border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--mg-ink);
+    font: inherit;
+    text-transform: inherit;
+    outline: none;
+}
+
+.playing-as-input:focus-visible { box-shadow: 0 2px 0 var(--mg-yellow); }
+
+/* 38px icon frame with the pencil glyph centred (Figma frame inset ~3.5px) */
+.playing-as-edit {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+.playing-as-edit img { display: block; }
+.playing-as-edit:focus-visible { outline: 2px solid var(--mg-yellow); outline-offset: 2px; }
+
+/* Yellow button, 4px black border, hard black copy 9px right / 8px down (Figma) */
+.top-btn {
+    --btn-pop-x: 9px;
+    --btn-pop-y: 8px;
+    flex-shrink: 0;
+    margin: 0 var(--btn-pop-x) var(--btn-pop-y) 0;
+    border: 4px solid #000;
+    box-shadow: var(--btn-pop-x) var(--btn-pop-y) 0 #000;
+    white-space: nowrap;
     border-radius: var(--radius-ctl);
     background: var(--mg-yellow);
     color: var(--mg-ink);
@@ -152,11 +243,14 @@ body.lobby-body {
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
-    transition: transform 0.08s ease, filter 0.08s ease;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.08s ease;
 }
 
 .top-btn:hover { filter: brightness(1.04); }
-.top-btn:active { transform: scale(0.97); }
+.top-btn:active {
+    transform: translate(var(--btn-pop-x), var(--btn-pop-y));
+    box-shadow: 0 0 0 #000;
+}
 
 /* ---------- screens ---------- */
 .screen {
@@ -633,8 +727,20 @@ body.lobby-body {
     min-height: 0;
 }
 
-/* Figma: the room list runs straight into the bottom film strip */
-.film-card-flush { padding-bottom: var(--film-strip-h); }
+/* Public screen fills the viewport under the header, so the room list (not the
+   page) scrolls: 906px card in the 1080px Figma frame. */
+.lobby-shell[data-screen="public"] {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 520px;
+}
+.lobby-shell[data-screen="public"] .lobby-stage { align-items: stretch; }
+.lobby-shell[data-screen="public"] .lobby-main { min-height: 0; }
+#screen-public { min-height: 0; }
+#screen-public .film-card {
+    min-height: 0;
+    max-height: 906px;
+}
 
 .public-title {
     margin: 0;
@@ -647,8 +753,8 @@ body.lobby-body {
 
 /* List scrolls inside the card; 10px yellow scrollbar 24px right of the rows */
 .room-list {
-    flex: 0 0 auto;
-    height: var(--room-list-h);
+    flex: 1 1 0;
+    min-height: 0;
     padding-right: 24px;
     display: flex;
     flex-direction: column;
@@ -718,19 +824,22 @@ body.lobby-body {
     gap: 8px;
 }
 
-.room-categories { margin: 0; }
+.room-categories {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.8);
+}
 
 .join-btn {
     flex-shrink: 0;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--radius-ctl);
     background: var(--mg-yellow);
     color: var(--mg-ink);
     font-family: var(--font-display);
     font-weight: 400;
     font-size: 18px;
-    line-height: 1.5;
-    padding: 4px 8px;
+    line-height: normal;
+    padding: 18px;
     cursor: pointer;
     touch-action: manipulation;
     text-transform: uppercase;
@@ -756,9 +865,19 @@ body.lobby-body {
         --card-w: min(788px, calc(100vw - 220px));
     }
     .top-btn { font-size: 18px; padding: 14px 16px; }
+    .top-actions { gap: 16px; }
+    .playing-as { padding: 8px 16px; gap: 2px; }
+    .playing-as-label { font-size: 13px; }
+    .playing-as-name { font-size: 18px; line-height: 30px; }
+    .playing-as-row { gap: 10px; }
+    .playing-as-edit { width: 30px; height: 30px; }
+    .playing-as-edit img { width: 24px; height: auto; }
+    .join-btn { padding: 14px 16px; }
 }
 
 @media (max-width: 860px) {
+    /* Narrow tablets: a long name drops the name box + button under the title */
+    .lobby-top { flex-wrap: wrap; row-gap: 12px; }
     .mode-tab,
     .pill,
     .mg-select-trigger,
@@ -778,7 +897,10 @@ body.lobby-body {
         --card-min-h: auto;
     }
     .lobby-shell { padding-top: calc(24px + var(--safe-top)); }
-    .lobby-top { margin-bottom: 20px; }
+    /* the button's border + black offset add 16px; give it back here */
+    .lobby-top { margin-bottom: 12px; }
+    .top-btn { padding: 14px 18px; }
+    .playing-as { padding: 8px 20px; gap: 4px; }
     .film-card::before,
     .film-card::after {
         background-image: repeating-linear-gradient(90deg, #fff 0 22px, transparent 22px 36px);
@@ -787,7 +909,7 @@ body.lobby-body {
     }
     .stack, .create-fields, .create-pane { gap: 16px; }
     .public-inner { gap: 20px; }
-    :root { --room-list-h: max(240px, min(540px, calc(100dvh - 400px))); }
+    .lobby-shell { padding-bottom: calc(24px + var(--safe-bottom)); }
     .field-label { margin-bottom: 10px; }
     .field-row { margin-bottom: 10px; }
     .field-row-tight { margin-bottom: 6px; }
@@ -804,9 +926,9 @@ body.lobby-body {
         --film-pad: 18px;
     }
     .lobby-shell { padding-top: calc(16px + var(--safe-top)); padding-bottom: 16px; }
-    .lobby-top { margin-bottom: 14px; }
+    .lobby-top { margin-bottom: 6px; }
     .brand-title { font-size: 48px; }
-    .top-btn { font-size: 18px; padding: 12px 16px; }
+    .top-btn { font-size: 18px; padding: 8px 16px; }
     .film-card::before,
     .film-card::after {
         background-image: repeating-linear-gradient(90deg, #fff 0 18px, transparent 18px 30px);
@@ -815,7 +937,17 @@ body.lobby-body {
     }
     .stack, .create-fields, .create-pane { gap: 12px; }
     .public-inner { gap: 14px; }
-    :root { --room-list-h: max(220px, calc(100dvh - 330px)); }
+    .top-actions { gap: 16px; }
+    .playing-as { padding: 6px 16px; gap: 0; }
+    .playing-as-label { font-size: 12px; }
+    .playing-as-name { font-size: 18px; line-height: 28px; }
+    .playing-as-row { gap: 10px; }
+    .playing-as-edit { width: 28px; height: 28px; }
+    .playing-as-edit img { width: 22px; height: auto; }
+    .join-btn { padding: 12px 16px; }
+    .room-list { gap: 14px; }
+    .room-row { padding-bottom: 12px; }
+    .room-info { gap: 8px; }
     .mode-tab,
     .pill,
     .mg-select-trigger,
@@ -845,12 +977,33 @@ body.lobby-body {
     }
     .decor-rail { display: none; }
     .top-btn {
+        --btn-pop-x: 5px;
+        --btn-pop-y: 5px;
         font-size: 12px;
         padding: 10px 12px;
+        border-width: 3px;
         border-radius: 12px;
     }
     .brand-title { font-size: 1.55rem; }
-    .lobby-top { align-items: center; margin-bottom: 12px; }
+    /* Title and button share the first row; the name box takes the second */
+    .lobby-top { flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .top-actions { display: contents; }
+    .playing-as {
+        order: 3;
+        flex: 1 0 100%;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 14px;
+        border-radius: 12px;
+    }
+    .playing-as-label { font-size: 12px; }
+    .playing-as-name { font-size: 16px; line-height: 28px; }
+    .playing-as-row { gap: 8px; }
+    .playing-as-edit { width: 28px; height: 28px; }
+    .playing-as-edit img { width: 22px; height: auto; }
+    .join-btn { padding: 12px 14px; border-radius: 12px; }
     :root {
         --card-w: calc(100vw - 28px);
         --card-min-h: min(640px, calc(100dvh - 100px));
@@ -866,7 +1019,6 @@ body.lobby-body {
     .stack, .create-fields, .create-pane { gap: 18px; }
     .public-inner { gap: 18px; }
     .public-title { font-size: 22px; }
-    :root { --room-list-h: max(260px, calc(100dvh - 330px)); }
     .room-list { padding-right: 12px; }
     .room-id { font-size: 18px; }
     .room-info { gap: 10px; }

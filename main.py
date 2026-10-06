@@ -2586,6 +2586,8 @@ async def get(request: Request):
         {
             "request": request,
             "categories": word_manager.get_categories(),
+            # Shown in the lobby's "Playing as" box; the player can edit it there.
+            "random_name": player_names.random_name([], max_length=PLAYER_NAME_MAX),
         },
     )
 

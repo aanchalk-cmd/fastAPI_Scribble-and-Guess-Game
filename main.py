@@ -766,6 +766,17 @@ def shutdown_event():
 
 # CSV movie loader removed — words now come from app/data/words.json via WordManager.
 
+def decide_vote_kick(yes_votes: int, no_votes: int) -> str:
+    """Kick only when counted YES ballots strictly exceed counted NO ballots.
+
+    Abstentions are not passed in. They are not YES and they are not NO, and
+    the eligible-voter count is not a percentage of the room. A tie
+    (including nobody voting) keeps the player.
+    """
+    if yes_votes > no_votes:
+        return "KICK"
+    return "NO_KICK"
+
 
 class ConnectionManager:
     def __init__(self, duration_seconds=60, room=None, room_id=None, total_rounds=3): 
@@ -1622,9 +1633,17 @@ class ConnectionManager:
             print(f"[DEBUG-VOTE] {voter} already voted")
             return False
         
+        # Only an explicit YES or NO is a ballot. Anything else (missing,
+        # blank, or a client-invented value) is not a vote and must not be
+        # stored as NO. The voter can still cast a real ballot afterward.
+        ballot = vote.strip().lower() if isinstance(vote, str) else ""
+        if ballot not in ("yes", "no"):
+            print(f"[DEBUG-VOTE] {voter} sent a non-ballot ({vote!r}); ignored")
+            return False
+
         # Record vote
         self.active_vote_kick["voters"].add(voter)
-        if vote.lower() == "yes":
+        if ballot == "yes":
             self.active_vote_kick["votes_yes"] += 1
             print(f"[DEBUG-VOTE] {voter} voted YES. Current: YES={self.active_vote_kick['votes_yes']} NO={self.active_vote_kick['votes_no']}")
         else:
@@ -1639,7 +1658,7 @@ class ConnectionManager:
                         db,
                         self.active_vote_kick_db_id,
                         voter_db_id,
-                        vote.lower() == "yes",
+                        ballot == "yes",
                     )
         
         # Broadcast vote update to all players
@@ -1651,45 +1670,49 @@ class ConnectionManager:
             "eligible_voters": len(self.active_vote_kick["eligible_voters"])
         })
         
-        # Check if all eligible voters have voted
-        if len(self.active_vote_kick["voters"]) == len(self.active_vote_kick["eligible_voters"]):
+        # Everyone who can vote has sent a ballot. Resolve now, unless the
+        # timer already claimed this session during the update broadcast.
+        if (
+            self.active_vote_kick
+            and len(self.active_vote_kick["voters"])
+            == len(self.active_vote_kick["eligible_voters"])
+        ):
             print(f"[DEBUG-VOTE] All eligible voters have voted. Resolving immediately.")
-            if self.active_vote_kick["timeout_task"]:
-                self.active_vote_kick["timeout_task"].cancel()
+            timeout_task = self.active_vote_kick["timeout_task"]
+            if timeout_task:
+                timeout_task.cancel()
             await self._resolve_vote_kick()
         
         return True
 
     async def _resolve_vote_kick(self):
-        """Resolve the vote kick and apply result."""
-        if not self.active_vote_kick:
+        """Resolve the vote kick once and apply the server's tally."""
+        session = self.active_vote_kick
+        if not session:
             return
-        
-        target = self.active_vote_kick["target_player"]
-        initiator = self.active_vote_kick["initiator"]
-        yes_votes = self.active_vote_kick["votes_yes"]
-        no_votes = self.active_vote_kick["votes_no"]
-        
-        print(f"[DEBUG-VOTE] Resolving vote kick for {target}. YES={yes_votes} NO={no_votes}")
-        
-        # Vote result logic:
-        # - If yes >= 1 and no == 0: KICK
-        # - If yes >= 1 and no >= 1: TIE (no kick)
-        # - If yes == 0 and no >= 1: NO KICK
-        # - If yes == 0 and no == 0: NO KICK (timeout, no votes)
-        
-        result = None
-        if yes_votes >= 1 and no_votes == 0:
-            result = "KICK"
-            print(f"[DEBUG-VOTE] RESULT: KICK - {target} has been removed")
-        elif yes_votes >= 1 and no_votes >= 1:
-            result = "TIE"
-            print(f"[DEBUG-VOTE] RESULT: TIE - Conflicting votes, no action")
+
+        # Claim the session before the first await. The 5-second timer and the
+        # "everyone has voted" path can otherwise both apply a result.
+        target = session["target_player"]
+        yes_votes = session["votes_yes"]
+        no_votes = session["votes_no"]
+        eligible = len(session["eligible_voters"])
+        empty_votes = eligible - len(session["voters"])
+        db_id = self.active_vote_kick_db_id
+        self.active_vote_kick = None
+        self.active_vote_kick_db_id = None
+
+        # EMPTY voters never incremented either counter. Compare YES and NO only.
+        print(
+            f"[DEBUG-VOTE] Resolving vote kick for {target}. "
+            f"YES={yes_votes} NO={no_votes} EMPTY={empty_votes} ELIGIBLE={eligible}"
+        )
+        result = decide_vote_kick(yes_votes, no_votes)
+        if result == "KICK":
+            print(f"[DEBUG-VOTE] RESULT: KICK - YES {yes_votes} > NO {no_votes}")
         else:
-            result = "NO_KICK"
-            print(f"[DEBUG-VOTE] RESULT: NO_KICK - Insufficient yes votes")
-        
-        # Broadcast result to all
+            print(f"[DEBUG-VOTE] RESULT: NO_KICK - YES {yes_votes} <= NO {no_votes}")
+
         await self.broadcast({
             "type": "vote_kick_result",
             "target_player": target,
@@ -1697,23 +1720,18 @@ class ConnectionManager:
             "yes_votes": yes_votes,
             "no_votes": no_votes
         })
-        
-        # Execute kick if result is KICK
+
         if result == "KICK":
             await self._execute_player_kick(target)
 
-        if self.active_vote_kick_db_id:
-            status_map = {"KICK": "PASSED", "TIE": "FAILED", "NO_KICK": "FAILED"}
+        if db_id:
+            status_map = {"KICK": "PASSED", "NO_KICK": "FAILED"}
             with get_db_session() as db:
                 resolve_vote_kick_record(
                     db,
-                    self.active_vote_kick_db_id,
+                    db_id,
                     status_map.get(result, "CANCELLED"),
                 )
-        
-        # Clear vote session
-        self.active_vote_kick = None
-        self.active_vote_kick_db_id = None
 
     async def _execute_player_kick(self, player_name: str):
         """Remove player from room and close their connection. Handles host transfer if needed."""

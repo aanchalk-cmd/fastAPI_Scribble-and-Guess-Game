@@ -146,9 +146,13 @@ body.lobby-body {
     gap: 24px;
 }
 
-/* "Playing as" box (Figma: #efeeec, 90px tall, 20px/10px padding) */
+/* "Playing as" box (Figma Component 14: #efeeec, 305×90, 20/10 padding, 18px radius) */
 .playing-as {
-    min-width: 0;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    width: 305px;
+    max-width: 100%;
+    height: 90px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -170,44 +174,78 @@ body.lobby-body {
     display: flex;
     align-items: center;
     gap: 16px;
+    width: 100%;
     min-width: 0;
 }
 
-/* The hidden ::after copy of the name sets the width; the input fills it */
+/* Name column is 211px; the 1px rule sits on its bottom edge and does not add height */
+.playing-as-field {
+    position: relative;
+    flex: 1 1 211px;
+    width: 211px;
+    max-width: 100%;
+    height: 38px;
+    min-width: 0;
+}
+
 .playing-as-name {
-    display: inline-grid;
-    min-width: 2ch;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-size: 24px;
     line-height: 38px;
+    color: #000;
     text-transform: uppercase;
 }
 
-.playing-as-name::after {
-    content: attr(data-value);
-    grid-area: 1 / 1;
-    visibility: hidden;
-    white-space: pre;
+.playing-as-editor {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
 }
 
 .playing-as-input {
-    grid-area: 1 / 1;
     width: 100%;
-    min-width: 0;
+    height: 38px;
     margin: 0;
     padding: 0;
     border: none;
-    border-radius: 4px;
+    border-radius: 0;
     background: transparent;
-    color: var(--mg-ink);
+    color: #000;
+    caret-color: rgba(0, 0, 0, 0.6);
     font: inherit;
-    text-transform: inherit;
+    font-size: 24px;
+    line-height: 38px;
+    text-transform: uppercase;
     outline: none;
 }
 
-.playing-as-input:focus-visible { box-shadow: 0 2px 0 var(--mg-yellow); }
+.playing-as-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: block;
+    width: 100%;
+    height: 1px;
+}
 
-/* 38px icon frame with the pencil glyph centred (Figma frame inset ~3.5px) */
-.playing-as-edit {
+.playing-as[data-mode="view"] .playing-as-editor,
+.playing-as[data-mode="view"] .playing-as-go {
+    display: none;
+}
+
+.playing-as[data-mode="edit"] .playing-as-name,
+.playing-as[data-mode="edit"] .playing-as-edit {
+    display: none;
+}
+
+/* 38px icon frame; the pencil glyph is centred with the Figma inset */
+.playing-as-edit,
+.playing-as-go {
     flex-shrink: 0;
     width: 38px;
     height: 38px;
@@ -221,7 +259,17 @@ body.lobby-body {
     touch-action: manipulation;
 }
 .playing-as-edit img { display: block; }
-.playing-as-edit:focus-visible { outline: 2px solid var(--mg-yellow); outline-offset: 2px; }
+.playing-as-edit:focus-visible,
+.playing-as-go:focus-visible { outline: 2px solid var(--mg-yellow); outline-offset: 2px; }
+
+/* Source arrow points left; the design flips it to point right */
+.playing-as-arrow {
+    display: block;
+    width: 38px;
+    height: 38px;
+    transform: scaleX(-1);
+}
+.playing-as-arrow img { display: block; width: 38px; height: 38px; }
 
 /* Yellow button, 4px black border, hard black copy 9px right / 8px down (Figma) */
 .top-btn {
@@ -866,12 +914,18 @@ body.lobby-body {
     }
     .top-btn { font-size: 18px; padding: 14px 16px; }
     .top-actions { gap: 16px; }
-    .playing-as { padding: 8px 16px; gap: 2px; }
+    .playing-as { width: 250px; height: 74px; padding: 8px 16px; gap: 2px; }
     .playing-as-label { font-size: 13px; }
-    .playing-as-name { font-size: 18px; line-height: 30px; }
+    .playing-as-field { height: 30px; }
+    .playing-as-name,
+    .playing-as-input { font-size: 18px; line-height: 30px; }
+    .playing-as-input { height: 30px; }
     .playing-as-row { gap: 10px; }
-    .playing-as-edit { width: 30px; height: 30px; }
-    .playing-as-edit img { width: 24px; height: auto; }
+    .playing-as-edit,
+    .playing-as-go,
+    .playing-as-arrow { width: 30px; height: 30px; }
+    .playing-as-edit img { width: 24.375px; height: 24.993px; }
+    .playing-as-arrow img { width: 30px; height: 30px; }
     .join-btn { padding: 14px 16px; }
 }
 
@@ -900,7 +954,7 @@ body.lobby-body {
     /* the button's border + black offset add 16px; give it back here */
     .lobby-top { margin-bottom: 12px; }
     .top-btn { padding: 14px 18px; }
-    .playing-as { padding: 8px 20px; gap: 4px; }
+    .playing-as { height: 76px; padding: 8px 20px; gap: 4px; }
     .film-card::before,
     .film-card::after {
         background-image: repeating-linear-gradient(90deg, #fff 0 22px, transparent 22px 36px);
@@ -938,12 +992,18 @@ body.lobby-body {
     .stack, .create-fields, .create-pane { gap: 12px; }
     .public-inner { gap: 14px; }
     .top-actions { gap: 16px; }
-    .playing-as { padding: 6px 16px; gap: 0; }
+    .playing-as { width: 240px; height: 64px; padding: 6px 16px; gap: 0; }
     .playing-as-label { font-size: 12px; }
-    .playing-as-name { font-size: 18px; line-height: 28px; }
+    .playing-as-field { height: 28px; }
+    .playing-as-name,
+    .playing-as-input { font-size: 16px; line-height: 28px; }
+    .playing-as-input { height: 28px; }
     .playing-as-row { gap: 10px; }
-    .playing-as-edit { width: 28px; height: 28px; }
-    .playing-as-edit img { width: 22px; height: auto; }
+    .playing-as-edit,
+    .playing-as-go,
+    .playing-as-arrow { width: 28px; height: 28px; }
+    .playing-as-edit img { width: 22.75px; height: 23.327px; }
+    .playing-as-arrow img { width: 28px; height: 28px; }
     .join-btn { padding: 12px 16px; }
     .room-list { gap: 14px; }
     .room-row { padding-bottom: 12px; }
@@ -991,18 +1051,38 @@ body.lobby-body {
     .playing-as {
         order: 3;
         flex: 1 0 100%;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 6px 14px;
+        width: 100%;
+        height: auto;
+        min-height: 72px;
+        align-items: stretch;
+        gap: 4px;
+        padding: 8px 14px;
         border-radius: 12px;
     }
     .playing-as-label { font-size: 12px; }
-    .playing-as-name { font-size: 16px; line-height: 28px; }
+    /* View: the pencil stays beside the name. Edit: the line grows so it is easy to type on. */
+    .playing-as[data-mode="view"] .playing-as-field {
+        flex: 0 1 auto;
+        width: max-content;
+        max-width: calc(100% - 44px);
+        height: 28px;
+    }
+    .playing-as[data-mode="view"] .playing-as-name { width: auto; }
+    .playing-as[data-mode="edit"] .playing-as-field {
+        flex: 1 1 auto;
+        width: auto;
+        max-width: none;
+        height: 28px;
+    }
+    .playing-as-name,
+    .playing-as-input { font-size: 16px; line-height: 28px; }
+    .playing-as-input { height: 28px; }
     .playing-as-row { gap: 8px; }
-    .playing-as-edit { width: 28px; height: 28px; }
-    .playing-as-edit img { width: 22px; height: auto; }
+    .playing-as-edit,
+    .playing-as-go,
+    .playing-as-arrow { width: 28px; height: 28px; }
+    .playing-as-edit img { width: 22.75px; height: 23.327px; }
+    .playing-as-arrow img { width: 28px; height: 28px; }
     .join-btn { padding: 12px 14px; border-radius: 12px; }
     :root {
         --card-w: calc(100vw - 28px);

@@ -69,10 +69,11 @@
             create: document.getElementById("screen-create"),
         },
         topBtn: document.getElementById("top-nav-btn"),
-        nameInputs: Array.from(document.querySelectorAll(".js-name-input")),
+        playingAs: document.getElementById("playing-as"),
         playingName: document.getElementById("playing-name-input"),
-        playingNameSizer: document.getElementById("playing-name-sizer"),
+        playingNameDisplay: document.getElementById("playing-name-display"),
         playingNameEdit: document.getElementById("playing-name-edit"),
+        playingNameGo: document.getElementById("playing-name-go"),
         createPane: document.getElementById("create-pane"),
         codePane: document.getElementById("code-pane"),
         categorySelect: document.getElementById("category-select"),
@@ -109,7 +110,8 @@
         duration: 60,
         publicRoom: true, // rooms are public unless the host switches the toggle off
         roomCode: "",
-        name: RANDOM_NAME, // until the player types their own
+        name: RANDOM_NAME, // until the player confirms their own
+        nameMode: "view", // view shows the name + pencil; edit is the empty box + arrow
         rooms: [],
     };
 
@@ -207,7 +209,7 @@
         });
         // Design: Public list offers "Create Rooom"; Create offers "Back".
         const onPublic = name === "public";
-        // The header box is the only name field, so it always shows a name.
+        // The header box is the only name field, on every lobby screen.
         if (!state.name.trim()) state.name = RANDOM_NAME;
         els.topBtn.textContent = onPublic ? "CREATE ROOOM" : "BACK";
         els.topBtn.dataset.action = onPublic ? "create" : "public";
@@ -343,12 +345,41 @@
     }
 
     function renderNameInputs() {
-        state.name = clampName(state.name);
-        els.nameInputs.forEach((input) => {
-            if (input.value !== state.name) input.value = state.name;
-        });
-        // The header box hugs its name (the sizer mirrors the input's text).
-        els.playingNameSizer.dataset.value = state.name;
+        state.name = clampName(state.name).trim() || RANDOM_NAME;
+        if (els.playingAs) els.playingAs.dataset.mode = state.nameMode === "edit" ? "edit" : "view";
+        if (els.playingNameDisplay) els.playingNameDisplay.textContent = state.name;
+    }
+
+    function openNameEditor() {
+        state.nameMode = "edit";
+        if (els.playingName) els.playingName.value = "";
+        showError("");
+        renderNameInputs();
+        if (els.playingName) els.playingName.focus();
+    }
+
+    function cancelNameEditor() {
+        state.nameMode = "view";
+        if (els.playingName) els.playingName.value = "";
+        renderNameInputs();
+    }
+
+    // Arrow (and Enter) lock the typed name. An empty box falls back to the
+    // random name already shown, then the player joins or creates with that name.
+    function commitPlayingName() {
+        const typed = clampName(els.playingName ? els.playingName.value : "").trim();
+        if (typed && !isValidName(typed)) {
+            showError(INVALID_NAME_MESSAGE);
+            if (els.playingName) els.playingName.focus();
+            return false;
+        }
+        state.name = typed || RANDOM_NAME;
+        state.nameMode = "view";
+        if (els.playingName) els.playingName.value = "";
+        showError("");
+        renderNameInputs();
+        saveDraft();
+        return true;
     }
 
     function roomCategories(room) {
@@ -439,11 +470,11 @@
     // "" when it was left blank (the server then picks a funny name from the room's
     // categories), or null when the typed name isn't allowed.
     function requireName() {
-        const input = els.playingName;
-        const name = clampName(state.name).trim();
-        if (name && !isValidName(name)) {
+        if (state.nameMode === "edit" && !commitPlayingName()) return null;
+        const name = clampName(state.name).trim() || RANDOM_NAME;
+        if (!isValidName(name)) {
             showError(INVALID_NAME_MESSAGE);
-            if (input) input.focus();
+            openNameEditor();
             return null;
         }
         showError("");
@@ -602,29 +633,22 @@
         setScreen(els.topBtn.dataset.action === "create" ? "create" : "public");
     });
 
-    els.nameInputs.forEach((input) => {
-        input.addEventListener("input", () => {
-            state.name = clampName(input.value);
-            renderNameInputs();
-            saveDraft();
-        });
-    });
+    els.playingNameEdit.addEventListener("click", openNameEditor);
 
-    els.playingNameEdit.addEventListener("click", () => {
-        els.playingName.focus();
-        els.playingName.select();
+    // Keep the caret in the field so the click isn't lost to a blur.
+    els.playingNameGo.addEventListener("mousedown", (event) => {
+        event.preventDefault();
     });
-
-    // An emptied box falls back to the random name rather than sitting blank.
-    els.playingName.addEventListener("blur", () => {
-        if (state.name.trim()) return;
-        state.name = RANDOM_NAME;
-        renderNameInputs();
-        saveDraft();
-    });
+    els.playingNameGo.addEventListener("click", commitPlayingName);
 
     els.playingName.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === "Escape") els.playingName.blur();
+        if (event.key === "Enter") {
+            event.preventDefault();
+            commitPlayingName();
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            cancelNameEditor();
+        }
     });
 
     els.categoryTrigger.addEventListener("click", () => setCategoryOpen(!categoryOpen));

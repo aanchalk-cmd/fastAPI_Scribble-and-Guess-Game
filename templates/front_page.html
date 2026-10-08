@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bowlby+One&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/lobby.css?v=rooms4">
+    <link rel="stylesheet" href="/static/css/lobby.css?v=namebox1">
 </head>
 <body class="lobby-body">
     <div
@@ -21,24 +21,34 @@
         <header class="lobby-top">
             <h1 class="brand-title" id="brand-title">Movie Guess</h1>
             <div class="top-actions">
-                <!-- The name this player joins with: a random one until they edit it -->
-                <div class="playing-as" id="playing-as">
-                    <label class="playing-as-label" for="playing-name-input">Playing as</label>
+                <!-- Random name until the pencil opens the editor. The arrow keeps a typed name, or this random one if the box is left empty. -->
+                <div class="playing-as" id="playing-as" data-mode="view">
+                    <label class="playing-as-label" id="playing-as-label" for="playing-name-input">Playing as</label>
                     <div class="playing-as-row">
-                        <span class="playing-as-name" id="playing-name-sizer" data-value="{{ random_name }}">
-                            <input
-                                type="text"
-                                id="playing-name-input"
-                                class="playing-as-input js-name-input"
-                                value="{{ random_name }}"
-                                maxlength="10"
-                                size="1"
-                                autocomplete="nickname"
-                                spellcheck="false"
-                            >
-                        </span>
+                        <div class="playing-as-field">
+                            <span class="playing-as-name" id="playing-name-display">{{ random_name }}</span>
+                            <div class="playing-as-editor">
+                                <input
+                                    type="text"
+                                    id="playing-name-input"
+                                    class="playing-as-input"
+                                    value=""
+                                    maxlength="10"
+                                    autocomplete="nickname"
+                                    spellcheck="false"
+                                    enterkeyhint="done"
+                                    aria-labelledby="playing-as-label"
+                                >
+                                <img class="playing-as-line" src="/static/img/icons/playing-as-line.svg" width="211" height="1" alt="">
+                            </div>
+                        </div>
                         <button type="button" class="playing-as-edit" id="playing-name-edit" aria-label="Edit name">
-                            <img src="/static/img/icons/ic-edit.svg" width="30.875" height="31.6577" alt="">
+                            <img src="/static/img/icons/playing-as-pencil.svg" width="30.875" height="31.6577" alt="">
+                        </button>
+                        <button type="button" class="playing-as-go" id="playing-name-go" aria-label="Use this name">
+                            <span class="playing-as-arrow">
+                                <img src="/static/img/icons/playing-as-arrow.svg" width="38" height="38" alt="">
+                            </span>
                         </button>
                     </div>
                 </div>
@@ -180,6 +190,6 @@
         </div>
     </div>
 
-    <script src="/static/js/lobby.js?v=guest3" defer></script>
+    <script src="/static/js/lobby.js?v=namebox1" defer></script>
 </body>
 </html>

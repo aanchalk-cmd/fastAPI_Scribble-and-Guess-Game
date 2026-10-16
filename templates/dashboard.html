@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js" defer></script>
-    <script src="/static/js/dashboard.js" defer></script>
+    <script src="/static/js/dashboard.js?v=allstats1" defer></script>
 </head>
 <body>
     <div class="page">
@@ -28,40 +28,61 @@
             </div>
         </header>
 
-        {% if auth_required_note %}
-        <div class="banner" role="note">
-            No authentication is configured yet. Restrict <code>/dashboard</code> and
-            <code>/api/dashboard/*</code> once admin auth exists.
-        </div>
-        {% endif %}
-
-        <section class="kpi-grid" aria-label="Key metrics">
+        <section class="kpi-grid" aria-label="All-time statistics">
             <article class="kpi-card" data-kpi="total_players">
                 <div class="kpi-icon" aria-hidden="true">👥</div>
                 <div class="kpi-body">
                     <p class="kpi-value" id="kpi-total-players">—</p>
-                    <p class="kpi-label">Total Players</p>
-                </div>
-            </article>
-            <article class="kpi-card" data-kpi="total_games">
-                <div class="kpi-icon" aria-hidden="true">🎮</div>
-                <div class="kpi-body">
-                    <p class="kpi-value" id="kpi-total-games">—</p>
-                    <p class="kpi-label">Games Played</p>
-                </div>
-            </article>
-            <article class="kpi-card" data-kpi="active_games">
-                <div class="kpi-icon kpi-icon-live" aria-hidden="true">●</div>
-                <div class="kpi-body">
-                    <p class="kpi-value" id="kpi-active-games">—</p>
-                    <p class="kpi-label">Active Games</p>
+                    <p class="kpi-label">Players</p>
                 </div>
             </article>
             <article class="kpi-card" data-kpi="total_rooms">
                 <div class="kpi-icon" aria-hidden="true">🏠</div>
                 <div class="kpi-body">
                     <p class="kpi-value" id="kpi-total-rooms">—</p>
-                    <p class="kpi-label">Total Rooms</p>
+                    <p class="kpi-label">Rooms</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="games_started">
+                <div class="kpi-icon" aria-hidden="true">🎮</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-games-started">—</p>
+                    <p class="kpi-label">Games started</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="games_finished">
+                <div class="kpi-icon" aria-hidden="true">🏁</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-games-finished">—</p>
+                    <p class="kpi-label">Games finished</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="total_rounds">
+                <div class="kpi-icon" aria-hidden="true">🔄</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-rounds">—</p>
+                    <p class="kpi-label">Rounds</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="total_points">
+                <div class="kpi-icon" aria-hidden="true">⭐</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-points">—</p>
+                    <p class="kpi-label">Points awarded</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="total_joins">
+                <div class="kpi-icon" aria-hidden="true">🚪</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-total-joins">—</p>
+                    <p class="kpi-label">Joins</p>
+                </div>
+            </article>
+            <article class="kpi-card" data-kpi="active_games">
+                <div class="kpi-icon kpi-icon-live" aria-hidden="true">●</div>
+                <div class="kpi-body">
+                    <p class="kpi-value" id="kpi-active-games">—</p>
+                    <p class="kpi-label">Playing now</p>
                 </div>
             </article>
         </section>
@@ -70,11 +91,12 @@
             <div class="panel-head">
                 <div>
                     <h2>Game Activity</h2>
-                    <p class="panel-sub">Games started and completed over time (UTC)</p>
+                    <p class="panel-sub" id="activity-sub">Every stored room and round (UTC)</p>
                 </div>
                 <div class="segmented" role="group" aria-label="Activity range">
-                    <button type="button" class="seg active" data-range="7d">7 days</button>
+                    <button type="button" class="seg active" data-range="all">All time</button>
                     <button type="button" class="seg" data-range="30d">30 days</button>
+                    <button type="button" class="seg" data-range="7d">7 days</button>
                 </div>
             </div>
             <div class="chart-wrap">
@@ -88,7 +110,7 @@
                 <div class="panel-head">
                     <div>
                         <h2>Leaderboard</h2>
-                        <p class="panel-sub">Sorted by wins, then total score</p>
+                        <p class="panel-sub">Every player, ranked by points from all stored scores</p>
                     </div>
                 </div>
                 <div class="table-wrap">
@@ -114,7 +136,7 @@
                 <div class="panel-head">
                     <div>
                         <h2>Game Health</h2>
-                        <p class="panel-sub">Duration, players, completion signals</p>
+                        <p class="panel-sub">Averages across every stored game</p>
                     </div>
                 </div>
                 <div class="health-grid" id="health-grid">
@@ -127,15 +149,19 @@
                         <p class="health-value" id="health-players">—</p>
                     </div>
                     <div class="health-item">
-                        <p class="health-label">Completed games</p>
-                        <p class="health-value" id="health-completed">—</p>
+                        <p class="health-label">Rounds stored</p>
+                        <p class="health-value" id="health-rounds">—</p>
                     </div>
                     <div class="health-item">
-                        <p class="health-label">Abandoned before start</p>
+                        <p class="health-label">Points stored</p>
+                        <p class="health-value" id="health-points">—</p>
+                    </div>
+                    <div class="health-item">
+                        <p class="health-label">Never started</p>
                         <p class="health-value" id="health-abandoned">—</p>
                     </div>
                     <div class="health-item">
-                        <p class="health-label">Abandoned rate</p>
+                        <p class="health-label">Never started rate</p>
                         <p class="health-value" id="health-abandoned-rate">—</p>
                     </div>
                 </div>
@@ -159,8 +185,8 @@
         <section class="panel">
             <div class="panel-head">
                 <div>
-                    <h2>Recent Games / Rooms</h2>
-                    <p class="panel-sub">Newest first</p>
+                    <h2>All Rooms</h2>
+                    <p class="panel-sub">Every stored room, newest first</p>
                 </div>
             </div>
             <div class="table-wrap">
@@ -170,6 +196,8 @@
                             <th>Room</th>
                             <th>Host</th>
                             <th>Players</th>
+                            <th>Rounds</th>
+                            <th>Points</th>
                             <th>Status</th>
                             <th>Created</th>
                             <th>Started</th>
@@ -178,7 +206,7 @@
                         </tr>
                     </thead>
                     <tbody id="recent-body">
-                        <tr><td colspan="8" class="empty">Loading…</td></tr>
+                        <tr><td colspan="10" class="empty">Loading…</td></tr>
                     </tbody>
                 </table>
             </div>

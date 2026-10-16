@@ -11,7 +11,7 @@
   };
 
   const state = {
-    activityRange: "7d",
+    activityRange: "all",
     activityChart: null,
     timers: [],
   };
@@ -19,7 +19,10 @@
   const $ = (id) => document.getElementById(id);
 
   async function fetchJson(url) {
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin",
+    });
     if (!res.ok) {
       throw new Error(`${url} → ${res.status}`);
     }
@@ -65,13 +68,19 @@
   async function loadSummary() {
     const data = await fetchJson("/api/dashboard/summary");
     $("kpi-total-players").textContent = formatNumber(data.total_players);
-    $("kpi-total-games").textContent = formatNumber(data.total_games);
-    $("kpi-active-games").textContent = formatNumber(data.active_games);
     $("kpi-total-rooms").textContent = formatNumber(data.total_rooms);
+    $("kpi-games-started").textContent = formatNumber(
+      data.games_started ?? data.total_games
+    );
+    $("kpi-games-finished").textContent = formatNumber(data.games_finished);
+    $("kpi-total-rounds").textContent = formatNumber(data.total_rounds);
+    $("kpi-total-points").textContent = formatNumber(data.total_points);
+    $("kpi-total-joins").textContent = formatNumber(data.total_joins);
+    $("kpi-active-games").textContent = formatNumber(data.active_games);
   }
 
   async function loadLeaderboard() {
-    const data = await fetchJson("/api/dashboard/leaderboard?limit=10");
+    const data = await fetchJson("/api/dashboard/leaderboard?limit=100");
     const body = $("leaderboard-body");
     const items = data.items || [];
     if (!items.length) {
@@ -98,21 +107,31 @@
       `/api/dashboard/activity?range=${encodeURIComponent(state.activityRange)}`
     );
     const labels = data.labels || [];
+    const created = data.rooms_created || [];
     const started = data.games_started || [];
-    const played = data.games_played || [];
+    const rounds = data.rounds_played || data.games_played || [];
     const empty = $("activity-empty");
     const hasData =
-      started.some((n) => n > 0) || played.some((n) => n > 0);
+      created.some((n) => n > 0) ||
+      started.some((n) => n > 0) ||
+      rounds.some((n) => n > 0);
 
     if (empty) empty.classList.toggle("hidden", hasData);
+    const sub = $("activity-sub");
+    if (sub) {
+      const bucket = data.bucket === "month" ? "month" : data.bucket === "week" ? "week" : "day";
+      const span = data.range === "all" ? "all stored history" : data.range === "30d" ? "the last 30 days" : "the last 7 days";
+      sub.textContent = `Rooms, games started, and rounds by ${bucket} across ${span} (UTC)`;
+    }
 
     const ctx = $("activity-chart");
     if (!ctx || typeof Chart === "undefined") return;
 
     if (state.activityChart) {
       state.activityChart.data.labels = labels;
-      state.activityChart.data.datasets[0].data = started;
-      state.activityChart.data.datasets[1].data = played;
+      state.activityChart.data.datasets[0].data = created;
+      state.activityChart.data.datasets[1].data = started;
+      state.activityChart.data.datasets[2].data = rounds;
       state.activityChart.update("none");
       return;
     }
@@ -123,8 +142,8 @@
         labels,
         datasets: [
           {
-            label: "Games started",
-            data: started,
+            label: "Rooms created",
+            data: created,
             borderColor: "#818cf8",
             backgroundColor: "rgba(99, 102, 241, 0.18)",
             tension: 0.35,
@@ -132,10 +151,19 @@
             pointRadius: 2,
           },
           {
-            label: "Games played",
-            data: played,
+            label: "Games started",
+            data: started,
             borderColor: "#34d399",
             backgroundColor: "rgba(52, 211, 153, 0.12)",
+            tension: 0.35,
+            fill: true,
+            pointRadius: 2,
+          },
+          {
+            label: "Rounds played",
+            data: rounds,
+            borderColor: "#fbbf24",
+            backgroundColor: "rgba(251, 191, 36, 0.12)",
             tension: 0.35,
             fill: true,
             pointRadius: 2,
@@ -179,7 +207,8 @@
       data.average_players_per_game === undefined
         ? "No data available"
         : formatNumber(data.average_players_per_game);
-    $("health-completed").textContent = formatNumber(data.completed_games);
+    $("health-rounds").textContent = formatNumber(data.total_rounds);
+    $("health-points").textContent = formatNumber(data.total_points);
     $("health-abandoned").textContent = formatNumber(
       data.abandoned_before_start
     );
@@ -238,11 +267,11 @@
   }
 
   async function loadRecent() {
-    const data = await fetchJson("/api/dashboard/recent-games?limit=20");
+    const data = await fetchJson("/api/dashboard/recent-games?limit=100");
     const body = $("recent-body");
     const items = data.items || [];
     if (!items.length) {
-      body.innerHTML = `<tr><td colspan="8" class="empty">No data available</td></tr>`;
+      body.innerHTML = `<tr><td colspan="10" class="empty">No data available</td></tr>`;
       return;
     }
     body.innerHTML = items
@@ -253,6 +282,8 @@
         <td><strong>${escapeHtml(row.room_code || "—")}</strong></td>
         <td>${escapeHtml(row.host || "—")}</td>
         <td>${formatNumber(row.players)}</td>
+        <td>${formatNumber(row.rounds)}</td>
+        <td>${formatNumber(row.points)}</td>
         <td><span class="status-pill status-${escapeHtml(status)}">${escapeHtml(status)}</span></td>
         <td>${formatDateTime(row.created_at)}</td>
         <td>${formatDateTime(row.started_at)}</td>

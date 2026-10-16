@@ -20,10 +20,7 @@ from fastapi.responses import RedirectResponse
 from pathlib import Path
 
 from database import init_db
-from app.services.word_manager import (
-    CategoryNotFoundError,
-    word_manager,
-)
+from app.services.word_manager import word_manager
 from app.services.player_names import player_names
 from db_helpers import (
     ban_guest_from_room,
@@ -3231,30 +3228,9 @@ async def websocket_endpoint(
                     and not manager.game_state.get("is_round_active")
                 )
                 if choosing:
-                    # Prefer room category; allow optional override from client
-                    requested = data.get("category") or data.get("section")
-                    # A room category in the request just means "the room pool".
-                    if (
-                        requested
-                        and word_manager.has_category(requested)
-                        and requested not in manager.get_room_categories()
-                    ):
-                        # Temporary override for this pick only (room category stays)
-                        category = requested
-                        try:
-                            options = word_manager.get_random_words(category, count=3)
-                        except CategoryNotFoundError:
-                            options = word_manager.get_random_words(
-                                manager.get_room_category(), count=3
-                            )
-                        manager.last_word_options = list(options)
-                        await websocket.send_json({
-                            "type": "movie_options",
-                            "options": options,
-                            "category": category,
-                        })
-                    else:
-                        await manager.send_word_options_to_drawer(count=3)
+                    # Titles always come from the categories this room picked.
+                    # A category outside that list is ignored.
+                    await manager.send_word_options_to_drawer(count=3)
             elif data["type"] == "initiate_vote_kick":
                 target_player = data.get("target_player")
                 success = await manager.initiate_vote_kick(name, target_player)

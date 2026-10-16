@@ -19,6 +19,7 @@ from typing import List, Dict, Optional, Set
 from fastapi.responses import RedirectResponse
 from pathlib import Path
 
+from app.routers.dashboard import router as dashboard_router
 from database import init_db
 from app.services.word_manager import word_manager
 from app.services.player_names import player_names
@@ -59,6 +60,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(dashboard_router)
 
 # Updated Room Model in main.py
 class GameRoom:

@@ -1080,8 +1080,8 @@
             if (parts.length === 2) return parts.pop().split(';').shift();
         }
         // Room resolution, in priority order:
-        //   1. The room `/game` just rendered server-side (it already prefers the
-        //      `?room=` URL param over the `room_id` cookie — see main.py).
+        //   1. The room this page rendered (the address bar stays at "/", and the
+        //      room id is in the page, then this tab's storage, then the cookie).
         //   2. This tab's own sessionStorage (survives a refresh of THIS tab even
         //      if a sibling tab's /leave deleted the shared `room_id` cookie).
         //   3. The `room_id` cookie, as a last-resort legacy fallback.
@@ -1134,6 +1134,9 @@
             return id;
         }
         const tabId = getOrCreateTabId();
+        if (location.pathname !== "/" || location.search) {
+            history.replaceState(null, "", "/");
+        }
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";

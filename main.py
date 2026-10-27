@@ -126,6 +126,15 @@ class GameRoom:
     def get_player_guest_id(self, name: str) -> Optional[str]:
         return self.player_guest_ids.get(name)
 
+    def name_for_guest(self, guest_id: Optional[str]) -> Optional[str]:
+        """The seat this browser already holds, if it has not clicked Exit."""
+        if not guest_id:
+            return None
+        for name in self.players:
+            if self.player_guest_ids.get(name) == guest_id:
+                return name
+        return None
+
     def issue_player_token(self, name: str) -> str:
         """New session token for `name`; any older token for that name stops working."""
         self.revoke_player_token(name)
@@ -202,7 +211,8 @@ PUBLIC_ROOM_DISCARD_SECONDS = int(os.getenv("PUBLIC_ROOM_DISCARD_SECONDS", "300"
 private_room_timers: Dict[str, asyncio.Task] = {}
 rejoin_wait_timers: Dict[str, asyncio.Task] = {}
 REJOIN_WAIT_SECONDS = 300
-# Short window to treat a page refresh / brief WS drop as temporary, not a leave.
+# A dropped connection no longer uses this. The seat and score stay until Exit.
+# Cancel still clears a timer that was started before that change.
 reconnect_grace_timers: Dict[str, asyncio.Task] = {}
 RECONNECT_GRACE_SECONDS = 20
 
@@ -378,6 +388,47 @@ def clean_player_name(raw) -> Optional[str]:
 
 def player_cookie_name(room_id: str) -> str:
     return f"player_name_{room_id}"
+
+
+def seated_name_for_request(request: Request, room: "GameRoom") -> Optional[str]:
+    """Name this browser already holds in the room, from its cookies."""
+    raw = request.cookies.get(player_cookie_name(room.room_id))
+    if raw:
+        name = unquote(raw)
+        if name in room.players:
+            return name
+    prefix = f"player_token_{room.room_id}_"
+    legacy = legacy_player_token_cookie_name(room.room_id)
+    for key, token in request.cookies.items():
+        if key == legacy or key.startswith(prefix):
+            name = room.resolve_player_token(token)
+            if name and name in room.players:
+                return name
+    return None
+
+
+def render_game_page(request: Request, room_code: str, username: str):
+    response = templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "room_code": room_code,
+            "username": username or "Guest",
+        },
+    )
+    response.set_cookie("room_id", room_code)
+    return response
+
+
+def render_lobby_page(request: Request):
+    return templates.TemplateResponse(
+        "front_page.html",
+        {
+            "request": request,
+            "categories": word_manager.get_categories(),
+            "random_name": player_names.random_name([], max_length=PLAYER_NAME_MAX),
+        },
+    )
 
 
 def normalize_room_code(room_id: Optional[str]) -> Optional[str]:
@@ -565,35 +616,54 @@ async def join(
             print(f"[PLAYER_JOIN] Failed: room {room_code} has ended")
             return redirect_with_guest(request, guest_id, f"/?error=ended&code={room_code}")
 
-        # Capacity check for both private and public (including mid-game public joins)
-        if room.is_full():
-            print(f"[SKIP] Room already full")
-            print(f"[PLAYER_JOIN] Failed: room {room_code} is full")
-            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
+        # Same browser coming back without Exit keeps its seat and its score.
+        # A new person whose typed name is already taken still becomes name(1).
+        submitted_tab_early = validate_guest_id(tab_id)
+        token_name = None
+        if submitted_tab_early:
+            existing_cookie = player_token_cookie_name(room_code, submitted_tab_early)
+            if existing_cookie:
+                token_name = room.resolve_player_token(request.cookies.get(existing_cookie))
+        seated_name = token_name if token_name in room.players else room.name_for_guest(guest_id)
+        seated_live = bool(seated_name and seated_name in room.manager.active_connections)
+        resuming = bool(seated_name) and (seated_name == token_name or not seated_live)
+
+        if resuming:
+            name = seated_name
+            cancel_reconnect_grace(room_code, name)
+            print(f"[PLAYER_JOIN] Restoring {name} in {room_code}; session was not ended")
+        else:
+            # Capacity check for both private and public (including mid-game public joins)
+            if room.is_full():
+                print(f"[SKIP] Room already full")
+                print(f"[PLAYER_JOIN] Failed: room {room_code} is full")
+                return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
+
+            if wants_random_name:
+                name = player_names.random_name(room.categories, taken=room.players, max_length=PLAYER_NAME_MAX)
+                print(f"[MATCHMAKING] No name given; joiner gets random name {name!r}")
+            name = get_unique_name(name, room.players)
+            added = room.add_player(name)
+            if not added:
+                print(f"[SKIP] Room already full")
+                print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
+                return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
 
         joining_running = room.game_started and room.status == "PLAYING"
-        if wants_random_name:
-            name = player_names.random_name(room.categories, taken=room.players, max_length=PLAYER_NAME_MAX)
-            print(f"[MATCHMAKING] No name given; joiner gets random name {name!r}")
-        name = get_unique_name(name, room.players)
-        added = room.add_player(name)
-        if not added:
-            print(f"[SKIP] Room already full")
-            print(f"[PLAYER_JOIN] Failed: add_player rejected for {room_code}")
-            return redirect_with_guest(request, guest_id, f"/?error=full&code={room_code}")
-
-        # A rejoin immediately ends the vacancy wait, before the new socket connects.
-        had_rejoin_wait = (
-            room.awaiting_rejoin_choice
-            or room.rejoin_wait_deadline is not None
-            or room_code in rejoin_wait_timers
-        )
-        cancel_rejoin_wait(room_code)
-        room.awaiting_rejoin_choice = False
-        if had_rejoin_wait and len(room.players) >= 2:
-            # Fresh round starts once the joiner's WebSocket connects.
-            room.pending_resume_after_rejoin = True
-            print(f"[REJOIN] Player joined during wait — will start a new round for {room_code}")
+        # A brand-new player ends the vacancy wait. Coming back to your own
+        # seat does not, and it does not start another round.
+        if not resuming:
+            had_rejoin_wait = (
+                room.awaiting_rejoin_choice
+                or room.rejoin_wait_deadline is not None
+                or room_code in rejoin_wait_timers
+            )
+            cancel_rejoin_wait(room_code)
+            room.awaiting_rejoin_choice = False
+            if had_rejoin_wait and len(room.players) >= 2:
+                # Fresh round starts once the joiner's WebSocket connects.
+                room.pending_resume_after_rejoin = True
+                print(f"[REJOIN] Player joined during wait — will start a new round for {room_code}")
 
         with get_db_session() as db:
             db_room, player = join_room_record(db, room_code, name, guest_id)
@@ -634,13 +704,13 @@ async def join(
     else:
         return redirect_with_guest(request, guest_id, "/")
 
-    # The room is encoded directly in the redirect URL (not just the shared
-    # `room_id` cookie) so that a later browser refresh keeps working even if
-    # a *different* tab's /leave call clears that cookie — see /game below.
+    # The address bar stays at the site root. The room is in the cookie, and
+    # "/" renders the game again on refresh. Invite links are a separate
+    # "/?invite=" URL, so Copy invite link does not need "/game".
     submitted_tab = validate_guest_id(tab_id)
     tab_id = submitted_tab or str(uuid.uuid4())
     player_token = room.issue_player_token(name)
-    response = RedirectResponse(url=f"/game?{urlencode({'room': room_code})}", status_code=303)
+    response = RedirectResponse(url="/", status_code=303)
     response.set_cookie("room_id", room_code)
     # URL-encoded: cookie values must be Latin-1, and names may be in any script
     # (e.g. "प्रिया"). The game page decodes it with decodeURIComponent.
@@ -712,6 +782,8 @@ async def leave(
         was_host = username == room.host
         room.remove_player(username)
         room.revoke_player_token(username)
+        # Exit is the only time this player's score is dropped.
+        r.delete(f"score:{room_id}:{username}")
         print(f"[PLAYER_LEAVE] Player {username} left room {room_id}")
         print(f"[PLAYER_LEAVE] Remaining players={len(room.players)}")
         print(f"[PLAYER_LEAVE] Max players={room.max_players}")
@@ -1792,6 +1864,7 @@ class ConnectionManager:
             self.room.players.remove(player_name)
         if self.room:
             self.room.revoke_player_token(player_name)
+            r.delete(f"score:{self.room.room_id}:{player_name}")
 
         self.remove_from_drawer_queue(player_name)
 
@@ -2580,45 +2653,37 @@ def get_unique_name(name, existing_names):
     return f"{name}({count})"
 
 @app.get("/")
-async def get(request: Request):
-    # Pass available word categories to the create-room UI
-    return templates.TemplateResponse(
-        "front_page.html",
-        {
-            "request": request,
-            "categories": word_manager.get_categories(),
-            # Shown in the lobby's "Playing as" box; the player can edit it there.
-            "random_name": player_names.random_name([], max_length=PLAYER_NAME_MAX),
-        },
-    )
+async def get(request: Request, room_id: str = Cookie(None)):
+    # Invite and error links must open the lobby, even if this browser is
+    # already sitting in a room. A plain "/" with a live seat opens the game,
+    # so the address bar never needs /game.
+    if request.query_params.get("invite") or request.query_params.get("error"):
+        return render_lobby_page(request)
+
+    code = normalize_room_code(request.query_params.get("room") or room_id)
+    room = rooms.get(code) if code else None
+    if room and room.status != "ENDED":
+        name = seated_name_for_request(request, room)
+        if name:
+            if request.query_params:
+                response = RedirectResponse(url="/", status_code=303)
+                response.set_cookie("room_id", code)
+                return response
+            return render_game_page(request, code, name)
+    return render_lobby_page(request)
 
 @app.get("/game")
 async def get_game(
     request: Request,
     room: str = Query(None),
     room_id: str = Cookie(None),
-    username: str = Cookie(None),
 ):
-    # Prefer the room encoded in the URL over the `room_id` cookie. The cookie
-    # is shared by every tab on this origin, so another tab calling /leave
-    # (e.g. the other player in a 2-player game leaving) deletes it out from
-    # under this tab too. The URL query param is per-tab (it's part of this
-    # tab's own address bar / history), so a refresh of THIS tab keeps working
-    # even when a sibling tab's cookie deletion would otherwise strand it.
-    resolved_room_id = room or room_id
-
-    if not resolved_room_id:
-        return RedirectResponse(url="/", status_code=303)
-
-    cookie_name = request.cookies.get(player_cookie_name(resolved_room_id))
-    username = unquote(cookie_name) if cookie_name else username
-    response = templates.TemplateResponse("index.html", {
-        "request": request,
-        "room_code": resolved_room_id,
-        "username": username or "Guest"
-    })
-    # Repair this tab's room_id cookie in case a sibling tab had cleared it.
-    response.set_cookie("room_id", resolved_room_id)
+    # Old /game?room= links bounce to the root. The room cookie is what "/"
+    # uses to open the same game.
+    resolved = normalize_room_code(room or room_id)
+    response = RedirectResponse(url="/", status_code=303)
+    if resolved:
+        response.set_cookie("room_id", resolved)
     return response
 
 
@@ -3298,11 +3363,11 @@ async def websocket_endpoint(
                     })
     except WebSocketDisconnect:
         print(f"[WEBSOCKET] {username} disconnected from room {room_id}")
-        print(f"[RECONNECT] Treating as temporary disconnect (refresh/network); starting grace period")
+        print(f"[RECONNECT] Keeping {username}'s seat and score until they click Exit")
 
-        # Soft disconnect: keep them in room.players so a refresh does NOT look
-        # like "opponent left". Permanent leave happens only after grace expires
-        # or via explicit /leave.
+        # Closing the tab or losing the network is not an exit. The name, token,
+        # and Redis score stay so the same player can come back as themselves.
+        cancel_reconnect_grace(room_id, username)
         await manager.disconnect(
             websocket,
             preserve_game=True,
@@ -3314,9 +3379,6 @@ async def websocket_endpoint(
             if player_db_id:
                 with get_db_session() as db:
                     set_player_online(db, room.db_id, player_db_id, False)
-
-        if room_id in rooms and username:
-            schedule_reconnect_grace(room, username)
 
         if room_id in rooms:
             log_wait_lobby_eligibility(room)

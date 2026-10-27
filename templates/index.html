@@ -1422,7 +1422,9 @@
                 startTimer(data.time_left);
             }
             if (data.type === "timer_update" && data.timer_type === "lobby") {
-                startLobbyTimer(data.time_left);
+                // null = countdown cancelled (e.g. someone joined a public room)
+                if (data.time_left === null || data.time_left === undefined) stopLobbyTimer();
+                else startLobbyTimer(data.time_left);
             }
             if (data.type === "player_left_waiting") {
                 // Close Game Over / continue UI so End Game | Wait is visible
@@ -1617,21 +1619,21 @@
                     const heroSub = document.getElementById('lobby-hero-sub');
                     const statusPill = document.getElementById('lobby-status-pill');
 
+                    if (linkChip) linkChip.classList.remove('hidden');
+                    if (roomChip) roomChip.classList.remove('hidden');
                     if (data.room_type === "private") {
                         document.getElementById('room-info').classList.remove('hidden');
                         document.getElementById('public-room-info').classList.add('hidden');
-                        if (linkChip) linkChip.classList.remove('hidden');
-                        if (roomChip) roomChip.classList.remove('hidden');
                         if (statusPill) statusPill.innerText = "Waiting for players";
-                        if (data.lobby_time_left !== undefined && data.lobby_time_left !== null) {
-                            startLobbyTimer(data.lobby_time_left);
-                        }
                     } else {
-                        stopLobbyTimer();
                         document.getElementById('room-info').classList.add('hidden');
                         document.getElementById('public-room-info').classList.remove('hidden');
-                        if (linkChip) linkChip.classList.add('hidden');
                         if (statusPill) statusPill.innerText = "Public room";
+                    }
+                    if (data.lobby_time_left !== undefined && data.lobby_time_left !== null) {
+                        startLobbyTimer(data.lobby_time_left);
+                    } else {
+                        stopLobbyTimer();
                     }
 
                     if (myName === data.host_name) {
@@ -1931,9 +1933,13 @@
             document.getElementById('timer-display').classList.add('hidden');
         }
         function startLobbyTimer(seconds) {
-            if (currentRoomType !== "private" || currentRoomStatus !== "LOBBY") return;
+            if (currentRoomStatus !== "LOBBY") return;
             lobbyTimeLeft = seconds;
-            document.getElementById('lobby-timer-display').classList.remove('hidden');
+            const timerDiv = document.getElementById('lobby-timer-display');
+            timerDiv.title = currentRoomType === "public"
+                ? "Room closes if no one joins"
+                : "Game starts automatically";
+            timerDiv.classList.remove('hidden');
             updateLobbyTimerDisplay();
         }
         function stopLobbyTimer() {

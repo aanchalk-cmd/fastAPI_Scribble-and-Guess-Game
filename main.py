@@ -93,6 +93,7 @@ class GameRoom:
         self.status = "LOBBY"  # Status: LOBBY, PLAYING
         self.game_started = False
         self.lobby_auto_start_deadline: Optional[float] = None
+        self.public_discard_deadline: Optional[float] = None
         self.rejoin_wait_deadline: Optional[float] = None
         self.awaiting_rejoin_choice: bool = False
         self.pending_resume_after_rejoin: bool = False
@@ -2747,13 +2748,18 @@ async def cleanup_public_room(room_id: str):
     await broadcast_lobby_update()
 
 def get_lobby_time_left(room: GameRoom) -> Optional[int]:
-    if (
-        room.room_type != "private"
-        or room.game_started
-        or room.lobby_auto_start_deadline is None
-    ):
+    """Seconds left on the lobby countdown: auto-start for private rooms,
+    auto-close (host still alone) for public rooms."""
+    if room.game_started:
         return None
-    return max(0, int(room.lobby_auto_start_deadline - time.time()))
+    deadline = (
+        room.lobby_auto_start_deadline
+        if room.room_type == "private"
+        else room.public_discard_deadline
+    )
+    if deadline is None:
+        return None
+    return max(0, int(deadline - time.time()))
 
 
 def cancel_private_room_timer(room_id: str):
@@ -2838,7 +2844,30 @@ async def start_public_room_timer(room_id: str):
     try:
         print(f"[AUTO-DISCARD] Timer started for room: {room_id}")
 
-        await asyncio.sleep(PUBLIC_ROOM_DISCARD_SECONDS)
+        if room_id not in rooms:
+            return
+        rooms[room_id].public_discard_deadline = time.time() + PUBLIC_ROOM_DISCARD_SECONDS
+
+        # Broadcast the auto-close countdown every second
+        while True:
+            if room_id not in rooms:
+                print(f"[AUTO-DISCARD] Room already gone: {room_id}")
+                return
+
+            room = rooms[room_id]
+            remaining = get_lobby_time_left(room)
+            if remaining is None:
+                return
+
+            await room.manager.broadcast({
+                "type": "timer_update",
+                "timer_type": "lobby",
+                "time_left": remaining,
+            })
+
+            if remaining <= 0:
+                break
+            await asyncio.sleep(1)
 
         # Room might already be deleted
         if room_id not in rooms:
@@ -2867,6 +2896,23 @@ async def start_public_room_timer(room_id: str):
 
     except Exception as e:
         print(f"[AUTO-DISCARD] Timer error for room {room_id}: {e}")
+
+    finally:
+        # Clear the countdown unless a newer timer for this room already took over
+        current = asyncio.current_task()
+        if public_room_timers.get(room_id) is current:
+            del public_room_timers[room_id]
+        room = rooms.get(room_id)
+        if room and public_room_timers.get(room_id) is None and room.public_discard_deadline is not None:
+            room.public_discard_deadline = None
+            try:
+                await room.manager.broadcast({
+                    "type": "timer_update",
+                    "timer_type": "lobby",
+                    "time_left": None,
+                })
+            except Exception as e:
+                print(f"[AUTO-DISCARD] Failed to clear countdown for room {room_id}: {e}")
 
 def restart_public_room_timer_if_alone(room: GameRoom):
     """

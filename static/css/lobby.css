@@ -109,13 +109,16 @@ body.lobby-body {
 .decor-rail-left .decor-img { left: 0; }
 .decor-rail-right .decor-img { right: 0; }
 
-/* Tops are the Figma group y / 1080; widths the visible width / 1920 */
-.decor-img-clap { top: 19.18%; width: 9.74vw; }
-.decor-img-ticket { top: 54.73%; width: 10.16vw; }
-.decor-img-soda { top: 88.6%; width: 10.68vw; }
-.decor-img-reel { top: 13.15%; width: 12.76vw; }
-.decor-img-popcorn { top: 53.34%; width: 10.42vw; }
-.decor-img-camera { top: 92.61%; width: 10.63vw; }
+/* Tops are the Figma group y / 1080; widths the visible width / 1920, capped by
+   the same size / 1080 in vh so a short window shrinks the props instead of
+   stacking them into each other. The soda and camera sit on the bottom edge
+   so the whole PNG shows. */
+.decor-img-clap { top: 19.18%; width: min(9.74vw, 17.31vh); }
+.decor-img-ticket { top: 54.73%; width: min(10.16vw, 18.06vh); }
+.decor-img-soda { bottom: 0; width: min(10.68vw, 18.98vh); }
+.decor-img-reel { top: 13.15%; width: min(12.76vw, 22.69vh); }
+.decor-img-popcorn { top: 53.34%; width: min(10.42vw, 18.52vh); }
+.decor-img-camera { bottom: 0; width: min(10.63vw, 18.89vh); }
 
 /* ---------- header ---------- */
 .lobby-top {

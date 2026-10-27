@@ -442,8 +442,10 @@
 
     function render() {
         const onCode = state.createTab === "code";
-        els.createPane.classList.toggle("hidden", onCode);
-        els.codePane.classList.toggle("hidden", !onCode);
+        els.createPane.classList.toggle("is-off", onCode);
+        els.createPane.inert = onCode;
+        els.codePane.classList.toggle("is-off", !onCode);
+        els.codePane.inert = !onCode;
         els.createBtn.classList.toggle("hidden", onCode);
         els.joinRoomBtn.classList.toggle("hidden", !onCode);
         document.querySelectorAll(".mode-tab").forEach((tab) => {

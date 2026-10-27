@@ -374,6 +374,16 @@ body.lobby-body {
     gap: 24px;
 }
 
+/* Both panes share one grid cell, so "I have a code" keeps the card exactly as
+   tall as "Create rooom" on every screen; the inactive pane is only invisible. */
+.create-fields {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+}
+.create-fields > .create-pane { grid-area: 2 / 1; }
+.create-pane.is-off { visibility: hidden; }
+
 /* ---------- shared form pieces ---------- */
 .field-label {
     display: block;

@@ -2796,13 +2796,19 @@
             const container = document.getElementById("history-list");
             container.innerHTML = "";
             if (movieHistory.length === 0) {
-                container.innerHTML = "<p>No words yet</p>";
+                container.innerHTML = '<p class="history-empty">No movies yet</p>';
                 return;
             }
             movieHistory.forEach((movie, index) => {
                 const div = document.createElement("div");
                 div.className = "history-item";
-                div.innerText = `${index + 1}. ${movie}`;
+                const num = document.createElement("span");
+                num.className = "history-item-num";
+                num.innerText = index + 1;
+                const name = document.createElement("span");
+                name.className = "history-item-name";
+                name.innerText = movie;
+                div.append(num, name);
                 container.appendChild(div);
             });
         }
@@ -2838,10 +2844,10 @@
         }
     </script>
     <div id="history-overlay" class="hidden" onclick="toggleHistory()"></div>
-    <div id="history-modal" class="hidden">
+    <div id="history-modal" class="hidden" role="dialog" aria-modal="true" aria-labelledby="history-title">
         <div class="history-head">
-            <h3>📜 Word History</h3>
-            <button onclick="toggleHistory()" class="btn" style="padding: 6px 10px; min-height: 0;">✕</button>
+            <h3 id="history-title">History</h3>
+            <button type="button" onclick="toggleHistory()" class="history-close" aria-label="Close history">&times;</button>
         </div>
         <div id="history-list"></div>
     </div>

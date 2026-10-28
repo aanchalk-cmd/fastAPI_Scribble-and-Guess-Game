@@ -1165,6 +1165,14 @@
         
         let protocol = window.location.protocol === "https:" ? "wss" : "ws";
         let ws = new WebSocket(`${protocol}://${window.location.host}/ws?player_name=${encodeURIComponent(myName)}&room_id=${encodeURIComponent(currentRoom || "")}&tab=${encodeURIComponent(tabId)}`);
+        // Backup ping while this tab is visible. The server also pings; answering
+        // that does not depend on this timer (background tabs throttle timers).
+        const HEARTBEAT_MS = 10000;
+        let heartbeatTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "ping" }));
+            }
+        }, HEARTBEAT_MS);
         let canvas = document.getElementById('canvas');
         // willReadFrequently: the fill tool reads pixels back, and without this Chrome
         // switches the canvas from GPU to CPU mid-game, which changes stroke
@@ -1334,6 +1342,13 @@
         console.log(`[DEBUG-FRONTEND] WebSocket connecting to /ws`);
         ws.onmessage = (event) => {
             let data = JSON.parse(event.data);
+            if (data.type === "ping") {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: "pong" }));
+                }
+                return;
+            }
+            if (data.type === "pong") return;
             console.log(`[DEBUG-FRONTEND] WS message received:`, data);
             if (data.type === "history_update") {
                 movieHistory = data.history;
@@ -2671,6 +2686,7 @@
         }
         let publicRoomClosed = false;
         ws.onclose = () => {
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
             if (publicRoomClosed) return;
             console.log(`[REFRESH-DEBUG] WebSocket closed. navigation=${navigationType} player=${myName} room=${currentRoom}`);
             stopTimer();

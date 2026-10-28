@@ -709,17 +709,9 @@ async def join(
         print(f"[PLAYER_JOIN] Players: {players_before} -> {players_after}")
         print(f"[PLAYER_JOIN] Available slots={room.available_slots()}")
 
-        # Cancel auto-discard timer if another player joined (pre-start public only)
-        if (
-            room.room_type == "public"
-            and not room.game_started
-            and len(room.players) >= 2
-            and room_code in public_room_timers
-        ):
-            print(f"[AUTO-DISCARD] Player joined. Cancelling timer for room: {room_code}")
-
-            public_room_timers[room_code].cancel()
-            del public_room_timers[room_code]
+        # The 5-minute lobby clock stays up after someone joins. It still only
+        # closes the room if the host is alone when it hits zero. The game
+        # starting (host, or the room filling up) is what hides it.
 
         if room.room_type == "public" and room.is_full():
             print(f"[WAIT_LOBBY] Room full again")

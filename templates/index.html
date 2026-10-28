@@ -1438,7 +1438,7 @@
                 startTimer(data.time_left);
             }
             if (data.type === "timer_update" && data.timer_type === "lobby") {
-                // null = countdown cancelled (e.g. someone joined a public room)
+                // null = the lobby countdown finished, or the game started
                 if (data.time_left === null || data.time_left === undefined) stopLobbyTimer();
                 else startLobbyTimer(data.time_left);
             }
@@ -1952,8 +1952,9 @@
             if (currentRoomStatus !== "LOBBY") return;
             lobbyTimeLeft = seconds;
             const timerDiv = document.getElementById('lobby-timer-display');
+            const waitingAlone = (window.lastPlayerData || []).length < 2;
             timerDiv.title = currentRoomType === "public"
-                ? "Room closes if no one joins"
+                ? (waitingAlone ? "Room closes if no one joins" : "Lobby time remaining")
                 : "Game starts automatically";
             timerDiv.classList.remove('hidden');
             updateLobbyTimerDisplay();

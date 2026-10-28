@@ -1608,35 +1608,27 @@ body.mg-room .pk-8 img  { transform: rotate(80.83deg); }
 body.mg-room .pk-10 img { transform: rotate(-127.47deg) scale(1, -1); }
 body.mg-room .pk-3 img  { transform: rotate(-21.04deg); }
 
-/* Scattered-popcorn frame (Figma component variant "scattered"): the kernels
-   thrown out of the bucket, filling the same 272x146 / 280x143 component box
-   as the pile. The prototype loops pile <-> scattered (see
-   roundResultPopcornScatter below); when the animation is off (refresh /
-   reduced motion) the scattered frame shows statically. Only for rounds with
-   a winner (#congrats-area.has-winner, set in
+/* Scattered-popcorn frame (Figma component variant "scattered"): each pile
+   kernel's offset to its spot in the scattered layout (read off the Figma
+   frame, 272x146 box). The burst animation flies every kernel along its own
+   offset (roundResultPopcornBurst below); when the animation is off
+   (refresh / reduced motion) the kernels simply sit at these scattered spots.
+   The right pile mirrors them through .popcorn-kernels' scaleX(-1). Only for
+   rounds with a winner (#congrats-area.has-winner, set in
    populateRoundResultCard()); a "time's up, nobody guessed" round keeps the pile. */
-body.mg-room .popcorn-scatter {
-    position: absolute;
-    top: 0;
-    left: 0;
-    display: block;
-    max-width: none;
-    opacity: 0;
-    /* grows out of the bucket's mouth */
-    transform-origin: 77px 100px;
-}
+body.mg-room .pk-1  { --pk-dx: 15px; --pk-dy: -79px; --pk-rot: -40deg; --pk-delay: 0.04s; }
+body.mg-room .pk-5  { --pk-dx: 10px; --pk-dy: -18px; --pk-rot: 25deg;  --pk-delay: 0.02s; }
+body.mg-room .pk-11 { --pk-dx: 24px; --pk-dy: -37px; --pk-rot: -30deg; --pk-delay: 0s; }
+body.mg-room .pk-3  { --pk-dx: -22px; --pk-dy: -13px; --pk-rot: -55deg; --pk-delay: 0.06s; }
+body.mg-room .pk-7  { --pk-dx: 50px; --pk-dy: -10px; --pk-rot: 45deg;  --pk-delay: 0.03s; }
+body.mg-room .pk-10 { --pk-dx: 49px; --pk-dy: -69px; --pk-rot: 60deg;  --pk-delay: 0s; }
+body.mg-room .pk-4  { --pk-dx: 20px; --pk-dy: 7px;   --pk-rot: -20deg; --pk-delay: 0.08s; }
+body.mg-room .pk-8  { --pk-dx: 75px; --pk-dy: -31px; --pk-rot: 35deg;  --pk-delay: 0.05s; }
+body.mg-room .pk-6  { --pk-dx: 72px; --pk-dy: -5px;  --pk-rot: 70deg;  --pk-delay: 0.07s; }
 
-body.mg-room .round-result-popcorn.is-right .popcorn-scatter {
-    left: 8px;
-    transform-origin: 197px 99px;
-}
-
-body.mg-room #congrats-area.has-winner .popcorn-scatter {
-    opacity: 1;
-}
-
-body.mg-room #congrats-area.has-winner .popcorn-kernels {
-    opacity: 0;
+body.mg-room #congrats-area.has-winner .popcorn-kernel {
+    translate: var(--pk-dx) var(--pk-dy);
+    rotate: var(--pk-rot);
 }
 
 /* ---------- Round result entrance animation ----------
@@ -1668,33 +1660,32 @@ body.mg-room #congrats-area.has-winner .popcorn-kernels {
      scattered --after 0.8s--> pile       Smart animate, Gentle, 1.022s
    and round again. One cycle = 0.8 + 0.958 + 0.8 + 1.022 = 3.58s, so the
    keyframe stops are 0.8/3.58 = 22.35%, 1.758/3.58 = 49.11%,
-   2.558/3.58 = 71.45%. The pile sinks into the bucket while the scattered
-   kernels burst out of its mouth, then they fall back. Per-segment easing:
-   Bouncy ~ overshooting bezier, Gentle ~ soft ease-out. Uses the standalone
-   `scale`/`translate` properties so the right pile's mirroring `transform`
-   is kept. */
-@keyframes roundResultPopcornPile {
+   2.558/3.58 = 71.45%. Every kernel flies from the pile to its scattered
+   spot and drops back, so it is real motion of the same elements rather than
+   a crossfade between two frames (which flickered). Only `translate`/`rotate`
+   are animated — compositor-only, no re-rasterising of the SVGs — and they
+   don't touch the kernel imgs' own `transform`. Per-segment easing:
+   Bouncy ~ fast-out overshooting bezier, Gentle ~ soft ease-in-out. */
+@keyframes roundResultPopcornBurst {
     0%, 22.35% {
-        opacity: 1; scale: 1; translate: 0 0;
-        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+        translate: 0 0; rotate: 0deg;
+        animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1.18);
     }
     49.11%, 71.45% {
-        opacity: 0; scale: 0.6; translate: 0 14px;
-        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+        translate: var(--pk-dx) var(--pk-dy); rotate: var(--pk-rot);
+        animation-timing-function: cubic-bezier(0.45, 0, 0.25, 1);
     }
-    100% { opacity: 1; scale: 1; translate: 0 0; }
+    100% { translate: 0 0; rotate: 0deg; }
 }
 
-@keyframes roundResultPopcornScatter {
-    0%, 22.35% {
-        opacity: 0; scale: 0.2;
-        animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-    49.11%, 71.45% {
-        opacity: 1; scale: 1;
-        animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-    }
-    100% { opacity: 0; scale: 0.2; }
+/* The bucket kicks as the kernels leave it and settles as they land. */
+@keyframes roundResultPopcornKick {
+    0%, 20% { translate: 0 0; animation-timing-function: ease-out; }
+    25%     { translate: 0 5px; animation-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    34%     { translate: 0 0; }
+    92%     { translate: 0 0; animation-timing-function: ease-out; }
+    96%     { translate: 0 3px; animation-timing-function: ease-in-out; }
+    100%    { translate: 0 0; }
 }
 
 body.mg-room .round-result-card {
@@ -1716,18 +1707,14 @@ body.mg-room .round-result-popcorn {
     animation-delay: 0.08s;
 }
 
-body.mg-room #congrats-area.has-winner .popcorn-kernels {
-    transform-origin: 77px 100px;
-    animation: roundResultPopcornPile 3.58s linear infinite;
+body.mg-room #congrats-area.has-winner .popcorn-kernel {
+    will-change: translate, rotate;
+    animation: roundResultPopcornBurst 3.58s linear var(--pk-delay) infinite both;
 }
 
-/* Keep the mirror axis on the box centre (280 / 2) */
-body.mg-room #congrats-area.has-winner .round-result-popcorn.is-right .popcorn-kernels {
-    transform-origin: 140px 99px;
-}
-
-body.mg-room #congrats-area.has-winner .popcorn-scatter {
-    animation: roundResultPopcornScatter 3.58s linear infinite;
+body.mg-room #congrats-area.has-winner .popcorn-bucket {
+    will-change: translate;
+    animation: roundResultPopcornKick 3.58s linear infinite;
 }
 
 /* Set by populateRoundResultCard()/showAnnouncement() when the round-result
@@ -1748,8 +1735,8 @@ body.mg-room #congrats-area.no-anim * {
     body.mg-room #movie-reveal:not(.hidden),
     body.mg-room .round-result-popcorn.is-left,
     body.mg-room .round-result-popcorn.is-right,
-    body.mg-room .round-result-popcorn .popcorn-kernels,
-    body.mg-room .round-result-popcorn .popcorn-scatter,
+    body.mg-room .round-result-popcorn .popcorn-kernel,
+    body.mg-room .round-result-popcorn .popcorn-bucket,
     body.mg-room .player-gain {
         animation: none !important;
     }

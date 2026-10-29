@@ -97,6 +97,9 @@ class GameRoom:
         self.rejoin_wait_deadline: Optional[float] = None
         self.awaiting_rejoin_choice: bool = False
         self.pending_resume_after_rejoin: bool = False
+        # "wait" once the last connected player chooses to stay. Cleared when
+        # someone else is connected again, or when that wait actually starts.
+        self.solo_choice: Optional[str] = None
         # Word categories for this room (from words.json via WordManager). A room
         # may pick several; `category` stays the primary one for older clients.
         self.categories = word_manager.parse_categories(",".join(categories or [category]))
@@ -215,6 +218,12 @@ REJOIN_WAIT_SECONDS = 300
 # this long. Exit still removes the player immediately. Override in tests.
 reconnect_grace_timers: Dict[str, asyncio.Task] = {}
 RECONNECT_GRACE_SECONDS = int(os.getenv("RECONNECT_GRACE_SECONDS", "20"))
+# How long to wait after a socket drops before asking the last connected
+# player to leave or wait. A refresh reconnects inside this window, so that
+# player does not see the prompt. The back button leaves immediately and does
+# not use this delay.
+solo_prompt_timers: Dict[str, asyncio.Task] = {}
+SOLO_PROMPT_SECONDS = float(os.getenv("SOLO_PROMPT_SECONDS", "2"))
 # Server ping interval, and how long a socket may stay silent before it is
 # closed. Closing starts the reconnect grace above; it does not remove the seat.
 HEARTBEAT_INTERVAL_SECONDS = int(os.getenv("HEARTBEAT_INTERVAL_SECONDS", "10"))
@@ -682,15 +691,26 @@ async def join(
         if not resuming:
             had_rejoin_wait = (
                 room.awaiting_rejoin_choice
+                or room.solo_choice == "wait"
                 or room.rejoin_wait_deadline is not None
                 or room_code in rejoin_wait_timers
+                or room_code in solo_prompt_timers
             )
             cancel_rejoin_wait(room_code)
+            cancel_solo_prompt(room_code)
             room.awaiting_rejoin_choice = False
+            room.solo_choice = None
             if had_rejoin_wait and len(room.players) >= 2:
-                # Fresh round starts once the joiner's WebSocket connects.
-                room.pending_resume_after_rejoin = True
-                print(f"[REJOIN] Player joined during wait — will start a new round for {room_code}")
+                if room.game_started and room.status != "ENDED":
+                    # Fresh round starts once the joiner's WebSocket connects.
+                    room.pending_resume_after_rejoin = True
+                    print(f"[REJOIN] Player joined during wait — will start a new round for {room_code}")
+                await room.manager.broadcast({
+                    "type": "rejoin_cancelled",
+                    "player_count": len(room.players),
+                    "message": "A player joined.",
+                    "start_new_round": False,
+                })
 
         with get_db_session() as db:
             db_room, player = join_room_record(db, room_code, name, guest_id)
@@ -788,6 +808,7 @@ async def leave(
             and len(room.players) == 2
         )
         cancel_reconnect_grace(room_id, username)
+        cancel_solo_prompt(room_id)
         await manager.handle_voluntary_leave(
             username,
             preserve_game=waiting_for_rejoin or room.status == "ENDED" or manager.game_complete,
@@ -825,7 +846,7 @@ async def leave(
         log_wait_lobby_eligibility(room)
         log_room_state(room)
         
-        if waiting_for_rejoin and manager.active_connections and len(room.players) == 1:
+        if manager.active_connections and len(room.players) == 1 and room.status != "ENDED":
             await offer_rejoin_choice(room)
         elif not manager.active_connections:
             print(f"[SKIP] Room destroyed")
@@ -1570,15 +1591,19 @@ class ConnectionManager:
         if self.room:
             cancel_reconnect_grace(self.room.room_id, name)
 
-            # If we falsely entered solo-wait because of a refresh, cancel it now.
-            # Do NOT start a new round here — that is only for a real replacement join.
-            if len(self.room.players) >= 2 and (
+            # A second live player means the drop was a refresh, or someone new
+            # arrived. A seat still inside reconnect grace does not count.
+            if connected_player_count(self.room) >= 2 and (
                 self.room.awaiting_rejoin_choice
+                or self.room.solo_choice == "wait"
                 or self.room.rejoin_wait_deadline is not None
                 or self.room.room_id in rejoin_wait_timers
+                or self.room.room_id in solo_prompt_timers
             ):
                 cancel_rejoin_wait(self.room.room_id)
+                cancel_solo_prompt(self.room.room_id)
                 self.room.awaiting_rejoin_choice = False
+                self.room.solo_choice = None
                 await self.broadcast({
                     "type": "rejoin_cancelled",
                     "player_count": len(self.room.players),
@@ -2098,10 +2123,11 @@ class ConnectionManager:
                 if room and (
                     room.status == "ENDED"
                     or room.awaiting_rejoin_choice
+                    or room.solo_choice == "wait"
                     or room.rejoin_wait_deadline is not None
                     or len(room.players) < 2
                 ):
-                    # Solo player: the End Game / Wait flow decides what happens next.
+                    # Solo player: Leave / Wait decides what happens next.
                     return
                 if is_final_round:
                     await self.end_game()
@@ -2440,6 +2466,18 @@ def cancel_rejoin_wait(room_id: str):
         room.rejoin_wait_deadline = None
 
 
+def connected_player_count(room: GameRoom) -> int:
+    """Seats that currently have a live socket. A grace-period seat is not counted."""
+    live = room.manager.active_connections
+    return sum(1 for name in room.players if name in live)
+
+
+def cancel_solo_prompt(room_id: str):
+    task = solo_prompt_timers.pop(room_id, None)
+    if task and not task.done() and task is not asyncio.current_task():
+        task.cancel()
+
+
 def _clear_temporary_round_state(room: GameRoom, username: str):
     """Drop this player's in-progress round data. Historical score rows stay."""
     manager = room.manager
@@ -2480,6 +2518,7 @@ async def remove_abandoned_room(room: GameRoom):
     if room.players or room.manager.active_connections:
         return
     cancel_rejoin_wait(room_id)
+    cancel_solo_prompt(room_id)
     cancel_private_room_timer(room_id)
     cancel_public_room_timer(room_id)
     if room.db_id:
@@ -2508,12 +2547,6 @@ async def finalize_player_disconnect(room: GameRoom, username: str, generation: 
         return
 
     was_host = username == room.host
-    players_before = len(room.players)
-    waiting_for_rejoin = (
-        room.game_started
-        and room.status != "ENDED"
-        and players_before == 2
-    )
 
     # No await in this block: a reconnect cannot slip in between the check and
     # the token revoke.
@@ -2555,8 +2588,26 @@ async def finalize_player_disconnect(room: GameRoom, username: str, generation: 
 
     if room_id not in rooms:
         return
-    if waiting_for_rejoin and room.manager.active_connections and len(room.players) == 1:
-        await offer_rejoin_choice(room)
+    cancel_solo_prompt(room_id)
+    # The departed seat is gone. One live player remains — ask them now, unless
+    # they already chose to wait out the reconnect grace.
+    if (
+        connected_player_count(room) == 1
+        and len(room.players) == 1
+        and room.status != "ENDED"
+    ):
+        if room.solo_choice == "wait" and room.status == "PLAYING":
+            room.solo_choice = None
+            await start_rejoin_wait(room)
+        elif room.solo_choice == "wait":
+            room.solo_choice = None
+            restart_public_room_timer_if_alone(room)
+            log_wait_lobby_eligibility(room)
+            await broadcast_lobby_update()
+        else:
+            await offer_rejoin_choice(room)
+            if not room.game_started:
+                restart_public_room_timer_if_alone(room)
     elif not room.manager.active_connections and not room.players:
         await remove_abandoned_room(room)
     else:
@@ -2629,6 +2680,7 @@ async def handle_unexpected_disconnect(room: GameRoom, username: str, websocket:
                 set_player_online(db, room.db_id, player_db_id, False)
 
     schedule_reconnect_grace(room, username, generation)
+    schedule_solo_prompt(room)
     log_wait_lobby_eligibility(room)
     log_room_state(room)
     await broadcast_lobby_update()
@@ -2670,20 +2722,97 @@ async def monitor_heartbeat(
         return
 
 
+def schedule_solo_prompt(room: GameRoom):
+    """
+    A socket closed without Exit and one connected player is left.
+
+    Wait briefly so a refresh can return before that player is asked to leave
+    or wait. The seat itself stays until the reconnect grace expires.
+    """
+    room_id = room.room_id
+    if room_id not in rooms or room.status == "ENDED":
+        return
+    if connected_player_count(room) != 1 or len(room.players) < 2:
+        return
+    if room.awaiting_rejoin_choice or room.solo_choice == "wait" or room.rejoin_wait_deadline:
+        return
+    cancel_solo_prompt(room_id)
+
+    async def _prompt():
+        try:
+            await asyncio.sleep(SOLO_PROMPT_SECONDS)
+            if room.room_id not in rooms or room.status == "ENDED":
+                return
+            if connected_player_count(room) != 1 or len(room.players) < 2:
+                return
+            if room.solo_choice == "wait" or room.rejoin_wait_deadline:
+                return
+            await offer_rejoin_choice(room)
+        except asyncio.CancelledError:
+            print(f"[REJOIN] Solo prompt cancelled for room {room_id}")
+            raise
+        finally:
+            if solo_prompt_timers.get(room_id) is asyncio.current_task():
+                solo_prompt_timers.pop(room_id, None)
+
+    task = asyncio.create_task(_prompt())
+
+    def _log_prompt_failure(done: asyncio.Task):
+        if done.cancelled():
+            return
+        error = done.exception()
+        if error:
+            print(f"[REJOIN] Solo prompt failed for room {room_id}: {error}")
+
+    task.add_done_callback(_log_prompt_failure)
+    solo_prompt_timers[room_id] = task
+
+
 async def offer_rejoin_choice(room: GameRoom):
     """
-    After dropping to 1 player mid-game, ask the remaining player to
-    End Game or Wait 5 Minutes. Do not start the timer until they choose Wait.
+    One connected player is left because someone closed the browser, went
+    back, or exited. Ask that player to leave or wait. The wait clock starts
+    only after they choose Wait, and only once the empty seat is gone.
     """
+    if room.room_id not in rooms or room.status == "ENDED":
+        return
+    if connected_player_count(room) != 1:
+        return
     cancel_rejoin_wait(room.room_id)
     room.awaiting_rejoin_choice = True
+    room.solo_choice = None
     await room.manager.broadcast({
         "type": "player_left_waiting",
         "awaiting_choice": True,
         "time_left": None,
-        "message": "Your opponent left. End the game or wait 5 minutes for another player.",
+        "message": "The other player left. Leave the room or wait for someone to join.",
     })
     await broadcast_lobby_update()
+
+
+async def choose_solo_wait(room: GameRoom):
+    """The last connected player chose to stay."""
+    if room.room_id not in rooms or room.status == "ENDED":
+        return
+    if connected_player_count(room) != 1:
+        return
+    cancel_solo_prompt(room.room_id)
+    room.solo_choice = "wait"
+    room.awaiting_rejoin_choice = False
+    if room.status == "PLAYING" and len(room.players) == 1:
+        await start_rejoin_wait(room)
+        return
+    if room.status == "PLAYING":
+        # The empty seat is still inside reconnect grace. Hold the round here
+        # and start the 5-minute clock only if they do not come back.
+        await room.manager.broadcast({
+            "type": "player_left_waiting",
+            "awaiting_choice": False,
+            "time_left": None,
+            "message": "Waiting for another player to join.",
+        })
+        return
+    await room.manager.broadcast({"type": "solo_prompt_dismissed"})
 
 
 async def end_room_after_rejoin_wait(room: GameRoom, reason: str):
@@ -2782,6 +2911,7 @@ async def start_rejoin_wait(room: GameRoom):
 
     cancel_rejoin_wait(room.room_id)
     room.awaiting_rejoin_choice = False
+    room.solo_choice = None
     room.pending_resume_after_rejoin = False
     room.rejoin_wait_deadline = time.time() + REJOIN_WAIT_SECONDS
 
@@ -3401,6 +3531,8 @@ async def websocket_endpoint(
                 if room.rejoin_wait_deadline else None
             ),
             "awaiting_rejoin_choice": bool(room.awaiting_rejoin_choice),
+            "connected_count": connected_player_count(room),
+            "solo_waiting": room.solo_choice == "wait",
             "history_movies": manager.movie_history,
             "category": room.category,
             "categories": word_manager.get_categories(),
@@ -3482,8 +3614,7 @@ async def websocket_endpoint(
                 else:
                     print(f"[GAME] Non-host {username} tried to start game (host is {room.host})")
             elif data["type"] == "wait_for_player":
-                if len(room.players) == 1 and room.status == "PLAYING":
-                    await start_rejoin_wait(room)
+                await choose_solo_wait(room)
             elif data["type"] == "end_waiting":
                 if len(room.players) == 1 and room.status == "PLAYING":
                     await end_room_after_rejoin_wait(room, "The game has ended.")

@@ -811,14 +811,14 @@
 
     <div id="rejoin-wait-overlay" class="modal-card film-modal hidden" style="z-index: 10050;">
         <h2>Opponent left</h2>
-        <p id="rejoin-wait-message">Player left mid-game. Wait for someone new or wrap it up.</p>
+        <p id="rejoin-wait-message">The other player left. Leave the room or wait for someone to join.</p>
         <div id="rejoin-wait-timer" class="meta-chip hidden" style="display: none;">Waiting - <span id="rejoin-time-left">05:00</span></div>
         <div id="rejoin-choice-actions" class="vote-actions">
-            <button class="btn btn-primary-success" onclick="waitForPlayer()">Wait</button>
-            <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
+            <button class="btn btn-danger" type="button" onclick="quitGame()">Leave</button>
+            <button class="btn btn-primary-success" type="button" onclick="waitForPlayer()">Wait</button>
         </div>
         <div id="rejoin-waiting-actions" class="vote-actions hidden" style="display: none;">
-            <button class="btn btn-danger" onclick="endWaitingGame()">End Game</button>
+            <button class="btn btn-danger" type="button" onclick="quitGame()">Leave</button>
         </div>
     </div>
 
@@ -1133,8 +1133,22 @@
         }
         const tabId = getOrCreateTabId();
         if (location.pathname !== "/" || location.search) {
-            history.replaceState(null, "", "/");
+            history.replaceState({ mgRoom: true }, "", "/");
         }
+        // The first Back press leaves the room. Without this, Back reloads "/"
+        // while the seat cookie is still valid and the player is put straight
+        // back into the game, so the other player never sees Leave / Wait.
+        if (!history.state || history.state.mgRoomGuard !== true) {
+            history.pushState({ mgRoomGuard: true }, "", "/");
+        }
+        window.addEventListener("popstate", () => {
+            if (leavingRoom) return;
+            // Stay on this page until /leave navigates away. Otherwise the
+            // browser shows the previous page and the seat cookie puts them
+            // straight back into the room.
+            history.pushState({ mgRoomGuard: true }, "", "/");
+            submitLeave();
+        });
         const navigationType = performance.getEntriesByType("navigation")[0]?.type || "unknown";
         console.log(`[REFRESH-DEBUG] Page loaded. navigation=${navigationType} player=${myName} room=${currentRoom} explicitTabIdentity=${Boolean(tabPlayerName)}`);
         document.getElementById('room-display').innerText = currentRoom || "------";
@@ -1443,12 +1457,15 @@
                 else startLobbyTimer(data.time_left);
             }
             if (data.type === "player_left_waiting") {
-                // Close Game Over / continue UI so End Game | Wait is visible
+                // Close Game Over / continue UI so Leave / Wait is visible
                 // when the other player quits after rounds complete.
                 closeFinalLeaderboard();
                 const congrats = document.getElementById('congrats-area');
                 if (congrats) congrats.style.display = "none";
-                showRejoinWait(data.time_left, data.awaiting_choice !== false);
+                showRejoinWait(data.time_left, data.awaiting_choice !== false, data.message);
+            }
+            if (data.type === "solo_prompt_dismissed") {
+                stopRejoinWait();
             }
             if (data.type === "rejoin_cancelled") {
                 stopRejoinWait();
@@ -1586,17 +1603,19 @@
                 if (data.host_name) {
                     currentHostName = data.host_name;
                 }
-                // Only show opponent-left UI when this client is truly alone.
-                // A page refresh must not flash End Game / Wait while the other
-                // player is still in the room.
-                const soloInPlayingRoom =
-                    currentRoomStatus === "PLAYING" &&
-                    typeof data.player_count === "number" &&
-                    data.player_count < 2;
-                if (soloInPlayingRoom && data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
+                // Show Leave / Wait when this socket is the only live one.
+                // player_count still includes a seat inside the reconnect grace,
+                // so a refresh of the remaining player must use connected_count.
+                const liveCount = typeof data.connected_count === "number"
+                    ? data.connected_count
+                    : data.player_count;
+                const alone = typeof liveCount === "number" && liveCount < 2;
+                if (alone && data.rejoin_time_left !== null && data.rejoin_time_left !== undefined) {
                     showRejoinWait(data.rejoin_time_left, false);
-                } else if (soloInPlayingRoom && data.awaiting_rejoin_choice) {
+                } else if (alone && data.awaiting_rejoin_choice) {
                     showRejoinWait(null, true);
+                } else if (alone && data.solo_waiting) {
+                    showRejoinWait(null, false, "Waiting for another player to join.");
                 } else {
                     stopRejoinWait();
                 }
@@ -1962,16 +1981,16 @@
         function stopLobbyTimer() {
             document.getElementById('lobby-timer-display').classList.add('hidden');
         }
-        function showRejoinWait(seconds, awaitingChoice) {
+        function showRejoinWait(seconds, awaitingChoice, message) {
             // Ensure Game Over modal cannot cover this prompt
             closeFinalLeaderboard();
             const overlay = document.getElementById('rejoin-wait-overlay');
             const timerBox = document.getElementById('rejoin-wait-timer');
             const choiceActions = document.getElementById('rejoin-choice-actions');
             const waitingActions = document.getElementById('rejoin-waiting-actions');
-            document.getElementById('rejoin-wait-message').innerText = awaitingChoice
-                ? "Player left mid-game. Wait for someone new or wrap it up."
-                : "Waiting for another player to join.";
+            document.getElementById('rejoin-wait-message').innerText = message || (awaitingChoice
+                ? "The other player left. Leave the room or wait for someone to join."
+                : "Waiting for another player to join.");
             overlay.classList.remove('hidden');
 
             let backdrop = document.getElementById('rejoin-wait-backdrop');
@@ -1997,14 +2016,21 @@
                 return;
             }
 
-            // Waiting phase — show countdown, keep End Game available
+            // Waiting phase — countdown only once the server has started it.
             choiceActions.classList.add('hidden');
             choiceActions.style.display = 'none';
             waitingActions.classList.remove('hidden');
             waitingActions.style.display = 'flex';
-            timerBox.classList.remove('hidden');
-            timerBox.style.display = 'inline-flex';
-            startRejoinTimer(seconds || 300);
+            if (typeof seconds === "number" && !Number.isNaN(seconds)) {
+                timerBox.classList.remove('hidden');
+                timerBox.style.display = 'inline-flex';
+                startRejoinTimer(seconds);
+            } else {
+                if (rejoinInterval) clearInterval(rejoinInterval);
+                rejoinInterval = null;
+                timerBox.classList.add('hidden');
+                timerBox.style.display = 'none';
+            }
         }
         function startRejoinTimer(seconds) {
             if (rejoinInterval) clearInterval(rejoinInterval);
@@ -2686,15 +2712,17 @@
             })); 
         }
         let publicRoomClosed = false;
+        let leavingRoom = false;
         ws.onclose = () => {
             if (heartbeatTimer) clearInterval(heartbeatTimer);
-            if (publicRoomClosed) return;
+            if (publicRoomClosed || leavingRoom) return;
             console.log(`[REFRESH-DEBUG] WebSocket closed. navigation=${navigationType} player=${myName} room=${currentRoom}`);
             stopTimer();
             document.getElementById('disconnect-overlay').classList.remove('hidden');
             document.getElementById('drawer-status').innerText = "🔌 Connection Lost";
         };
         function submitLeave() {
+            leavingRoom = true;
             try {
                 sessionStorage.removeItem("movie_guess_player_name");
                 sessionStorage.removeItem("movie_guess_room_id");

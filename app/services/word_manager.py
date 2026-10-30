@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import threading
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -66,8 +67,12 @@ class WordManager:
         if words_path is None:
             words_path = Path(__file__).resolve().parent.parent / "data" / "words.json"
         self._words_path = Path(words_path)
+        self._hints_path = self._words_path.with_name("hints.json")
         self._lock = threading.RLock()
         self._categories: Dict[str, List[str]] = {}
+        # genre -> "movies"|"characters" -> UPPER title -> hint sentence
+        self._hints: Dict[str, Dict[str, Dict[str, str]]] = {}
+        self._hints_mtime: Optional[float] = None
         self.load()
 
     def load(self) -> None:
@@ -109,6 +114,100 @@ class WordManager:
             )
             for name, words in self._categories.items():
                 print(f"[WORD_MANAGER]   {name}: {len(words)} words")
+            self._load_hints()
+
+    def _load_hints(self) -> None:
+        """Load famous-line hints. A missing file just means no hints yet."""
+        self._hints = {}
+        if not self._hints_path.exists():
+            print(f"[WORD_MANAGER] No hints file at {self._hints_path}")
+            return
+        with self._hints_path.open("r", encoding="utf-8") as f:
+            raw = json.load(f)
+        if not isinstance(raw, dict):
+            return
+        loaded = 0
+        for genre, kinds in raw.items():
+            if not isinstance(kinds, dict):
+                continue
+            bucket: Dict[str, Dict[str, str]] = {}
+            for kind, pairs in kinds.items():
+                if not isinstance(pairs, dict):
+                    continue
+                kind_map: Dict[str, str] = {}
+                for title, hint in pairs.items():
+                    if not isinstance(title, str) or not isinstance(hint, str):
+                        continue
+                    text = " ".join(hint.split())
+                    key = title.strip().upper()
+                    if not key or not text:
+                        continue
+                    kind_map[key] = text
+                if kind_map:
+                    bucket[str(kind)] = kind_map
+                    loaded += len(kind_map)
+            if bucket:
+                self._hints[str(genre)] = bucket
+        print(f"[WORD_MANAGER] Loaded {loaded} hints from {self._hints_path}")
+
+    def _ensure_hints_loaded(self) -> None:
+        """Pick up edits to hints.json without restarting the server."""
+        try:
+            mtime = self._hints_path.stat().st_mtime
+        except OSError:
+            self._hints = {}
+            self._hints_mtime = None
+            return
+        if self._hints_mtime == mtime:
+            return
+        self._load_hints()
+        self._hints_mtime = mtime
+
+    @staticmethod
+    def _hint_key(title: str) -> str:
+        return re.sub(r"[^A-Z0-9]", "", (title or "").upper())
+
+    def _find_hint(self, names: List[str], key: str, loose: str) -> Optional[str]:
+        for name in names:
+            kinds = self._hints.get(name) or {}
+            for kind in ("movies", "characters"):
+                bucket = kinds.get(kind) or {}
+                hint = bucket.get(key)
+                if hint:
+                    return hint
+                if loose:
+                    for stored, text in bucket.items():
+                        if self._hint_key(stored) == loose:
+                            return text
+        return None
+
+    def get_hint(self, title: str, categories: Optional[List[str]] = None) -> Optional[str]:
+        """
+        Famous line or scene for this title.
+
+        The room's categories are checked first. If that title's line is stored
+        under another genre, that line is used too. Movies are checked before
+        characters when the same name exists in both. Case and punctuation
+        are ignored, because a round stores the title in uppercase.
+        """
+        key = " ".join((title or "").strip().upper().split())
+        if not key:
+            return None
+        loose = self._hint_key(key)
+        with self._lock:
+            self._ensure_hints_loaded()
+            names: List[str] = []
+            for raw in categories or []:
+                resolved = self.resolve_alias(raw)
+                if resolved and resolved not in names:
+                    names.append(resolved)
+            if not names:
+                names = list(self._hints.keys())
+            found = self._find_hint(names, key, loose)
+            if found:
+                return found
+            others = [name for name in self._hints if name not in names]
+            return self._find_hint(others, key, loose)
 
     def get_categories(self) -> List[str]:
         """Return sorted list of available category names."""
@@ -173,8 +272,17 @@ class WordManager:
                     pool.append(word)
         if not pool:
             return self.get_random_words(self.normalize_category(None), count=count)
-        picked = random.sample(pool, min(count, len(pool)))
-        return [w.strip().upper() for w in picked]
+        # The drawer is offered titles that have a stored hint first, so the
+        # Hint button has a line to show. Titles without one fill any gap.
+        hinted = [word for word in pool if self.get_hint(word, categories)]
+        hinted_keys = {word.strip().upper() for word in hinted}
+        rest = [word for word in pool if word.strip().upper() not in hinted_keys]
+        picked: List[str] = []
+        if hinted:
+            picked.extend(random.sample(hinted, min(count, len(hinted))))
+        if len(picked) < count and rest:
+            picked.extend(random.sample(rest, min(count - len(picked), len(rest))))
+        return [word.strip().upper() for word in picked]
 
     def parse_categories(self, value: Optional[str]) -> List[str]:
         """

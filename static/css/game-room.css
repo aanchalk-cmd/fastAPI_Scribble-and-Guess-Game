@@ -1379,7 +1379,8 @@ body.mg-room #game-area {
     align-items: stretch;
     gap: 16px;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 body.mg-room #game-area.hidden {
@@ -1871,6 +1872,59 @@ body.mg-room #game-area.is-drawer #movie-display {
 body.mg-room #game-area:not(.is-drawer) #movie-display {
     margin: 4px 0 0;
     width: 100%;
+}
+
+/* Guesser hint: a button under the letters. The line appears only after a click. */
+body.mg-room #hint-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+body.mg-room #hint-row.hidden,
+body.mg-room #game-area.is-drawer #hint-row {
+    display: none !important;
+}
+
+body.mg-room #hint-btn {
+    font-family: var(--mg-font);
+    font-size: 18px;
+    line-height: 1.2;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+    background: var(--mg-yellow);
+    border: var(--mg-border) solid var(--mg-line);
+    border-radius: var(--mg-radius);
+    padding: 12px 28px;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+body.mg-room #hint-btn:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
+body.mg-room #hint-btn:not(:disabled):active {
+    transform: scale(0.98);
+}
+
+body.mg-room #hint-text {
+    margin: 0;
+    max-width: 640px;
+    text-align: center;
+    font-family: var(--mg-font);
+    font-size: 15px;
+    line-height: 1.45;
+    text-transform: uppercase;
+    color: var(--mg-ink);
+}
+
+body.mg-room #hint-text.hidden {
+    display: none !important;
 }
 
 body.mg-room #controls.toolbar {

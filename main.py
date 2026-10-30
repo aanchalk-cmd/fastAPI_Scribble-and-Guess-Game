@@ -1356,6 +1356,25 @@ class ConnectionManager:
             await self.finalize_round_end(reason="all_guessed")
         return points
 
+    async def send_hint(self, username: str, websocket: WebSocket):
+        """
+        A guesser asked for the famous line. Only that player receives it.
+        The drawer already sees the title, so they are not sent a hint.
+        """
+        if username == self.game_state.get("drawer_name"):
+            return
+        if not self.game_state.get("is_round_active"):
+            return
+        movie = self.game_state.get("movie") or ""
+        hint = word_manager.get_hint(movie, self.get_room_categories())
+        try:
+            await websocket.send_json({
+                "type": "hint",
+                "hint": hint or "",
+            })
+        except Exception:
+            return
+
     async def handle_word_check(self, username: str, index, word) -> Optional[str]:
         """Confirm one solved word to this guesser only (multi-word answers)."""
         token = self.reveal_word_if_valid(username, index, word)
@@ -3649,6 +3668,8 @@ async def websocket_endpoint(
                         })
             elif data["type"] == "guess":
                 await manager.handle_guess(username, data.get("guess"))
+            elif data["type"] == "request_hint":
+                await manager.send_hint(username, websocket)
             # There is no client "restart": rounds advance automatically after the
             # result card (schedule_round_advance). Accepting it let any player
             # skip rounds at will.

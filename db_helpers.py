@@ -178,6 +178,36 @@ def end_room_record(db: Session, room_db_id: int):
     room.ended_at = datetime.now(timezone.utc)
 
 
+def close_playing_rooms_from_previous_run(db: Session) -> int:
+    """
+    A live game exists only in this process. Rows still marked PLAYING when
+    the process starts were left behind by a stop or crash, so they are
+    finished games, not games playing now.
+    """
+    now = datetime.now(timezone.utc)
+    rooms = db.query(Room).filter(Room.status == "PLAYING").all()
+    if not rooms:
+        return 0
+
+    room_ids = [room.id for room in rooms]
+    for room in rooms:
+        room.status = "ENDED"
+        if room.ended_at is None:
+            room.ended_at = now
+
+    db.query(RoomPlayer).filter(
+        RoomPlayer.room_id.in_(room_ids),
+        RoomPlayer.is_online.is_(True),
+    ).update({RoomPlayer.is_online: False}, synchronize_session=False)
+
+    db.query(GameRound).filter(
+        GameRound.room_id.in_(room_ids),
+        GameRound.ended_at.is_(None),
+    ).update({GameRound.ended_at: now}, synchronize_session=False)
+
+    return len(rooms)
+
+
 def create_game_round(
     db: Session,
     room_db_id: int,

@@ -25,6 +25,7 @@ from app.services.word_manager import word_manager
 from app.services.player_names import player_names
 from db_helpers import (
     ban_guest_from_room,
+    close_playing_rooms_from_previous_run,
     create_game_round,
     create_room_record,
     end_room_record,
@@ -350,6 +351,10 @@ def log_wait_lobby_eligibility(room: GameRoom):
 def startup_event():
     init_db()
     print("[DB] Tables initialized")
+    with get_db_session() as db:
+        closed = close_playing_rooms_from_previous_run(db)
+    if closed:
+        print(f"[DB] Closed {closed} room(s) left playing by a previous run")
     # Reload words.json into memory once at startup (WordManager is thread-safe).
     word_manager.load()
     print(f"[WORD_MANAGER] Categories ready: {word_manager.get_categories()}")

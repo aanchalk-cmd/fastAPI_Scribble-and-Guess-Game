@@ -94,8 +94,9 @@ def get_leaderboard(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     """
     Rank every player from stored rows.
 
-    Lifetime counters on players are unused by the game, so games, wins,
-    and points are counted from room memberships, round winners, and scores.
+    Games are started rooms they joined. A win is a finished room where
+    their points were the highest. A tie gives the win to each tied player.
+    A room where nobody scored has no winner.
     """
     limit = max(1, min(int(limit or 100), 200))
 
@@ -109,13 +110,46 @@ def get_leaderboard(db: Session, limit: int = 100) -> list[dict[str, Any]]:
         .group_by(RoomPlayer.player_id)
         .subquery()
     )
+    finished_sq = (
+        db.query(
+            RoomPlayer.player_id.label("player_id"),
+            func.count(func.distinct(RoomPlayer.room_id)).label("finished"),
+        )
+        .join(Room, Room.id == RoomPlayer.room_id)
+        .filter(*_completed_games_filter())
+        .group_by(RoomPlayer.player_id)
+        .subquery()
+    )
+    room_totals = (
+        db.query(
+            Score.room_id.label("room_id"),
+            Score.player_id.label("player_id"),
+            func.sum(Score.points_earned).label("room_points"),
+        )
+        .join(Room, Room.id == Score.room_id)
+        .filter(*_completed_games_filter())
+        .group_by(Score.room_id, Score.player_id)
+        .subquery()
+    )
+    room_best = (
+        db.query(
+            room_totals.c.room_id.label("room_id"),
+            func.max(room_totals.c.room_points).label("best"),
+        )
+        .group_by(room_totals.c.room_id)
+        .subquery()
+    )
     wins_sq = (
         db.query(
-            GameRound.winner_player_id.label("player_id"),
-            func.count(GameRound.id).label("wins"),
+            room_totals.c.player_id.label("player_id"),
+            func.count(room_totals.c.room_id).label("wins"),
         )
-        .filter(GameRound.winner_player_id.isnot(None))
-        .group_by(GameRound.winner_player_id)
+        .join(room_best, room_best.c.room_id == room_totals.c.room_id)
+        .filter(
+            room_totals.c.room_points == room_best.c.best,
+            room_totals.c.room_points > 0,
+        )
+        .group_by(room_totals.c.player_id)
         .subquery()
     )
     points_sq = (
@@ -136,13 +170,15 @@ def get_leaderboard(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     )
 
     games = func.coalesce(games_sq.c.games, 0)
+    finished = func.coalesce(finished_sq.c.finished, 0)
     wins = func.coalesce(wins_sq.c.wins, 0)
     points = func.coalesce(points_sq.c.points, 0)
     high = func.coalesce(high_sq.c.high, 0)
 
     ranked = (
-        db.query(Player.id, Player.username, games, wins, points, high)
+        db.query(Player.id, Player.username, games, finished, wins, points, high)
         .outerjoin(games_sq, games_sq.c.player_id == Player.id)
+        .outerjoin(finished_sq, finished_sq.c.player_id == Player.id)
         .outerjoin(wins_sq, wins_sq.c.player_id == Player.id)
         .outerjoin(points_sq, points_sq.c.player_id == Player.id)
         .outerjoin(high_sq, high_sq.c.player_id == Player.id)
@@ -152,18 +188,28 @@ def get_leaderboard(db: Session, limit: int = 100) -> list[dict[str, Any]]:
     )
 
     rows: list[dict[str, Any]] = []
-    for rank, (player_id, username, game_count, win_count, score, highest) in enumerate(
-        ranked, start=1
-    ):
+    for rank, (
+        player_id,
+        username,
+        game_count,
+        finished_count,
+        win_count,
+        score,
+        highest,
+    ) in enumerate(ranked, start=1):
         game_count = int(game_count or 0)
+        finished_count = int(finished_count or 0)
         win_count = int(win_count or 0)
-        win_rate = round((win_count / game_count) * 100, 1) if game_count > 0 else 0.0
+        win_rate = (
+            round((win_count / finished_count) * 100, 1) if finished_count > 0 else 0.0
+        )
         rows.append(
             {
                 "rank": rank,
                 "player_id": player_id,
                 "username": username,
                 "games_played": game_count,
+                "finished_games": finished_count,
                 "wins": win_count,
                 "total_score": int(score or 0),
                 "highest_score": int(highest or 0),
